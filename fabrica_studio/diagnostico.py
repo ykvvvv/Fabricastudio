@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .config import AJUSTES_POR_DEFECTO, FUENTE_BOLD, FUENTE_EXTRABOLD, Rutas
+from .config import AJUSTES_POR_DEFECTO, FUENTE_BLACK, FUENTE_BOLD, Rutas
 
 
 def _salida(cmd: list[str], timeout: int = 20) -> str:
@@ -50,7 +50,7 @@ def revisar(rutas: Rutas | None = None, ajustes: dict | None = None, autoprueba:
     else:
         anotar("FFmpeg", False, "No está en el PATH. Windows: winget install Gyan.FFmpeg y reabrir PowerShell.")
 
-    anotar("Fuentes incluidas", FUENTE_BOLD.exists() and FUENTE_EXTRABOLD.exists(), "Inter (OFL)")
+    anotar("Fuentes incluidas", FUENTE_BOLD.exists() and FUENTE_BLACK.exists(), "Inter (OFL)")
 
     try:
         rutas.crear()

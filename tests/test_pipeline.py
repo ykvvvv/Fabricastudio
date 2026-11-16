@@ -154,3 +154,19 @@ def test_sin_canal_confirmado_no_se_puede_pedir_subida(fabrica, clip):
     with pytest.raises(ErrorEtapa) as e:
         fabrica.solicitar_subida(t["id"])
     assert e.value.tipo == "configuracion"
+
+
+def test_clip_con_franjas_negras_se_recorta_al_ancho_completo(fabrica, tmp_path):
+    import subprocess
+    ruta = tmp_path / "vertical_con_bordes.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=3",
+                    "-f", "lavfi", "-i", "sine=f=440:d=3", "-vf", "pad=720:1280:40:300:black",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", str(ruta)], check=True)
+    t = _procesar(fabrica, fabrica.importar_archivo(ruta, "v.mp4"))
+    assert t["estado"] == "renderizado", t["error"]
+    assert t["datos"]["disposicion"]["video"]["w"] == 1080            # ocupa todo el ancho, sin franjas
+    assert "bordes negros recortados" in t["etapas"]["render"]["detalle"]
+    fabrica.db.guardar_ajustes({"recortar_bordes": False})              # desactivado: vuelve el encuadre original
+    fabrica.renderizar_de_nuevo(t["id"])
+    t = _procesar(fabrica, t)
+    assert t["datos"]["disposicion"]["video"]["w"] < 1080

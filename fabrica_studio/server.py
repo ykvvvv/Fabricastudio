@@ -265,8 +265,13 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         lienzo.alpha_composite(capa)
         fuente = render._fuente(render.FUENTE_BOLD, s["tamano"])
         dib = ImageDraw.Draw(lienzo)
-        dib.text((LIENZO_ANCHO // 2, s["y"]), "así se ven los subtítulos", font=fuente, fill="white", anchor="ma",
-                 stroke_width=max(3, round(s["tamano"] * 0.09)), stroke_fill="black")
+        partes = [("Mi gente ", "white"), ("linda", a["sub_color_resalte"] if a["sub_resaltar"] else "white")]
+        ancho_total = sum(dib.textlength(t, font=fuente) for t, _ in partes)
+        x = (LIENZO_ANCHO - ancho_total) / 2
+        for texto_parte, color in partes:
+            dib.text((x, s["y"]), texto_parte, font=fuente, fill=color, anchor="la",
+                     stroke_width=max(2, round(s["tamano"] * 0.06)), stroke_fill="black")
+            x += dib.textlength(texto_parte, font=fuente)
         salida = io.BytesIO()
         lienzo.convert("RGB").resize((540, 960)).save(salida, "JPEG", quality=85)
         return Response(salida.getvalue(), media_type="image/jpeg",

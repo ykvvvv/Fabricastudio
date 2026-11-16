@@ -37,6 +37,11 @@ def _escribir(ruta: Path, datos) -> None:
     os.replace(tmp, ruta)
 
 
+def res_recorte(carpeta: Path) -> dict | None:
+    f = carpeta / "bordes.json"
+    return _leer(f)["recorte"] if f.exists() else None
+
+
 def _reloj(seg: float) -> str:
     return f"{int(seg) // 60}:{int(seg) % 60:02d}"
 
@@ -193,15 +198,22 @@ class Fabrica:
         self.db.marcar_etapa(jid, "subtitulos", "hecho", f"{len(sub['bloques'])} bloques")
 
         # 6. Render (solo si cambió algo que afecte a la imagen).
+        recorte = None
+        if a["recortar_bordes"]:
+            f_bordes = carpeta / "bordes.json"
+            if not f_bordes.exists():
+                self._etapa(jid, "render", "Buscando bordes negros en el original…")
+                _escribir(f_bordes, {"recorte": media.detectar_bordes(entrada, prop)})
+            recorte = _leer(f_bordes)["recorte"]
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
-            t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO},
+            t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte,
             logo.stat().st_mtime_ns if logo.exists() else 0], sort_keys=True).encode()).hexdigest()
         datos = t["datos"]
         if datos.get("huella_render") != huella or not (carpeta / "short.mp4").exists():
             self._etapa(jid, "render", "Renderizando el video vertical…")
             res = render.renderizar(carpeta, entrada.name, prop, t["textos"]["banner"], sub["bloques"], a,
-                                    self.rutas.recursos)
+                                    self.rutas.recursos, recorte=recorte)
             for aviso in res["disposicion"]["avisos"]:
                 self.db.anadir_aviso(jid, aviso)
             datos.update(huella_render=huella, salida=res["propiedades"], disposicion=res["disposicion"])
@@ -215,7 +227,9 @@ class Fabrica:
             self.db.actualizar(jid, datos=datos, subida={})   # un render nuevo invalida subidas a medias
         s = datos["salida"]
         datos.setdefault("copia", "")
-        self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s")
+        r = recorte
+        self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s"
+                             + (f" · bordes negros recortados ({r['w']}×{r['h']})" if r else ""))
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="renderizado", etapa="render",
                            subir_solicitado=bool(t["publicar"] and a["subida_automatica"]))
@@ -404,7 +418,11 @@ class Fabrica:
             except (KeyError, TypeError, ValueError):
                 raise ErrorEtapa("Subtítulos con formato incorrecto.", "entrada")
             if txt and fin > ini >= 0:
-                limpios.append({"inicio": round(ini, 3), "fin": round(fin, 3), "texto": txt})
+                bloque = {"inicio": round(ini, 3), "fin": round(fin, 3), "texto": txt}
+                palabras = b.get("palabras")
+                if isinstance(palabras, list) and " ".join(str(p.get("texto", "")) for p in palabras) == txt:
+                    bloque["palabras"] = palabras     # texto intacto: se mantiene el resaltado por palabra
+                limpios.append(bloque)
         _escribir(self.rutas.trabajo(jid) / "subtitulos.json", {"editado": True, "bloques": limpios})
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
 

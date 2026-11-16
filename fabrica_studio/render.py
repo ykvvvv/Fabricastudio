@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .config import FUENTE_BOLD, FUENTE_EXTRABOLD, LIENZO_ALTO, LIENZO_ANCHO
+from .config import FUENTE_BLACK, FUENTE_BOLD, LIENZO_ALTO, LIENZO_ANCHO
 from .errores import ErrorEtapa
 from .media import ejecutar, herramienta, sondear
 from .subtitulos import a_ass
@@ -47,12 +47,12 @@ def _partir(texto: str, fuente, ancho_max: int, dibujo: ImageDraw.ImageDraw) -> 
 def componer_banner(texto: str, a: dict) -> dict:
     """Elige el tamaño de letra más grande con el que el banner cabe en dos líneas."""
     dibujo = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
-    ancho_tarjeta = min(int(a["banner_ancho"]), LIENZO_ANCHO - 2 * MARGEN)
-    relleno_x, relleno_y = 44, 30
+    ancho_tarjeta = min(int(a["banner_ancho"]), LIENZO_ANCHO - 2 * 12)
+    relleno_x, relleno_y = 26, 22
     interior = ancho_tarjeta - 2 * relleno_x
     tamano = int(a["banner_tamano"])
     while True:
-        fuente = _fuente(FUENTE_EXTRABOLD, tamano)
+        fuente = _fuente(FUENTE_BLACK, tamano)
         lineas = _partir(texto, fuente, interior, dibujo)
         cabe = len(lineas) <= 2 and all(dibujo.textlength(l, font=fuente) <= interior for l in lineas)
         if cabe or tamano <= 30:
@@ -67,7 +67,7 @@ def componer_banner(texto: str, a: dict) -> dict:
             lineas = list(min(validos, key=lambda c: abs(dibujo.textlength(c[0], font=fuente)
                                                          - dibujo.textlength(c[1], font=fuente))))
     lineas = lineas[:2]
-    alto_linea = round(tamano * 1.18)
+    alto_linea = round(tamano * 1.1)
     return {"lineas": lineas, "tamano": tamano, "alto_linea": alto_linea, "ancho": ancho_tarjeta,
             "alto": alto_linea * len(lineas) + 2 * relleno_y, "relleno_y": relleno_y}
 
@@ -96,7 +96,7 @@ def calcular_disposicion(ancho: int, alto: int, a: dict, banner: dict | None = N
         d["logo"] = {"y": y, "h": int(a["logo_alto"])}
         y += int(a["logo_alto"])
     if a["mostrar_nombre"]:
-        y += 14
+        y += 10
         alto_nombre = round(int(a["nombre_tamano"]) * 1.2)
         d["nombre"] = {"y": y, "h": alto_nombre, "tamano": int(a["nombre_tamano"])}
         y += alto_nombre
@@ -122,7 +122,7 @@ def cargar_logo(recursos: Path, alto: int) -> Image.Image:
         if caja:
             logo = logo.crop(caja)
     else:
-        fuente = _fuente(FUENTE_EXTRABOLD, 160)
+        fuente = _fuente(FUENTE_BLACK, 160)
         caja = fuente.getbbox("KICK")
         logo = Image.new("RGBA", (caja[2] - caja[0] + 8, caja[3] - caja[1] + 8), (0, 0, 0, 0))
         ImageDraw.Draw(logo).text((4 - caja[0], 4 - caja[1]), "KICK", font=fuente, fill=VERDE_KICK)
@@ -137,17 +137,18 @@ def dibujar_capa(d: dict, banner: dict, a: dict, recursos: Path) -> Image.Image:
     capa = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), (0, 0, 0, 0))
     dib = ImageDraw.Draw(capa)
     t = d["tarjeta"]
-    dib.rounded_rectangle((t["x"], t["y"], t["x"] + t["w"], t["y"] + t["h"]), radius=34, fill="white")
-    fuente = _fuente(FUENTE_EXTRABOLD, banner["tamano"])
+    dib.rounded_rectangle((t["x"], t["y"], t["x"] + t["w"], t["y"] + t["h"]), radius=int(a.get("banner_radio", 22)), fill="white")
+    fuente = _fuente(FUENTE_BLACK, banner["tamano"])
     for i, linea in enumerate(banner["lineas"]):
         cy = t["y"] + banner["relleno_y"] + banner["alto_linea"] * i + banner["alto_linea"] // 2
         dib.text((LIENZO_ANCHO // 2, cy), linea, font=fuente, fill=a["banner_color"], anchor="mm")
     if "logo" in d:
         logo = cargar_logo(recursos, d["logo"]["h"])
         capa.alpha_composite(logo, ((LIENZO_ANCHO - logo.width) // 2, d["logo"]["y"]))
-    if "nombre" in d and a["creador"].strip():
-        dib.text((LIENZO_ANCHO // 2, d["nombre"]["y"] + d["nombre"]["h"] // 2), a["creador"].strip(),
-                 font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill="white", anchor="mm")
+    firma = (a.get("firma") or a["creador"]).strip()
+    if "nombre" in d and firma:
+        dib.text((LIENZO_ANCHO // 2, d["nombre"]["y"] + d["nombre"]["h"] // 2), firma,
+                 font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill=a.get("nombre_color", "#D9D9D9"), anchor="mm")
     return capa
 
 
@@ -178,17 +179,24 @@ def _preparar_fuentes(carpeta: Path) -> None:
 
 
 def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str, bloques: list[dict],
-               a: dict, recursos: Path, salida: str = "short.mp4") -> dict:
-    """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas."""
+               a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None) -> dict:
+    """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas.
+
+    `recorte` ({w, h, x, y}) quita bordes negros del original antes de componer."""
     banner = componer_banner(banner_texto, a)
-    d = calcular_disposicion(propiedades["ancho"], propiedades["alto"], a, banner)
+    ancho, alto = (recorte["w"], recorte["h"]) if recorte else (propiedades["ancho"], propiedades["alto"])
+    d = calcular_disposicion(ancho, alto, a, banner)
     dibujar_capa(d, banner, a, recursos).save(carpeta / "capa.png")
     (carpeta / "subtitulos.ass").write_text(
-        a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"]), encoding="utf-8")
+        a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"], resaltar=bool(a.get("sub_resaltar")),
+              color_resalte=a.get("sub_color_resalte", "#53FC18")), encoding="utf-8")
     _preparar_fuentes(carpeta)
 
     v = d["video"]
-    filtros = f"[0:v]scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
+    filtros = "[0:v]"
+    if recorte:
+        filtros += f"crop={recorte['w']}:{recorte['h']}:{recorte['x']}:{recorte['y']},"
+    filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
     if propiedades.get("fps", 0) > 60:
         filtros += ",fps=60"
     filtros += (f",pad={LIENZO_ANCHO}:{LIENZO_ALTO}:{v['x']}:{v['y']}:black[v];"
@@ -206,4 +214,4 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     reemplazar(carpeta / temporal, carpeta / salida)   # el archivo final solo aparece si está completo
     ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{min(1.0, resultado['duracion'] / 2):.2f}",
               "-i", salida, "-frames:v", "1", "-vf", "scale=360:-2", "miniatura.jpg"], cwd=carpeta)
-    return {"propiedades": resultado, "disposicion": d}
+    return {"propiedades": resultado, "disposicion": d, "recorte": recorte}

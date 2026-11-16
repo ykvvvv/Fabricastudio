@@ -12,7 +12,8 @@ def agrupar(palabras: list[dict], palabras_max: int = 4, caracteres_max: int = 2
     def cerrar():
         if actual:
             bloques.append({"inicio": actual[0]["inicio"], "fin": actual[-1]["fin"],
-                            "texto": " ".join(p["texto"] for p in actual)})
+                            "texto": " ".join(p["texto"] for p in actual),
+                            "palabras": [{"inicio": p["inicio"], "fin": p["fin"], "texto": p["texto"]} for p in actual]})
             actual.clear()
 
     for p in palabras:
@@ -46,9 +47,38 @@ def _escapar(texto: str) -> str:
     return texto.replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
 
 
-def a_ass(bloques: list[dict], tamano: int, y_superior: int, margen_lateral: int = 70) -> str:
+def _color_ass(hexa: str) -> str:
+    """#RRGGBB -> &H00BBGGRR& (ASS usa el orden inverso)."""
+    h = hexa.lstrip("#")
+    if len(h) != 6:
+        h = "53FC18"
+    return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}&".upper()
+
+
+def _eventos(b: dict, resaltar: bool, color: str) -> list[tuple[float, float, str]]:
+    """Un evento por bloque o, con resaltado, uno por palabra con la palabra activa en color."""
+    texto = _escapar(b["texto"])
+    palabras = b.get("palabras") or []
+    if not resaltar or not palabras or " ".join(p["texto"] for p in palabras) != b["texto"]:
+        return [(b["inicio"], b["fin"], texto)]
+    trozos = [_escapar(p["texto"]) for p in palabras]
+    eventos = []
+    if palabras[0]["inicio"] > b["inicio"] + 0.01:
+        eventos.append((b["inicio"], palabras[0]["inicio"], texto))
+    for i, p in enumerate(palabras):
+        ini = max(p["inicio"], b["inicio"])
+        fin = palabras[i + 1]["inicio"] if i + 1 < len(palabras) else b["fin"]
+        if fin <= ini:
+            continue
+        linea = " ".join(f"{{\\c{color}}}{t}{{\\c&H00FFFFFF&}}" if j == i else t for j, t in enumerate(trozos))
+        eventos.append((ini, fin, linea))
+    return eventos
+
+
+def a_ass(bloques: list[dict], tamano: int, y_superior: int, margen_lateral: int = 70,
+          resaltar: bool = False, color_resalte: str = "#53FC18") -> str:
     """ASS con alineación superior-centro: `y_superior` es donde empieza la primera línea."""
-    borde = max(3, round(tamano * 0.09))
+    borde = max(2, round(tamano * 0.06))
     cabecera = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {LIENZO_ANCHO}
@@ -58,11 +88,16 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,Inter,{tamano},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,{borde},2,8,{margen_lateral},{margen_lateral},{y_superior},1
+Style: Sub,Inter,{tamano},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,{borde},1,8,{margen_lateral},{margen_lateral},{y_superior},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    lineas = [f"Dialogue: 0,{_t(b['inicio'])},{_t(b['fin'])},Sub,,0,0,0,,{_escapar(b['texto'])}"
-              for b in bloques if b.get("texto", "").strip() and b["fin"] > b["inicio"]]
+    color = _color_ass(color_resalte)
+    lineas = []
+    for b in bloques:
+        if not b.get("texto", "").strip() or b["fin"] <= b["inicio"]:
+            continue
+        for ini, fin, txt in _eventos(b, resaltar, color):
+            lineas.append(f"Dialogue: 0,{_t(ini)},{_t(fin)},Sub,,0,0,0,,{txt}")
     return cabecera + "\n".join(lineas) + "\n"

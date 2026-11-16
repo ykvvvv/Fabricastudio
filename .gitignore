@@ -18,3 +18,6 @@ token*.json
 *.m4v
 *.wav
 *.zip
+
+# Material de referencia local (APK, ZIP, HTML, chats exportados): no se versiona.
+referencias/

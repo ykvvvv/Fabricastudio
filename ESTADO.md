@@ -20,6 +20,49 @@ En el PC Windows ya funcionan la instalación y el diagnóstico (W1, W2, G1). Fa
 - Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
   El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
+## Diseño de referencia (2026-11-16)
+
+Cristóbal comparó un Short generado aquí con uno anterior que considera correcto (canal
+PaltitaClips, banner «PROTESTA POR ALZA COMBUSTIBLE»). Valores medidos sobre esa referencia
+y aplicados como predeterminados en `config.py`:
+
+| Elemento | Valor en 1080×1920 |
+| --- | --- |
+| Tarjeta del banner | 1044 px de ancho (≈18 px de margen), letra hasta 92 (Inter Black), rojo `#E3222A`, esquinas 22 |
+| Video | Todo el ancho, pegado bajo la tarjeta (separación 10) |
+| Subtítulos | 30 px bajo el video, letra 66, 3 palabras por bloque, **palabra activa en verde `#53FC18`** |
+| Logo | 126 px de alto, inmediatamente bajo los subtítulos |
+| Firma | `@jongottii`, gris claro `#D9D9D9`, 40 px |
+
+Además: **recorte automático de franjas negras** del clip original (cropdetect). El primer clip
+real de Cristóbal se vio pequeño y descentrado porque el original traía bordes negros incrustados.
+
+Pendiente para igualar la referencia: **el logo oficial de Kick** (letras pixeladas). No se dibuja
+desde el código; Cristóbal lo sube en Ajustes → Diseño → «Subir logo PNG».
+Si en el panel ya se habían guardado ajustes de diseño, hay que pulsar «Restablecer valores
+iniciales» para que se apliquen los nuevos.
+
+## Trabajo anterior en Codex/ChatGPT y el APK
+
+Cristóbal quiere que el panel y el diseño sean iguales a los de su versión anterior (hecha con
+ChatGPT/Codex, incluida un APK). Estado real:
+
+- La sesión de Claude Code en la nube **no puede leer** conversaciones de Codex ni de ChatGPT.
+- Codex (CLI y extensión) guarda sus sesiones en el PC, en `%USERPROFILE%\.codex\sessions\` (archivos `.jsonl`).
+  Un Claude Code ejecutándose **en el PC de Cristóbal** sí puede leerlos, si existen.
+- Las conversaciones de chatgpt.com no se guardan en el PC: hay que exportarlas
+  (chatgpt.com → Configuración → Controles de datos → Exportar datos).
+- Los archivos anteriores (`Fabrica_Studio_Tablet_0_1.apk`, `Fabrica_Studio_Android_Fuentes_0_1.zip`,
+  `Fabrica_Studio_Ember.html`) no están en el repositorio. Si Cristóbal los copia a `referencias/`
+  (excluida de git), se pueden analizar para portar su diseño al panel.
+
+**Tarea para el Claude Code local (PC de Cristóbal):**
+1. Buscar sesiones en `%USERPROFILE%\.codex\sessions\` relacionadas con Fábrica Studio y resumir
+   decisiones de diseño, valores de layout y requisitos que no estén ya en este archivo.
+2. Si existe `referencias/Fabrica_Studio_Ember.html` o el ZIP de fuentes Android, extraer la paleta,
+   tipografía, estructura de pantallas y componentes, y proponer cómo aplicarlos a `fabrica_studio/web/`.
+3. Registrar los hallazgos aquí antes de cambiar código. No copiar claves ni tokens que aparezcan en esos chats.
+
 ## Implementado
 
 | Área | Qué hay |
@@ -42,7 +85,7 @@ En el PC Windows ya funcionan la instalación y el diagnóstico (W1, W2, G1). Fa
 
 Entorno: contenedor Linux (4 CPU, 16 GB, sin GPU), Python 3.13, FFmpeg 6.1.
 
-**Automáticas** — `python -m pytest`: 47 pruebas, todas pasan. No usan red ni descargan modelos.
+**Automáticas** — `python -m pytest`: 50 pruebas, todas pasan. No usan red ni descargan modelos.
 
 - Render: un MP4 horizontal produce 1080×1920 H.264/AAC con la misma duración.
 - Diseño: sin choques entre banner, video, subtítulos, logo y nombre en 16:9, 4:3, 1:1 y 9:16.
@@ -204,6 +247,9 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   `.gitignore` ampliado. 47 pruebas; prueba real de video largo desde el panel. Envío a GitHub rechazado (403).
 - **2026-11-16 · Claude Code** — Acceso a GitHub corregido: rama enviada y verificada. ESTADO.md
   actualizado para continuar en Windows. Siguiente: Cristóbal clona en su PC y ejecuta W1–W4.
+- **2026-11-16 · Claude Code (nube)** — Diseño ajustado a la referencia de PaltitaClips (medido),
+  palabra activa resaltada, firma `@jongottii`, recorte de franjas negras, fuente Inter Black.
+  50 pruebas pasan. Pendiente: logo oficial, comprobación con clip real en el PC, revisión de chats de Codex.
 - **2026-11-16 · Claude Code** — Proyecto clonado en el PC de Cristóbal (`OneDrive\Escritorio\Fabricastudio`).
   Scripts .ps1 pasados a UTF-8 con BOM (PowerShell 5.1 mostraba mal los acentos). W1, W2 y G1 verificados
   en Windows. Siguiente: W3–W4 (arrancar el panel y procesar un clip real), luego G2.
