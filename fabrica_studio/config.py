@@ -12,7 +12,7 @@ PAQUETE = Path(__file__).resolve().parent
 RAIZ = PAQUETE.parent
 FUENTES = PAQUETE / "assets" / "fonts"
 FUENTE_BOLD = FUENTES / "Inter-Bold.otf"
-FUENTE_EXTRABOLD = FUENTES / "Inter-ExtraBold.otf"
+FUENTE_BLACK = FUENTES / "Inter-Black.otf"
 WEB = PAQUETE / "web"
 
 
@@ -46,21 +46,27 @@ class Rutas:
 # Ajustes editables desde el panel. Los valores iniciales están pensados para
 # un clip horizontal 16:9 sobre un lienzo 1080x1920.
 AJUSTES_POR_DEFECTO: dict = {
-    # --- Diseño del video ---
-    "creador": "Jongottii",
-    "video_desplazamiento_y": -120,   # px; negativo sube el video respecto al centro
+    # --- Diseño del video (valores medidos sobre el Short de referencia de PaltitaClips) ---
+    "creador": "Jongottii",           # nombre usado en títulos y descripciones
+    "firma": "@jongottii",            # texto bajo el logo (vacío = usar el nombre del creador)
+    "recortar_bordes": True,          # quitar franjas negras que traiga el clip original
+    "video_desplazamiento_y": -80,    # px; negativo sube el video respecto al centro
     "video_alto_max": 1000,           # alto máximo del video dentro del lienzo
-    "banner_tamano": 76,              # tamaño de letra máximo del banner
-    "banner_ancho": 980,              # ancho de la tarjeta blanca
-    "banner_separacion": 40,          # espacio entre tarjeta y video
-    "banner_color": "#E0101A",
-    "sub_tamano": 62,
-    "sub_desplazamiento": 36,         # px bajo el borde inferior del video (negativo = encima del video)
-    "sub_palabras_max": 4,
-    "sub_caracteres_max": 22,
-    "logo_alto": 84,
-    "logo_separacion": 28,
-    "nombre_tamano": 42,
+    "banner_tamano": 92,              # tamaño de letra máximo del banner
+    "banner_ancho": 1044,             # ancho de la tarjeta blanca
+    "banner_separacion": 10,          # espacio entre tarjeta y video (negativo = se superpone)
+    "banner_radio": 22,               # redondeo de las esquinas de la tarjeta
+    "banner_color": "#E3222A",
+    "sub_tamano": 66,
+    "sub_desplazamiento": 30,         # px bajo el borde inferior del video (negativo = encima del video)
+    "sub_palabras_max": 3,
+    "sub_caracteres_max": 20,
+    "sub_resaltar": True,             # la palabra que se está diciendo cambia de color
+    "sub_color_resalte": "#53FC18",
+    "logo_alto": 126,
+    "logo_separacion": 4,
+    "nombre_tamano": 40,
+    "nombre_color": "#D9D9D9",
     "mostrar_logo": True,
     "mostrar_nombre": True,
     # --- Transcripción ---
@@ -83,7 +89,7 @@ AJUSTES_POR_DEFECTO: dict = {
 
 # Ajustes que, al cambiar, obligan a renderizar de nuevo (pero no a transcribir).
 AJUSTES_DE_DISENO = [k for k in AJUSTES_POR_DEFECTO if k.split("_")[0] in
-                     ("video", "banner", "sub", "logo", "nombre", "mostrar")] + ["creador"]
+                     ("video", "banner", "sub", "logo", "nombre", "mostrar")] + ["creador", "firma", "recortar_bordes"]
 
 LIENZO_ANCHO = 1080
 LIENZO_ALTO = 1920

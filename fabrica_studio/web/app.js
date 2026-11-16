@@ -365,12 +365,15 @@ const acciones = {
 
 // ---------------------------------------------------------------- ajustes
 const CAMPOS_DISENO = [
-  ["creador", "Nombre del creador", "text"], ["banner_color", "Color del banner", "color"],
+  ["creador", "Nombre del creador (títulos)", "text"], ["firma", "Firma bajo el logo", "text"],
+  ["banner_color", "Color del banner", "color"], ["sub_color_resalte", "Color de la palabra activa", "color"],
+  ["nombre_color", "Color de la firma", "color"],
   ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
-  ["banner_tamano", "Banner: tamaño de letra"], ["banner_ancho", "Banner: ancho de tarjeta"], ["banner_separacion", "Banner: separación del video"],
+  ["banner_tamano", "Banner: tamaño de letra"], ["banner_ancho", "Banner: ancho de tarjeta"],
+  ["banner_separacion", "Banner: separación del video"], ["banner_radio", "Banner: redondeo de esquinas"],
   ["sub_tamano", "Subtítulos: tamaño"], ["sub_desplazamiento", "Subtítulos: distancia bajo el video"],
   ["sub_palabras_max", "Subtítulos: palabras por bloque"], ["sub_caracteres_max", "Subtítulos: caracteres por bloque"],
-  ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"], ["nombre_tamano", "Nombre: tamaño"],
+  ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"], ["nombre_tamano", "Firma: tamaño"],
 ];
 
 async function pintarAjustes(m) {
@@ -384,7 +387,9 @@ async function pintarAjustes(m) {
     cuerpo = h`<div class="diseno"><form class="pila" id="form-diseno">
       <div class="campos">${CAMPOS_DISENO.map(([k, n, tipo]) => crudo(h`<label>${n}<input name="${k}" type="${tipo || "number"}" value="${v[k]}"></label>`))}</div>
       <label class="linea"><input type="checkbox" name="mostrar_logo" ${v.mostrar_logo ? "checked" : ""}> Mostrar logo</label>
-      <label class="linea"><input type="checkbox" name="mostrar_nombre" ${v.mostrar_nombre ? "checked" : ""}> Mostrar nombre del creador</label>
+      <label class="linea"><input type="checkbox" name="mostrar_nombre" ${v.mostrar_nombre ? "checked" : ""}> Mostrar firma bajo el logo</label>
+      <label class="linea"><input type="checkbox" name="sub_resaltar" ${v.sub_resaltar ? "checked" : ""}> Resaltar en color la palabra que se está diciendo</label>
+      <label class="linea"><input type="checkbox" name="recortar_bordes" ${v.recortar_bordes ? "checked" : ""}> Quitar franjas negras del clip original</label>
       <div class="tarjeta pila"><h3>Logo</h3>
         <p class="pequeno tenue">${a.logo_propio ? "Usando tu logo. Los márgenes transparentes se recortan automáticamente." : "Sin logo propio: se muestra el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo."}</p>
         <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">Subir logo PNG<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>

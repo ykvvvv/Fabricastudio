@@ -40,3 +40,34 @@ def test_subtitulos_no_se_solapan_y_respetan_limites():
     assert " ".join(b["texto"] for b in bloques) == " ".join(p["texto"] for p in palabras)
     ass = subtitulos.a_ass(bloques, 60, 1200)
     assert ass.count("Dialogue:") == len(bloques) and "PlayResY: 1920" in ass
+
+
+def test_resaltado_de_la_palabra_activa():
+    palabras = [{"inicio": 0.0, "fin": 0.4, "texto": "Mi"}, {"inicio": 0.5, "fin": 0.9, "texto": "gente"},
+                {"inicio": 1.0, "fin": 1.5, "texto": "linda,"}]
+    bloques = subtitulos.agrupar(palabras, 3, 22)
+    assert len(bloques) == 1 and bloques[0]["palabras"]
+    ass = subtitulos.a_ass(bloques, 66, 1200, resaltar=True, color_resalte="#53FC18")
+    eventos = [l for l in ass.splitlines() if l.startswith("Dialogue:")]
+    assert len(eventos) == 3                                     # un evento por palabra
+    assert "{\\c&H0018FC53&}linda,{\\c&H00FFFFFF&}" in eventos[2]    # verde en orden BGR de ASS
+    assert eventos[0].split(",")[2] == "0:00:00.50"               # cada palabra dura hasta la siguiente
+    sin = subtitulos.a_ass(bloques, 66, 1200, resaltar=False)
+    assert sin.count("Dialogue:") == 1 and "\\c" not in sin
+    editado = [{**bloques[0], "texto": "Mi gente bonita"}]          # texto editado: sin resaltado
+    assert subtitulos.a_ass(editado, 66, 1200, resaltar=True).count("Dialogue:") == 1
+
+
+def test_detecta_y_recorta_franjas_negras(tmp_path):
+    import subprocess
+    from fabrica_studio import media
+    con = tmp_path / "con_bordes.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=15:d=2",
+                    "-vf", "pad=720:1280:40:300:black", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", str(con)], check=True)
+    r = media.detectar_bordes(con, media.sondear(con))
+    assert r and abs(r["w"] - 640) <= 8 and abs(r["h"] - 360) <= 8 and abs(r["x"] - 40) <= 8 and abs(r["y"] - 300) <= 8
+    sin = tmp_path / "sin_bordes.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=15:d=2",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(sin)], check=True)
+    assert media.detectar_bordes(sin, media.sondear(sin)) is None

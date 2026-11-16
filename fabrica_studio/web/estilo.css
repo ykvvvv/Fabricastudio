@@ -1,5 +1,5 @@
 @font-face { font-family: "Inter"; src: url("/fuentes/Inter-Bold.otf") format("opentype"); font-weight: 600 700; font-display: swap; }
-@font-face { font-family: "Inter"; src: url("/fuentes/Inter-ExtraBold.otf") format("opentype"); font-weight: 800 900; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/fuentes/Inter-Black.otf") format("opentype"); font-weight: 800 900; font-display: swap; }
 /* Sala de edición: grafito azulado, ámbar de luz de piloto; la cinta de etapas es el único adorno. */
 :root {
   --fondo: #13181c; --panel: #1a2126; --panel2: #222b31; --borde: #2c373e; --borde-fuerte: #3d4b54;

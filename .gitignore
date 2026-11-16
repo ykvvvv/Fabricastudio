@@ -20,3 +20,6 @@ client_secret*.json
 *.zip
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# Material de referencia local (APK, ZIP, HTML, chats exportados): no se versiona.
+referencias/
