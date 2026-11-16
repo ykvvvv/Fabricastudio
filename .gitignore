@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Datos locales: cola, clips, modelos, credenciales. Nunca al repositorio.
+datos/
+.env
+client_secret*.json
+token*.json
+*.keystore
+*.jks
