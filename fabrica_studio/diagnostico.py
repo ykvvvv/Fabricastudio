@@ -86,6 +86,11 @@ def revisar(rutas: Rutas | None = None, ajustes: dict | None = None, autoprueba:
     anotar(f"Modelo Whisper «{modelo}»", True if descargado else None,
            "Descargado" if descargado else "Se descargará en el primer clip (requiere internet esa vez).")
 
+    from . import reencuadre
+    ok, motivo = reencuadre.disponible()
+    anotar("Seguimiento de rostros (pantalla completa)", True if ok else None,
+           motivo if ok else motivo + " Sin esto, el estilo pantalla completa queda centrado.")
+
     try:
         import yt_dlp
         anotar("yt-dlp (enlaces de Kick)", True, yt_dlp.version.__version__)

@@ -55,13 +55,15 @@ def _color_ass(hexa: str) -> str:
     return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}&".upper()
 
 
-def _eventos(b: dict, resaltar: bool, color: str) -> list[tuple[float, float, str]]:
+def _eventos(b: dict, resaltar: bool, color: str, mayusculas: bool = False) -> list[tuple[float, float, str]]:
     """Un evento por bloque o, con resaltado, uno por palabra con la palabra activa en color."""
-    texto = _escapar(b["texto"])
+    def esc(t: str) -> str:
+        return _escapar(t.upper() if mayusculas else t)
+    texto = esc(b["texto"])
     palabras = b.get("palabras") or []
     if not resaltar or not palabras or " ".join(p["texto"] for p in palabras) != b["texto"]:
         return [(b["inicio"], b["fin"], texto)]
-    trozos = [_escapar(p["texto"]) for p in palabras]
+    trozos = [esc(p["texto"]) for p in palabras]
     eventos = []
     if palabras[0]["inicio"] > b["inicio"] + 0.01:
         eventos.append((b["inicio"], palabras[0]["inicio"], texto))
@@ -76,9 +78,10 @@ def _eventos(b: dict, resaltar: bool, color: str) -> list[tuple[float, float, st
 
 
 def a_ass(bloques: list[dict], tamano: int, y_superior: int, margen_lateral: int = 70,
-          resaltar: bool = False, color_resalte: str = "#53FC18") -> str:
+          resaltar: bool = False, color_resalte: str = "#53FC18", mayusculas: bool = False,
+          borde: int | None = None, fuente: str = "Inter") -> str:
     """ASS con alineación superior-centro: `y_superior` es donde empieza la primera línea."""
-    borde = max(2, round(tamano * 0.06))
+    borde = borde if borde is not None else max(2, round(tamano * 0.06))
     cabecera = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {LIENZO_ANCHO}
@@ -88,7 +91,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,Inter,{tamano},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,{borde},1,8,{margen_lateral},{margen_lateral},{y_superior},1
+Style: Sub,{fuente},{tamano},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,{borde},1,8,{margen_lateral},{margen_lateral},{y_superior},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -98,6 +101,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for b in bloques:
         if not b.get("texto", "").strip() or b["fin"] <= b["inicio"]:
             continue
-        for ini, fin, txt in _eventos(b, resaltar, color):
+        for ini, fin, txt in _eventos(b, resaltar, color, mayusculas):
             lineas.append(f"Dialogue: 0,{_t(ini)},{_t(fin)},Sub,,0,0,0,,{txt}")
     return cabecera + "\n".join(lineas) + "\n"

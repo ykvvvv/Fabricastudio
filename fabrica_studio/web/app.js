@@ -158,6 +158,13 @@ function vistaBiblioteca() {
       : `<div class="vacio">Aún no hay Shorts renderizados.</div>`);
 }
 
+document.addEventListener("change", intentar(async (e) => {
+  const sel = e.target.closest("[data-estilo-trabajo]");
+  if (!sel) return;
+  await api(`/api/trabajos/${S.jid}/estilo`, { method: "PUT", json: { estilo: sel.value } });
+  avisar("Estilo cambiado: se renderiza de nuevo (no se repite la transcripción)."); refrescar();
+}));
+
 document.addEventListener("click", (e) => {
   const ir = e.target.closest("[data-ir]");
   if (ir) location.hash = `trabajo/${ir.dataset.ir}`;
@@ -193,6 +200,13 @@ function pintarTrabajo(m, completo) {
   if (t.estado === "renderizado" && !t.subir_solicitado) {
     botones += yt.canal_id ? h`<button class="primario" data-accion="subir">Subir en privado a ${yt.canal_nombre}</button>` : `<a class="boton" href="#ajustes">Conectar YouTube para subir</a>`;
     botones += `<button data-accion="renderizar">Renderizar de nuevo</button>`;
+  }
+  if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
+    const general = S.estado.estilo === "completo" ? "pantalla completa" : "clásico";
+    botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo>
+      <option value="" ${t.estilo === "" ? "selected" : ""}>General de Ajustes (${general})</option>
+      <option value="clasico" ${t.estilo === "clasico" ? "selected" : ""}>Clásico: video completo con tarjeta</option>
+      <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option></select></label>`;
   }
   if (t.tiene_video) botones += h`<a class="boton" href="/media/${t.id}/short.mp4" download="${t.nombre}.mp4">Descargar MP4</a>`;
   if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar">Eliminar</button>`;
@@ -364,6 +378,11 @@ const acciones = {
 };
 
 // ---------------------------------------------------------------- ajustes
+const CAMPOS_COMPLETO = [
+  ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"], ["completo_banner_y", "Banner: posición vertical"],
+  ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
+  ["completo_logo_y", "Logo: posición vertical"], ["completo_logo_alto", "Logo: alto (px)"],
+];
 const CAMPOS_DISENO = [
   ["creador", "Nombre del creador (títulos)", "text"], ["firma", "Firma bajo el logo", "text"],
   ["banner_color", "Color del banner", "color"], ["sub_color_resalte", "Color de la palabra activa", "color"],
@@ -385,7 +404,14 @@ async function pintarAjustes(m) {
   let cuerpo = "";
   if (S.pestana === "diseno") {
     cuerpo = h`<div class="diseno"><form class="pila" id="form-diseno">
+      <label>Estilo de encuadre<select name="estilo">
+        <option value="clasico" ${v.estilo === "clasico" ? "selected" : ""}>Clásico: video completo centrado con tarjeta</option>
+        <option value="completo" ${v.estilo === "completo" ? "selected" : ""}>Pantalla completa: recorte 9:16 que sigue los rostros</option></select></label>
       <div class="campos">${CAMPOS_DISENO.map(([k, n, tipo]) => crudo(h`<label>${n}<input name="${k}" type="${tipo || "number"}" value="${v[k]}"></label>`))}</div>
+      <details class="tarjeta"${v.estilo === "completo" ? " open" : ""}><summary>Ajustes de pantalla completa</summary><div class="campos" style="margin-top:12px">
+        ${CAMPOS_COMPLETO.map(([k, n]) => crudo(h`<label>${n}<input name="${k}" type="number" value="${v[k]}"></label>`))}</div>
+        <label class="linea" style="margin-top:10px"><input type="checkbox" name="completo_banner" ${v.completo_banner ? "checked" : ""}> Mostrar tarjeta del banner arriba</label>
+        <label class="linea"><input type="checkbox" name="completo_mayusculas" ${v.completo_mayusculas ? "checked" : ""}> Subtítulos en mayúsculas</label></details>
       <label class="linea"><input type="checkbox" name="mostrar_logo" ${v.mostrar_logo ? "checked" : ""}> Mostrar logo</label>
       <label class="linea"><input type="checkbox" name="mostrar_nombre" ${v.mostrar_nombre ? "checked" : ""}> Mostrar firma bajo el logo</label>
       <label class="linea"><input type="checkbox" name="sub_resaltar" ${v.sub_resaltar ? "checked" : ""}> Resaltar en color la palabra que se está diciendo</label>

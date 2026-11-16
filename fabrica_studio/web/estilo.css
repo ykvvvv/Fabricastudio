@@ -139,3 +139,5 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .etapas i { width: 22px; }
 }
 .momento .fila { align-items: flex-end; }
+.estilo-trabajo { flex-direction: row; align-items: center; gap: 8px; }
+.estilo-trabajo select { width: auto; }

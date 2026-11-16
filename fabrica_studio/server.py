@@ -116,6 +116,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                                      "textos", "youtube_id", "modo")},
                 "origen_ref": t["origen_ref"] if t["origen_tipo"] == "enlace" else Path(t["origen_ref"]).name,
                 "salida": t["datos"].get("salida"), "copia": t["datos"].get("copia", ""),
+                "estilo": t["datos"].get("estilo", ""),
                 "tiene_video": (fab.rutas.trabajo(t["id"]) / "short.mp4").exists(),
                 "subida": {k: s[k] for k in ("canal_id", "terminado", "privacidad") if k in s},
                 "progreso": fab.progreso.get(t["id"], "")}
@@ -139,7 +140,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                             "pendientes": [{"archivo": k, "motivo": v} for k, v in fab.carpeta_estado.items()]},
                 "youtube": {**fab.youtube.estado(), "canal_id": a["youtube_canal_id"],
                             "canal_nombre": a["youtube_canal_nombre"]},
-                "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"]}
+                "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"]}
 
     # ------------------------------------------------------------ importación
     @app.post("/api/importar/archivo")
@@ -178,6 +179,10 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
             raise ErrorEtapa("Acción desconocida.", "entrada")
         acciones[accion](jid)
         return _publico(fab._trabajo(jid))
+
+    @app.put("/api/trabajos/{jid}/estilo")
+    async def estilo_trabajo(jid: str, request: Request):
+        return _publico(fab.cambiar_estilo(jid, str((await request.json()).get("estilo", ""))))
 
     @app.put("/api/trabajos/{jid}/textos")
     async def editar_textos(jid: str, request: Request):
@@ -251,8 +256,10 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 except ValueError:
                     pass
         try:
-            b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a)
-            d = render.calcular_disposicion(1920, 1080, a, b)
+            completo = a["estilo"] == "completo"
+            b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a) \
+                if (not completo or a["completo_banner"]) else None
+            d = render.calcular_disposicion_completo(a, b) if completo else render.calcular_disposicion(1920, 1080, a, b)
             capa = render.dibujar_capa(d, b, a, fab.rutas.recursos)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
@@ -263,14 +270,17 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         dib.text((LIENZO_ANCHO // 2, v["y"] + v["h"] // 2), "VIDEO", font=render._fuente(render.FUENTE_BOLD, 60),
                  fill="#4a4e57", anchor="mm")
         lienzo.alpha_composite(capa)
-        fuente = render._fuente(render.FUENTE_BOLD, s["tamano"])
+        fuente = render._fuente(render.FUENTE_BLACK if completo else render.FUENTE_BOLD, s["tamano"])
         dib = ImageDraw.Draw(lienzo)
         partes = [("Mi gente ", "white"), ("linda", a["sub_color_resalte"] if a["sub_resaltar"] else "white")]
+        if completo and a["completo_mayusculas"]:
+            partes = [(t.upper(), c) for t, c in partes]
         ancho_total = sum(dib.textlength(t, font=fuente) for t, _ in partes)
         x = (LIENZO_ANCHO - ancho_total) / 2
         for texto_parte, color in partes:
             dib.text((x, s["y"]), texto_parte, font=fuente, fill=color, anchor="la",
-                     stroke_width=max(2, round(s["tamano"] * 0.06)), stroke_fill="black")
+                     stroke_width=max(4, round(s["tamano"] * 0.09)) if completo else max(2, round(s["tamano"] * 0.06)),
+                     stroke_fill="black")
             x += dib.textlength(texto_parte, font=fuente)
         salida = io.BytesIO()
         lienzo.convert("RGB").resize((540, 960)).save(salida, "JPEG", quality=85)

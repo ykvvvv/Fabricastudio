@@ -23,6 +23,7 @@ Python 3.10+ · FastAPI · SQLite · FFmpeg · faster-whisper · interfaz web si
 | `fabrica_studio/subtitulos.py` | Agrupa palabras en bloques y escribe ASS. |
 | `fabrica_studio/render.py` | Disposición del lienzo, capa PNG (Pillow) y render FFmpeg. |
 | `fabrica_studio/youtube.py` | OAuth, verificación de canal, subida reanudable privada. |
+| `fabrica_studio/reencuadre.py` | Estilo pantalla completa: detección de rostros (YuNet) y cámara virtual 9:16. |
 | `fabrica_studio/momentos.py` | Video largo: propone tramos (Gemini o heurística local) y recorta transcripciones. |
 | `fabrica_studio/diagnostico.py` | Comprueba el equipo (FFmpeg, Whisper, GPU) y hace un render de prueba. |
 | `fabrica_studio/importar.py` | Enlaces (yt-dlp) y comprobación de archivos estables. |
@@ -75,8 +76,8 @@ En Windows (PowerShell 5.1 no admite `&&`; el entorno usa `Scripts\`, no `bin/`)
    trabajo queda en `error` con la causa. Nada de datos ni métricas inventadas en el panel.
 7. **No inventar nombres de modelos:** los de Gemini se leen de la API en ejecución.
 8. Acciones sensibles (claves, OAuth, canal, dispositivos) solo desde `127.0.0.1`.
-9. Mantener el modo de encuadre original (video completo centrado) aunque se
-   añadan otros estilos.
+9. Mantener el modo de encuadre original (video completo centrado, estilo `clasico`) aunque se
+   añadan otros estilos. La hoja de ruta del estilo tipo OpusClip está en `docs/ESTILO_OPUSCLIP.md`.
 10. Compatibilidad con Windows: rutas con `pathlib`, FFmpeg se ejecuta con `cwd` en
     la carpeta del trabajo y rutas relativas en los filtros. En Windows no se puede
     reemplazar ni borrar un archivo abierto: usa `render.reemplazar()` y no dejes

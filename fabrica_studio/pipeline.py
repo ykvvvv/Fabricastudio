@@ -17,7 +17,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import importar, media, momentos, render, subtitulos, textos, transcribe
+from . import importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
 from .config import AJUSTES_DE_DISENO, Rutas
 from .db import DB
 from .errores import ErrorEtapa, sin_secretos
@@ -205,15 +205,25 @@ class Fabrica:
                 self._etapa(jid, "render", "Buscando bordes negros en el original…")
                 _escribir(f_bordes, {"recorte": media.detectar_bordes(entrada, prop)})
             recorte = _leer(f_bordes)["recorte"]
+        estilo = t["datos"].get("estilo") or a["estilo"]
+        encuadre = None
+        if estilo == "completo":
+            f_enc = carpeta / "encuadre.json"
+            if not f_enc.exists():
+                self._etapa(jid, "render", "Buscando rostros para el encuadre…")
+                _escribir(f_enc, reencuadre.analizar(entrada, prop, recorte))
+            encuadre = _leer(f_enc)
+            if encuadre.get("aviso"):
+                self.db.anadir_aviso(jid, encuadre["aviso"])
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
-            t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte,
+            t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,
             logo.stat().st_mtime_ns if logo.exists() else 0], sort_keys=True).encode()).hexdigest()
         datos = t["datos"]
         if datos.get("huella_render") != huella or not (carpeta / "short.mp4").exists():
             self._etapa(jid, "render", "Renderizando el video vertical…")
             res = render.renderizar(carpeta, entrada.name, prop, t["textos"]["banner"], sub["bloques"], a,
-                                    self.rutas.recursos, recorte=recorte)
+                                    self.rutas.recursos, recorte=recorte, encuadre=encuadre)
             for aviso in res["disposicion"]["avisos"]:
                 self.db.anadir_aviso(jid, aviso)
             datos.update(huella_render=huella, salida=res["propiedades"], disposicion=res["disposicion"])
@@ -229,6 +239,7 @@ class Fabrica:
         datos.setdefault("copia", "")
         r = recorte
         self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s"
+                             + (" · pantalla completa con seguimiento" if estilo == "completo" else " · clásico")
                              + (f" · bordes negros recortados ({r['w']}×{r['h']})" if r else ""))
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="renderizado", etapa="render",
@@ -430,6 +441,15 @@ class Fabrica:
         self._editable(jid)
         (self.rutas.trabajo(jid) / "subtitulos.json").unlink(missing_ok=True)
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
+
+    def cambiar_estilo(self, jid: str, estilo: str) -> dict:
+        if estilo not in ("clasico", "completo", ""):
+            raise ErrorEtapa("Estilo desconocido.", "entrada")
+        t = self._editable(jid)
+        datos = t["datos"]
+        datos["estilo"] = estilo            # "" = usar el estilo general de Ajustes
+        self.db.actualizar(jid, datos=datos, estado="pendiente", error="", error_tipo="")
+        return self.db.trabajo(jid)
 
     def renderizar_de_nuevo(self, jid: str) -> None:
         self._editable(jid)

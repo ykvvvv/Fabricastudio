@@ -69,6 +69,18 @@ AJUSTES_POR_DEFECTO: dict = {
     "nombre_color": "#D9D9D9",
     "mostrar_logo": True,
     "mostrar_nombre": True,
+    # --- Estilo de encuadre ---
+    # clasico: video completo centrado con tarjeta (siempre disponible).
+    # completo: pantalla completa 9:16 que sigue los rostros, subtítulos sobre el video.
+    "estilo": "clasico",
+    "completo_zoom": 100,             # % sobre el recorte 9:16 mínimo (100 = sin zoom extra)
+    "completo_banner": True,          # mostrar la tarjeta del banner arriba
+    "completo_banner_y": 150,
+    "completo_sub_y": 1250,           # posición de los subtítulos sobre el video
+    "completo_sub_tamano": 84,
+    "completo_mayusculas": True,
+    "completo_logo_alto": 80,
+    "completo_logo_y": 1610,
     # --- Transcripción ---
     "whisper_modelo": "small",        # tiny, base, small, medium, large-v3...
     "whisper_dispositivo": "cpu",     # cpu (seguro), auto o cuda (GPU NVIDIA, requiere cuDNN)
@@ -89,7 +101,8 @@ AJUSTES_POR_DEFECTO: dict = {
 
 # Ajustes que, al cambiar, obligan a renderizar de nuevo (pero no a transcribir).
 AJUSTES_DE_DISENO = [k for k in AJUSTES_POR_DEFECTO if k.split("_")[0] in
-                     ("video", "banner", "sub", "logo", "nombre", "mostrar")] + ["creador", "firma", "recortar_bordes"]
+                     ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo")] + [
+                         "creador", "firma", "recortar_bordes", "estilo"]
 
 LIENZO_ANCHO = 1080
 LIENZO_ALTO = 1920

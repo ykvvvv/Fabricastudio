@@ -113,6 +113,37 @@ def calcular_disposicion(ancho: int, alto: int, a: dict, banner: dict | None = N
     return d
 
 
+def calcular_disposicion_completo(a: dict, banner: dict | None = None) -> dict:
+    """Estilo pantalla completa: el video ocupa todo el lienzo y el resto va encima."""
+    d: dict = {"estilo": "completo", "video": {"x": 0, "y": 0, "w": LIENZO_ANCHO, "h": LIENZO_ALTO}}
+    if banner:
+        d["tarjeta"] = {"x": (LIENZO_ANCHO - banner["ancho"]) // 2, "y": int(a["completo_banner_y"]),
+                        "w": banner["ancho"], "h": banner["alto"]}
+    tamano = int(a["completo_sub_tamano"])
+    sub_y = int(a["completo_sub_y"])
+    sub_alto = round(tamano * 1.22 * 2)
+    d["subtitulos"] = {"x": 60, "y": sub_y, "w": LIENZO_ANCHO - 120, "h": sub_alto, "tamano": tamano}
+    y = int(a["completo_logo_y"])
+    if a["mostrar_logo"]:
+        d["logo"] = {"y": y, "h": int(a["completo_logo_alto"])}
+        y += int(a["completo_logo_alto"])
+    if a["mostrar_nombre"]:
+        y += 8
+        alto_nombre = round(int(a["nombre_tamano"]) * 1.2)
+        d["nombre"] = {"y": y, "h": alto_nombre, "tamano": int(a["nombre_tamano"])}
+        y += alto_nombre
+    d["fin_contenido"] = y
+    avisos = []
+    if y > LIENZO_ALTO - 20:
+        avisos.append("El logo o la firma se salen por abajo: súbelos o reduce su tamaño.")
+    if banner and d["tarjeta"]["y"] + d["tarjeta"]["h"] > sub_y:
+        avisos.append("El banner choca con los subtítulos.")
+    if "logo" in d and sub_y + sub_alto > d["logo"]["y"]:
+        avisos.append("Los subtítulos chocan con el logo: súbelos o baja el logo.")
+    d["avisos"] = avisos
+    return d
+
+
 def cargar_logo(recursos: Path, alto: int) -> Image.Image:
     """Logo del usuario (recortando sus márgenes transparentes) o un rótulo de texto por defecto."""
     ruta = recursos / "logo.png"
@@ -136,19 +167,23 @@ def dibujar_capa(d: dict, banner: dict, a: dict, recursos: Path) -> Image.Image:
     """Capa transparente con la tarjeta, el banner, el logo y el nombre."""
     capa = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), (0, 0, 0, 0))
     dib = ImageDraw.Draw(capa)
-    t = d["tarjeta"]
-    dib.rounded_rectangle((t["x"], t["y"], t["x"] + t["w"], t["y"] + t["h"]), radius=int(a.get("banner_radio", 22)), fill="white")
-    fuente = _fuente(FUENTE_BLACK, banner["tamano"])
-    for i, linea in enumerate(banner["lineas"]):
-        cy = t["y"] + banner["relleno_y"] + banner["alto_linea"] * i + banner["alto_linea"] // 2
-        dib.text((LIENZO_ANCHO // 2, cy), linea, font=fuente, fill=a["banner_color"], anchor="mm")
+    if banner and "tarjeta" in d:
+        t = d["tarjeta"]
+        dib.rounded_rectangle((t["x"], t["y"], t["x"] + t["w"], t["y"] + t["h"]),
+                              radius=int(a.get("banner_radio", 22)), fill="white")
+        fuente = _fuente(FUENTE_BLACK, banner["tamano"])
+        for i, linea in enumerate(banner["lineas"]):
+            cy = t["y"] + banner["relleno_y"] + banner["alto_linea"] * i + banner["alto_linea"] // 2
+            dib.text((LIENZO_ANCHO // 2, cy), linea, font=fuente, fill=a["banner_color"], anchor="mm")
     if "logo" in d:
         logo = cargar_logo(recursos, d["logo"]["h"])
         capa.alpha_composite(logo, ((LIENZO_ANCHO - logo.width) // 2, d["logo"]["y"]))
     firma = (a.get("firma") or a["creador"]).strip()
     if "nombre" in d and firma:
+        sobre_video = d.get("estilo") == "completo"       # sobre la imagen hace falta contorno
         dib.text((LIENZO_ANCHO // 2, d["nombre"]["y"] + d["nombre"]["h"] // 2), firma,
-                 font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill=a.get("nombre_color", "#D9D9D9"), anchor="mm")
+                 font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill=a.get("nombre_color", "#D9D9D9"), anchor="mm",
+                 stroke_width=3 if sobre_video else 0, stroke_fill="black")
     return capa
 
 
@@ -170,33 +205,54 @@ def _preparar_fuentes(carpeta: Path) -> None:
     """libass busca la fuente en una carpeta relativa al trabajo: evita rutas con ':' en Windows."""
     destino = carpeta / "fuentes"
     destino.mkdir(exist_ok=True)
-    archivo = destino / FUENTE_BOLD.name
-    if not archivo.exists():
-        try:
-            os.link(FUENTE_BOLD, archivo)
-        except OSError:
-            shutil.copyfile(FUENTE_BOLD, archivo)
+    for fuente in (FUENTE_BOLD, FUENTE_BLACK):
+        archivo = destino / fuente.name
+        if not archivo.exists():
+            try:
+                os.link(fuente, archivo)
+            except OSError:
+                shutil.copyfile(fuente, archivo)
 
 
 def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str, bloques: list[dict],
-               a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None) -> dict:
+               a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None,
+               encuadre: dict | None = None) -> dict:
     """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas.
 
-    `recorte` ({w, h, x, y}) quita bordes negros del original antes de componer."""
-    banner = componer_banner(banner_texto, a)
+    `recorte` ({w, h, x, y}) quita bordes negros del original antes de componer.
+    `encuadre` (resultado de reencuadre.analizar) activa el estilo pantalla completa."""
+    from . import reencuadre
     ancho, alto = (recorte["w"], recorte["h"]) if recorte else (propiedades["ancho"], propiedades["alto"])
-    d = calcular_disposicion(ancho, alto, a, banner)
+    completo = encuadre is not None
+    if completo:
+        banner = componer_banner(banner_texto, a) if a["completo_banner"] else None
+        d = calcular_disposicion_completo(a, banner)
+        sub_kw = {"mayusculas": bool(a["completo_mayusculas"]), "borde": max(4, round(d["subtitulos"]["tamano"] * 0.09)),
+                  "fuente": "Inter Black"}
+    else:
+        banner = componer_banner(banner_texto, a)
+        d = calcular_disposicion(ancho, alto, a, banner)
+        sub_kw = {}
     dibujar_capa(d, banner, a, recursos).save(carpeta / "capa.png")
     (carpeta / "subtitulos.ass").write_text(
         a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"], resaltar=bool(a.get("sub_resaltar")),
-              color_resalte=a.get("sub_color_resalte", "#53FC18")), encoding="utf-8")
+              color_resalte=a.get("sub_color_resalte", "#53FC18"), **sub_kw), encoding="utf-8")
     _preparar_fuentes(carpeta)
 
     v = d["video"]
     filtros = "[0:v]"
     if recorte:
         filtros += f"crop={recorte['w']}:{recorte['h']}:{recorte['x']}:{recorte['y']},"
-    filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
+    if completo:
+        vw, vh = reencuadre.ventana(ancho, alto, int(a["completo_zoom"]) / 100)
+        puntos = reencuadre.trayectoria(encuadre, vw)
+        (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(puntos), encoding="utf-8")
+        y0 = (alto - vh) // 2 // 2 * 2
+        filtros += (f"sendcmd=f=encuadre.cmd,crop@encuadre=w={vw}:h={vh}:x={int(puntos[0][1]) // 2 * 2}:y={y0},"
+                    f"scale={LIENZO_ANCHO}:{LIENZO_ALTO}:flags=lanczos,setsar=1")
+        d["encuadre"] = {"ventana": [vw, vh], "movimientos": len(puntos)}
+    else:
+        filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
     if propiedades.get("fps", 0) > 60:
         filtros += ",fps=60"
     filtros += (f",pad={LIENZO_ANCHO}:{LIENZO_ALTO}:{v['x']}:{v['y']}:black[v];"

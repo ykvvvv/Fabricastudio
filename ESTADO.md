@@ -22,6 +22,19 @@ primer Short real renderizado y **primera subida real a YouTube en privado** (ve
 - Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
   El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
+## Estilo pantalla completa tipo OpusClip (2026-11-16)
+
+Implementada la **fase 1** de `docs/ESTILO_OPUSCLIP.md`: el video llena el 9:16 y el encuadre
+sigue los rostros (YuNet + cámara virtual), con subtítulos grandes en mayúsculas sobre la imagen.
+Se elige en Ajustes → Diseño → «Estilo de encuadre», o por clip en su página. El estilo clásico sigue
+siendo el predeterminado. Nueva dependencia: `opencv-python-headless` (hay rueda para Windows x64).
+
+Probado aquí: video sintético con un rostro real que cruza la imagen; la cámara lo sigue y corta en
+el salto. **Falta validarlo con clips reales en el PC** (después de `git pull`, volver a ejecutar
+`scripts\instalar.ps1` para instalar OpenCV y luego `scripts\diagnostico.ps1`).
+
+Siguientes fases (vista dividida, hablante activo, subtítulos animados): ver `docs/ESTILO_OPUSCLIP.md`.
+
 ## Diseño de referencia (2026-11-16)
 
 Cristóbal comparó un Short generado aquí con uno anterior que considera correcto (canal
@@ -332,3 +345,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   la API; subida automática activada y visible en el pie del panel (`app.js`). Revisadas en solo lectura
   las sesiones de Codex en busca del trabajo anterior (APK, Colab, ZIP, Ember): no contienen nada del
   proyecto y no hay carpeta `referencias` (ver «Trabajo anterior en Codex/ChatGPT y el APK»).
+- **2026-11-16 · Claude Code (nube)** — Estilo pantalla completa con seguimiento de rostros (fase 1 de
+  `docs/ESTILO_OPUSCLIP.md`), selector de estilo general y por clip, diagnóstico de OpenCV. 61 pruebas.
+  Siguiente: Cristóbal reinstala dependencias y prueba 3–5 clips reales en ambos estilos.
