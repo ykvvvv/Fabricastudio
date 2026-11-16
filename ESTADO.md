@@ -9,7 +9,7 @@ Versión 0.3 en desarrollo. Funciona en el entorno de nube (Linux): clip selecci
 persistente, carpeta vigilada, vinculación de tablet y diagnóstico del equipo.
 La subida a YouTube está implementada y probada solo contra un YouTube simulado.
 
-**Nada se ha ejecutado todavía en el PC Windows ni en la tablet de Cristóbal.**
+En el PC Windows ya funcionan la instalación y el diagnóstico (W1, W2, G1). Falta procesar un clip real. La tablet no se ha probado.
 
 ## Repositorio y rama
 
@@ -75,8 +75,8 @@ Ninguna de estas se puede hacer desde la nube. Están ordenadas: cada una depend
 
 ### En el PC Windows 11
 
-- [ ] **W1. Instalación.** `scripts\instalar.ps1` termina con «Instalación terminada».
-- [ ] **W2. Diagnóstico.** `scripts\diagnostico.ps1` sin líneas `[FALLA]`. Pegar la salida en el chat.
+- [x] **W1. Instalación.** Hecho el 2026-11-16. `scripts\instalar.ps1` termina con «Instalación terminada».
+- [x] **W2. Diagnóstico.** Hecho el 2026-11-16: todo OK (Windows 11, Python 3.13.15, FFmpeg 9.0.2 de Gyan con libass, autoprueba 1080×1920). Datos en `C:\FabricaStudio_datos` (fuera de OneDrive, variable `FABRICA_DATOS`). `scripts\diagnostico.ps1` sin líneas `[FALLA]`. Pegar la salida en el chat.
       Riesgo principal: que el FFmpeg instalado no traiga el filtro `ass` (el de Gyan sí lo trae).
 - [ ] **W3. Arranque.** `scripts\iniciar.ps1` y abrir `http://127.0.0.1:8765`.
 - [ ] **W4. Clip real.** Procesar un clip de Jongottii y valorar: transcripción de modismos
@@ -92,7 +92,7 @@ Ninguna de estas se puede hacer desde la nube. Están ordenadas: cada una depend
 
 ### Con la GPU (GTX 1650)
 
-- [ ] **G1.** En el diagnóstico, la línea «GPU para Whisper» indica si CUDA está disponible.
+- [x] **G1.** CUDA detecta la GTX 1650 (4096 MiB, controlador 610.91). Falta G2. En el diagnóstico, la línea «GPU para Whisper» indica si CUDA está disponible.
 - [ ] **G2.** Si lo está: Ajustes → Proveedores → Dispositivo «GPU NVIDIA» y comparar tiempos con CPU.
       Si no: hace falta instalar las librerías cuDNN/cuBLAS de NVIDIA; se verá cuando toque.
       La GPU es opcional: todo funciona en CPU.
@@ -204,3 +204,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   `.gitignore` ampliado. 47 pruebas; prueba real de video largo desde el panel. Envío a GitHub rechazado (403).
 - **2026-11-16 · Claude Code** — Acceso a GitHub corregido: rama enviada y verificada. ESTADO.md
   actualizado para continuar en Windows. Siguiente: Cristóbal clona en su PC y ejecuta W1–W4.
+- **2026-11-16 · Claude Code** — Proyecto clonado en el PC de Cristóbal (`OneDrive\Escritorio\Fabricastudio`).
+  Scripts .ps1 pasados a UTF-8 con BOM (PowerShell 5.1 mostraba mal los acentos). W1, W2 y G1 verificados
+  en Windows. Siguiente: W3–W4 (arrancar el panel y procesar un clip real), luego G2.
