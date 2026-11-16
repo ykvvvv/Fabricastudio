@@ -88,6 +88,45 @@ del trabajo anterior.
 - Conclusión: ese trabajo se hizo **probablemente en ChatGPT web**. Para recuperarlo: exportar el historial
   de chatgpt.com o copiar los tres archivos a `referencias/`, revisando antes que no tengan claves.
 
+## Beta 0.1 encontrada (2026-11-16)
+
+Cristóbal indicó la carpeta `C:\Users\notea\Downloads\FabricaStudio`: es el trabajo anterior (beta 0.1,
+fechada el 15-nov-2026). Revisada **solo leyendo**; no se copió nada al repositorio ni se ejecutó nada.
+
+**Qué contiene** (20 archivos, sin `.venv`, sin EXE, sin APK, sin datos en `%LOCALAPPDATA%\FabricaStudio`):
+
+- `app/server.py`: FastAPI + SQLite, cola con un trabajador, acceso por código de sesión, rutas en inglés
+  (`/api/state`, `/api/jobs`, `/api/queue/pause`, `/api/admin/*`).
+- `app/engine/`: `fabrica_gemini.py` (descarga, textos, Pillow, FFmpeg), `subtitulos.py`, `youtube_auto.py`
+  (bibliotecas de Google; este repositorio usa REST con httpx).
+- `app/web/diseno.html`: el prototipo de diseño. **Es el mismo archivo** que `docs/diseno/referencia-panel.html`
+  (solo cambian los saltos de línea). `index.html` se genera con `build_frontend.py`, que toma ese HTML,
+  sustituye los textos de «demo» y le pega `app.js`.
+- `tests/` (28 pruebas con unittest), `LEEME.md`, `VALIDACION.md` (solo validado en Linux, nunca en Windows).
+- Lanzadores `Instalar_y_abrir.cmd`, `Abrir_Fabrica.cmd`, `Crear_EXE.cmd` y `studio.spec` (PyInstaller).
+
+**Credenciales:** no se encontró ninguna clave, token ni `client_secret` en esos archivos (búsqueda por
+patrones de Google, OpenAI y claves privadas; la única coincidencia es la expresión que oculta claves en
+los registros). No hay nada que revocar por esta carpeta.
+
+**Ideas útiles para el panel nuevo**
+
+- Confirma el plan: la beta ya quitó las curvas decorativas y los textos de demo de la referencia.
+- Descarga del registro del trabajo y de un ZIP con el resultado (aquí no existe; posible ampliación).
+- Pausar la cola (no inicia clips nuevos; el activo termina). Aquí no existe: sin botón hasta que el motor lo tenga.
+- Texto de ayuda de `LEEME.md` para la MatePad (misma wifi, firewall solo redes privadas, red de invitados).
+
+**Lo que no se reutiliza:** nombres de modelos de Gemini escritos a mano (regla 7), categoría 20 fija,
+código de acceso por sesión (aquí hay vinculación por dispositivo), la plantilla con colores bloqueados.
+
+**Para el .exe futuro** (`Crear_EXE.cmd` + `studio.spec`, nunca compilados en Windows):
+
+- Sirve el enfoque: PyInstaller en modo carpeta (`COLLECT`, no un único archivo), `console=True`, `upx=False`,
+  `collect_all` para `faster_whisper`, `ctranslate2`, `onnxruntime`, `av`, `tokenizers`, `yt_dlp`, `curl_cffi`
+  y `collect_submodules('uvicorn')`; FFmpeg se copia aparte a `dist\...\bin`.
+- Hay que adaptarlo: punto de entrada `fabrica_studio`, incluir `web/` completa y las fuentes, añadir OpenCV
+  y el modelo YuNet, quitar las bibliotecas de Google, y fijar la versión de PyInstaller en su momento.
+
 ## Implementado
 
 | Área | Qué hay |
