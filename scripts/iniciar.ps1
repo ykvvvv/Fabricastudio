@@ -1,4 +1,4 @@
-# Fábrica Studio - arranca el servidor del panel.
+﻿# Fábrica Studio - arranca el servidor del panel.
 # Uso (PowerShell, dentro de la carpeta del proyecto):   .\scripts\iniciar.ps1
 # Deja esta ventana abierta mientras uses el panel. Para detener: Ctrl+C.
 $ErrorActionPreference = "Stop"

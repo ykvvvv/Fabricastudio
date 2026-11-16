@@ -1,4 +1,4 @@
-# Fábrica Studio - instalación en Windows 11.
+﻿# Fábrica Studio - instalación en Windows 11.
 # Uso (PowerShell, dentro de la carpeta del proyecto):   .\scripts\instalar.ps1
 # No modifica configuraciones globales: todo queda en la carpeta .venv del proyecto.
 $ErrorActionPreference = "Stop"

@@ -1,4 +1,4 @@
-# Fábrica Studio - comprueba qué funciona en este PC.
+﻿# Fábrica Studio - comprueba qué funciona en este PC.
 # Uso (PowerShell, dentro de la carpeta del proyecto):   .\scripts\diagnostico.ps1
 # Copia la salida completa y pégala en el chat si algo falla.
 $ErrorActionPreference = "Stop"
