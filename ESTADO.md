@@ -9,7 +9,9 @@ Versión 0.3 en desarrollo. Funciona en el entorno de nube (Linux): clip selecci
 persistente, carpeta vigilada, vinculación de tablet y diagnóstico del equipo.
 La subida a YouTube está implementada y probada solo contra un YouTube simulado.
 
-**Nada se ha ejecutado todavía en el PC Windows ni en la tablet de Cristóbal.**
+**En el PC Windows (2026-11-16):** instalación, 47 pruebas, diagnóstico, arranque del panel y
+primer Short real renderizado y **primera subida real a YouTube en privado** (ver «Comprobado en el PC Windows»).
+**Nada probado aún en la tablet ni con Gemini.**
 
 ## Repositorio y rama
 
@@ -69,19 +71,59 @@ Entorno: contenedor Linux (4 CPU, 16 GB, sin GPU), Python 3.13, FFmpeg 6.1.
   compatible, edición, re-render, biblioteca, ajustes, diagnóstico, código de vinculación,
   video largo. Sin desbordes horizontales ni errores de JavaScript.
 
+## Comprobado en el PC Windows
+
+Entorno: Windows 11 Home, Python 3.13.15 en `.venv`, FFmpeg 9.0.2 full_build (Gyan), GTX 1650.
+Proyecto en `OneDrive\Escritorio\Fabricastudio`; datos fuera de OneDrive con
+`FABRICA_DATOS=C:\FabricaStudio_datos` (variable de usuario ya definida).
+
+- `scripts\instalar.ps1` termina con «Instalación terminada» (ahora instala también pytest).
+- `.\.venv\Scripts\python.exe -m pytest`: **48 pasan** (las 47 originales sin cambios + 1 nueva de fechas;
+  antes del arreglo de YouTube fallaba 1; ver Registro).
+- `scripts\diagnostico.ps1`: todo `[ OK ]`, incluido libass, H.264/AAC, autoprueba de render y
+  «GPU para Whisper» detectada (GTX 1650, 4 GB). No se ha probado Whisper en GPU.
+- Panel arrancado con `.\.venv\Scripts\python.exe -m fabrica_studio`: `http://127.0.0.1:8765` responde 200.
+- **Primer Short real:** `Descargas\clip_01JTZ79TQ46787D3MCG4FAY56P.mp4` (Kick, 1920×1080, 18 s),
+  importado por la API del panel (`/api/importar/archivo`, la misma que usa el botón).
+  Trabajo `20261116-140757-1342e3` → `renderizado` en ~25 s con CPU (Whisper `small` ya descargado
+  en ese primer uso). Salida 1080×1920 H.264/AAC, 18,0 s; copia en `2_shorts_renderizados`.
+  Textos con el borrador local (sin Gemini). Revisado con dos fotogramas extraídos, no reproducido entero.
+- YouTube real (en curso): cliente OAuth de escritorio creado por Cristóbal y cargado con la API del
+  panel → `C:\FabricaStudio_datos\secretos\client_secret.json` (tipo `installed`, fuera del repositorio).
+  El enlace `/api/youtube/conectar` redirige a Google con alcances `youtube.upload` y `youtube.readonly`
+  y regreso a `http://127.0.0.1:8765/api/youtube/callback`.
+- **Autorización real hecha** por Cristóbal en su navegador: Google entregó token de renovación
+  (`secretos\youtube_token.json`, fuera del repositorio). La API real devolvió un canal:
+  nombre «Paltita», `@paltitaclips`, ID `UCTxlp22T7KxKH6REgAJ9gHQ`. Cristóbal comparó el ID en
+  YouTube Studio y se confirmó como canal de destino.
+- **Subida real (Y3), 2026-11-16:** el trabajo `20261116-140757-1342e3` (sin `youtube_id` ni sesión previa)
+  se subió una vez por `/api/trabajos/<id>/subir` con sus textos guardados. YouTube devolvió el ID
+  `jEo0C6qTsLA` (https://youtu.be/jEo0C6qTsLA). Consultado con la API `videos`: canal
+  `UCTxlp22T7KxKH6REgAJ9gHQ`, `privacyStatus: private`, `madeForKids: false`, categoría 24
+  (Entretenimiento; no es Gaming), título con tildes correctas, `uploadStatus: uploaded`, procesándose.
+  El trabajo quedó `publicado`.
+- **Subida automática activada** (`subida_automatica = true`) tras la prueba: los trabajos nuevos con
+  «publicar» se suben en privado al canal confirmado al terminar el render. El pie lateral del panel
+  muestra «Subida automática: activa (privado)».
+- **Falta:** Y4 (no se probó en real pulsar subir otra vez) e Y5.
+
+Pendiente de valorar por Cristóbal en ese Short: transcripción («a la vía, hermano» puede ser un
+error de Whisper), legibilidad de subtítulos, banner y logo. El clip trae bordes negros propios
+(contenido 1614×918 arriba a la izquierda), por eso el video se ve descentrado en el Short.
+
 ## Comprobaciones que requieren a Cristóbal
 
 Ninguna de estas se puede hacer desde la nube. Están ordenadas: cada una depende de la anterior.
 
 ### En el PC Windows 11
 
-- [ ] **W1. Instalación.** `scripts\instalar.ps1` termina con «Instalación terminada».
-- [ ] **W2. Diagnóstico.** `scripts\diagnostico.ps1` sin líneas `[FALLA]`. Pegar la salida en el chat.
-      Riesgo principal: que el FFmpeg instalado no traiga el filtro `ass` (el de Gyan sí lo trae).
-- [ ] **W3. Arranque.** `scripts\iniciar.ps1` y abrir `http://127.0.0.1:8765`.
-- [ ] **W4. Clip real.** Procesar un clip de Jongottii y valorar: transcripción de modismos
-      chilenos con música de fondo, legibilidad de subtítulos, posición del banner y del logo.
-      Anotar cuánto tarda.
+- [x] **W1. Instalación.** Comprobado por Claude Code en el PC (2026-11-16).
+- [x] **W2. Diagnóstico.** Sin `[FALLA]` (2026-11-16).
+- [x] **W3. Arranque.** El servidor responde en `http://127.0.0.1:8765`. Falta que Cristóbal
+      lo abra en su navegador y lo arranque él con `scripts\iniciar.ps1`.
+- [ ] **W4. Clip real.** Render hecho (18 s, ~25 s de proceso). **Falta la valoración de Cristóbal**:
+      transcripción de modismos chilenos, legibilidad de subtítulos, banner y logo. Probar también un
+      clip más largo y con música de fondo.
 - [ ] **W5. Re-render con la vista previa abierta.** Cambiar el banner mientras el video se
       reproduce: en Windows el archivo queda bloqueado; debe reintentarse solo o avisar con claridad.
 - [ ] **W6. Carpeta vigilada.** Copiar un video grande a `datos\1_clips_crudos` y comprobar
@@ -107,9 +149,9 @@ Desde datos móviles la tablet no alcanza el PC: el acceso fuera de casa es una 
 
 ### Con autorización de Google / YouTube
 
-- [ ] **Y1.** Crear el cliente OAuth de escritorio en Google Cloud (pasos en el README).
-- [ ] **Y2.** Conectar la cuenta y comprobar que el canal mostrado es PaltitaClips, **por su ID**.
-- [ ] **Y3.** Subir un Short en privado y verificarlo en YouTube Studio: privado, «no creado para niños», categoría correcta.
+- [x] **Y1.** Cliente OAuth de escritorio creado y cargado (2026-11-16).
+- [x] **Y2.** Cuenta conectada; canal confirmado por ID `UCTxlp22T7KxKH6REgAJ9gHQ` («Paltita», @paltitaclips) (2026-11-16).
+- [x] **Y3.** Subida privada `jEo0C6qTsLA` verificada por la API (2026-11-16). Falta que Cristóbal la mire en YouTube Studio.
 - [ ] **Y4.** Pulsar subir otra vez sobre el mismo trabajo: debe negarse.
 - [ ] **Y5.** Cortar el wifi a mitad de una subida y reintentar: debe continuar, no duplicar.
 
@@ -179,7 +221,23 @@ video, audio o ZIP. Los clips de prueba se generan con FFmpeg durante las prueba
 - Sin empaquetado EXE ni APK todavía.
 - Los entregables anteriores (notebook de Colab, ZIP de Windows, APK, HTML Ember) no estaban
   en el repositorio; esta base es nueva.
-- Codex, Replica, OpenShorts y Ponytail no están instalados en el entorno usado. Nada fue revisado por Codex.
+- Clips con bordes negros propios (p. ej. capturas de Kick) quedan descentrados: el render centra el
+  cuadro completo. Posible mejora: recorte automático con `cropdetect` (sin hacer).
+- Codex CLI 0.169.0 instalado en el PC (2026-11-16); primera revisión de solo lectura hecha (ver Registro).
+  Pendiente de esa revisión, sin aplicar: README (política de ejecución, `Unblock-File`) y
+  comprobar en `instalar.ps1` la versión de Python de un `.venv` existente.
+
+## Trabajo anterior en Codex/ChatGPT y el APK
+
+Revisión del 2026-11-16 (Claude Code, solo lectura). **No se encontró el diseño ni los requisitos del
+trabajo anterior** (notebook de Colab, ZIP de Windows, APK, HTML Ember).
+
+- Sesiones locales de Codex: **46 revisadas** (23-oct → 16-nov-2026), filtrando por APK, Fábrica, Shorts,
+  clips, Whisper, subtítulos y YouTube. **Ninguna trata de Fábrica Studio**, salvo la revisión de solo
+  lectura del 16-nov (ya registrada). El resto son temas ajenos al proyecto.
+- Conclusión: ese trabajo se hizo **probablemente en ChatGPT web**, cuyas conversaciones no quedan en el PC.
+  Para recuperarlo: exportar el historial de ChatGPT (Ajustes → Controles de datos → Exportar) o copiar los
+  entregables a `referencias\`, revisando antes que no tengan claves.
 
 ## Seguridad: acción pendiente de Cristóbal
 
@@ -204,3 +262,26 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   `.gitignore` ampliado. 47 pruebas; prueba real de video largo desde el panel. Envío a GitHub rechazado (403).
 - **2026-11-16 · Claude Code** — Acceso a GitHub corregido: rama enviada y verificada. ESTADO.md
   actualizado para continuar en Windows. Siguiente: Cristóbal clona en su PC y ejecuta W1–W4.
+- **2026-11-16 · Claude Code (PC Windows)** — Rediseño visual del panel (solo `web/estilo.css` y
+  `theme-color`): grafito azulado con acento ámbar, títulos en Inter, barra de etapas como cinta
+  (la etapa en curso se anima; respeta «reducir movimiento»). `app.js` sin cambios. Revisado con
+  capturas de Playwright a 1280 px y 800 px con trabajos de ejemplo inyectados; falta verlo en la tablet real.
+  El `.venv` del PC no tiene pytest: instalar `requirements-dev.txt` para correr las pruebas.
+- **2026-11-16 · Claude Code + Codex (PC Windows)** — Codex revisó en solo lectura instrucciones y scripts.
+  Aplicado: `instalar.ps1` instala también `requirements-dev.txt`; `iniciar.ps1` y `diagnostico.ps1`
+  devuelven el código de salida de Python; bloque de comandos para Windows en `CLAUDE.md`.
+  Arreglado un error real en `youtube.py` (`_buscar_reciente`): convertía la hora UTC de YouTube con
+  `mktime - timezone`, que en horario de verano de Chile desfasa 1 h e impedía reconocer un video ya
+  subido (riesgo de duplicado tras un corte). Ahora usa `calendar.timegm`. Lo destapó
+  `test_sesion_perdida_recupera_video_ya_subido`, que en la nube (UTC) pasaba. 47/47 pruebas.
+  Primer Short real renderizado en el PC (ver «Comprobado en el PC Windows»). Siguiente: Cristóbal
+  valora el Short (W4) y sigue con W5–W9; después Gemini (A1) y YouTube (Y1–Y5).
+- **2026-11-16 · Claude Code (PC Windows)** — Fechas de YouTube revisadas: la documentación de la API
+  solo dice «ISO 8601» (sin zona explícita; el perfil W3C que enlaza exige `Z` o `±hh:mm`). Nueva
+  `_instante_iso()` en `youtube.py` respeta la zona escrita en el valor; sin zona lanza ValueError en vez
+  de adivinar. Prueba nueva independiente de la zona del PC. 48/48. `.gitignore`: `token*.json` →
+  `*token*.json` (cubre `youtube_token.json`). Panel reiniciado. Cliente OAuth cargado (Y1).
+- **2026-11-16 · Claude Code (PC Windows)** — Prueba Y3: subida privada real `jEo0C6qTsLA` verificada por
+  la API; subida automática activada y visible en el pie del panel (`app.js`). Revisadas en solo lectura
+  las sesiones de Codex en busca del trabajo anterior (APK, Colab, ZIP, Ember): no contienen nada del
+  proyecto y no hay carpeta `referencias` (ver «Trabajo anterior en Codex/ChatGPT y el APK»).
