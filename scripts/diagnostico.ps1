@@ -8,3 +8,4 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     exit 1
 }
 & .\.venv\Scripts\python.exe -m fabrica_studio.diagnostico
+exit $LASTEXITCODE

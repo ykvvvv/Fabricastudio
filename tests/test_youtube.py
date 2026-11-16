@@ -1,6 +1,7 @@
 """Subida reanudable contra un YouTube simulado. No se conecta a internet."""
 import json
 import time
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -132,6 +133,16 @@ def test_reintento_con_sesion_guardada_continua(yt):
     y.http = httpx.Client(transport=httpx.MockTransport(falso))
     assert _subir(y, archivo, estado) == "video123"
     assert falso.inicios == 1                   # se retomó la misma sesión
+
+
+def test_fecha_de_youtube_respeta_su_zona_horaria():
+    # Mismo instante escrito de tres formas; el resultado no depende de la zona del PC.
+    utc = datetime(2026, 11, 16, 17, 0, 0, tzinfo=timezone.utc).timestamp()
+    assert youtube._instante_iso("2026-11-16T17:00:00Z") == utc
+    assert youtube._instante_iso("2026-11-16T17:00:00.123Z") == utc
+    assert youtube._instante_iso("2026-11-16T14:00:00-03:00") == utc
+    with pytest.raises(ValueError):
+        youtube._instante_iso("2026-11-16T17:00:00")      # sin zona: ambiguo, no se adivina
 
 
 def test_sesion_perdida_recupera_video_ya_subido(yt):

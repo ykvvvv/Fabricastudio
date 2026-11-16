@@ -14,8 +14,10 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode
@@ -32,6 +34,18 @@ SUBIDA = "https://www.googleapis.com/upload/youtube/v3/videos"
 BLOQUE = 8 * 1024 * 1024      # múltiplo de 256 KB, como exige la API
 CATEGORIA_GAMING = "20"
 CATEGORIA_ENTRETENIMIENTO = "24"
+
+
+def _instante_iso(texto: str) -> float:
+    """Segundos desde 1970 (UTC) de un datetime ISO 8601 de la API, respetando su zona ('Z' o ±hh:mm).
+
+    No depende de la zona horaria ni del horario de verano del PC. Sin zona, la hora es ambigua: ValueError.
+    """
+    # Python 3.10 no acepta 'Z' ni fracciones de longitud libre en fromisoformat.
+    d = datetime.fromisoformat(re.sub(r"\.\d+", "", texto.strip()).replace("Z", "+00:00"))
+    if d.tzinfo is None:
+        raise ValueError("fecha sin zona horaria")
+    return d.timestamp()
 
 
 def _error_api(r: httpx.Response, contexto: str) -> ErrorEtapa:
@@ -184,8 +198,9 @@ class YouTube:
         for it in datos.get("items", []):
             s = it.get("snippet", {})
             try:
-                publicado = time.mktime(time.strptime(s.get("publishedAt", "")[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+                publicado = _instante_iso(s.get("publishedAt", ""))
             except ValueError:
+                log.warning("Fecha de YouTube no reconocida: %r", s.get("publishedAt", "")[:40])
                 continue
             if s.get("title") == titulo and publicado >= desde - 120:
                 return s.get("resourceId", {}).get("videoId", "")

@@ -47,6 +47,15 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirement
 .venv/bin/python -m fabrica_studio.diagnostico   # qué funciona en esta máquina
 ```
 
+En Windows (PowerShell 5.1 no admite `&&`; el entorno usa `Scripts\`, no `bin/`):
+
+```powershell
+.\scripts\instalar.ps1                      # crea .venv e instala requirements.txt y requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+.\scripts\diagnostico.ps1
+.\scripts\iniciar.ps1                       # panel en http://127.0.0.1:8765
+```
+
 `FABRICA_DATOS` cambia la carpeta de datos; `FABRICA_PUERTO`, el puerto.
 
 ## Reglas que no se rompen

@@ -6,7 +6,7 @@ __pycache__/
 datos/
 .env
 client_secret*.json
-token*.json
+*token*.json
 *.keystore
 *.jks
 .env.*
@@ -18,3 +18,5 @@ token*.json
 *.m4v
 *.wav
 *.zip
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

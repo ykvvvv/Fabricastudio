@@ -38,7 +38,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 }
 Write-Host "Instalando dependencias (puede tardar unos minutos)..."
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
-& .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+& .\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw "Falló la instalación de dependencias. Revisa el mensaje anterior." }
 
 Write-Host ""

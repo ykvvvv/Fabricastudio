@@ -78,7 +78,7 @@ async function refrescar() {
 function pintar(completo) {
   if (!S.estado) return;
   const yt = S.estado.youtube;
-  $("#pie-canal").innerHTML = yt.canal_id ? h`Canal de destino<br><b>${yt.canal_nombre}</b><br>${yt.canal_id}` : "Sin canal de YouTube confirmado";
+  $("#pie-canal").innerHTML = yt.canal_id ? h`Canal de destino<br><b>${yt.canal_nombre}</b><br>${yt.canal_id}<br>Subida automática: ${S.estado.subida_automatica ? "activa (privado)" : "desactivada"}` : "Sin canal de YouTube confirmado";
   const m = $("#principal");
   if (S.vista === "cola") pintarCola(m, completo);
   else if (S.vista === "biblioteca") m.innerHTML = vistaBiblioteca();
