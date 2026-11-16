@@ -11,14 +11,14 @@ La subida a YouTube está implementada y probada solo contra un YouTube simulado
 
 **Nada se ha ejecutado todavía en el PC Windows ni en la tablet de Cristóbal.**
 
-## Respaldo en GitHub
+## Repositorio y rama
 
-- Rama de trabajo: `claude/fabrica-studio-shorts-x34of8`.
-- **Los commits existen solo en la máquina de la sesión de nube**: el envío a GitHub
-  fue rechazado (403) en cada intento porque Claude tiene acceso de solo lectura al
-  repositorio. Hasta que se corrija, el único respaldo es el ZIP entregado en el chat.
-- Para corregirlo (navegador): reconectar GitHub en claude.ai y comprobar que la app
-  de Claude esté instalada en `ykvvvv/Fabricastudio` con permiso de escritura.
+- Repositorio: https://github.com/ykvvvv/Fabricastudio
+- Rama con los últimos avances: `claude/fabrica-studio-shorts-x34of8` (es la única rama).
+- Enviado a GitHub y verificado el 2026-11-16: el commit remoto coincide con el local.
+  Los envíos anteriores fallaron con 403; se resolvió al corregir el acceso de Claude a GitHub.
+- Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
+  El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
 ## Implementado
 
@@ -121,9 +121,14 @@ Desde datos móviles la tablet no alcanza el PC: el acceso fuera de casa es una 
 
 ## Pasos para continuar en Windows
 
-1. **Obtener el código.** Si el envío a GitHub ya funciona: en PowerShell,
-   `git clone https://github.com/ykvvvv/Fabricastudio` y luego
-   `git checkout claude/fabrica-studio-shorts-x34of8`. Si no: descomprimir el ZIP entregado en el chat.
+1. **Obtener el código** (PowerShell, en la carpeta donde quieras guardarlo, por ejemplo `Documentos`):
+   ```powershell
+   git clone https://github.com/ykvvvv/Fabricastudio
+   cd Fabricastudio
+   git checkout claude/fabrica-studio-shorts-x34of8
+   ```
+   Si `git` no existe: `winget install Git.Git` y reabrir PowerShell. No uses el ZIP antiguo
+   salvo que no haya otra opción: el repositorio es la fuente de verdad.
 2. **PowerShell**, dentro de la carpeta del proyecto: `.\scripts\instalar.ps1`.
 3. **PowerShell:** `.\scripts\diagnostico.ps1` y pegar la salida en el chat.
 4. **PowerShell:** `.\scripts\iniciar.ps1`. **Navegador:** `http://127.0.0.1:8765`.
@@ -133,6 +138,8 @@ Los detalles (requisitos, permisos de PowerShell, YouTube, Gemini) están en [RE
 
 ## Dependencias
 
+- Para instalar en Windows: Git (`winget install Git.Git`), Python 3.12 (`winget install Python.Python.3.12`)
+  y FFmpeg (`winget install Gyan.FFmpeg`). El resto lo instala `scripts\instalar.ps1` dentro de `.venv`.
 - `requirements.txt`: FastAPI, uvicorn, python-multipart, httpx, Pillow, faster-whisper, yt-dlp (con curl-cffi).
 - `requirements-dev.txt`: pytest.
 - Externas: Python 3.10 o superior y FFmpeg con libass, libx264 y AAC.
@@ -195,3 +202,5 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-16 · Claude Code** — 0.3: modo video largo, diagnóstico del equipo, Whisper sin
   conexión, endurecimiento para Windows (archivos abiertos, rutas con acentos, consola UTF-8),
   `.gitignore` ampliado. 47 pruebas; prueba real de video largo desde el panel. Envío a GitHub rechazado (403).
+- **2026-11-16 · Claude Code** — Acceso a GitHub corregido: rama enviada y verificada. ESTADO.md
+  actualizado para continuar en Windows. Siguiente: Cristóbal clona en su PC y ejecuta W1–W4.
