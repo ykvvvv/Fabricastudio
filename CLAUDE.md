@@ -23,6 +23,8 @@ Python 3.10+ · FastAPI · SQLite · FFmpeg · faster-whisper · interfaz web si
 | `fabrica_studio/subtitulos.py` | Agrupa palabras en bloques y escribe ASS. |
 | `fabrica_studio/render.py` | Disposición del lienzo, capa PNG (Pillow) y render FFmpeg. |
 | `fabrica_studio/youtube.py` | OAuth, verificación de canal, subida reanudable privada. |
+| `fabrica_studio/momentos.py` | Video largo: propone tramos (Gemini o heurística local) y recorta transcripciones. |
+| `fabrica_studio/diagnostico.py` | Comprueba el equipo (FFmpeg, Whisper, GPU) y hace un render de prueba. |
 | `fabrica_studio/importar.py` | Enlaces (yt-dlp) y comprobación de archivos estables. |
 | `fabrica_studio/pipeline.py` | `Fabrica`: etapas, cola, carpeta vigilada, acciones del panel. |
 | `fabrica_studio/acceso.py` | Vinculación de dispositivos por código. |
@@ -33,6 +35,8 @@ Cada trabajo tiene una carpeta `datos/trabajos/<id>/` con un archivo por etapa
 (`propiedades.json`, `transcripcion.json`, `textos_generados.json`, `subtitulos.json`,
 `short.mp4`). Si el archivo existe, la etapa no se repite. Estados de un trabajo:
 `pendiente → procesando → renderizado → subiendo → publicado`, o `error`.
+Un video largo (`modo = largo`) termina en `propuestas`: no se renderiza; de sus
+momentos se crean trabajos hijos (`origen_tipo = momento`) que reutilizan su transcripción.
 
 ## Comandos
 
@@ -40,6 +44,7 @@ Cada trabajo tiene una carpeta `datos/trabajos/<id>/` con un archivo por etapa
 python -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m pytest          # no usa red ni descarga modelos
 .venv/bin/python -m fabrica_studio  # panel en http://127.0.0.1:8765
+.venv/bin/python -m fabrica_studio.diagnostico   # qué funciona en esta máquina
 ```
 
 `FABRICA_DATOS` cambia la carpeta de datos; `FABRICA_PUERTO`, el puerto.
@@ -64,7 +69,10 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirement
 9. Mantener el modo de encuadre original (video completo centrado) aunque se
    añadan otros estilos.
 10. Compatibilidad con Windows: rutas con `pathlib`, FFmpeg se ejecuta con `cwd` en
-    la carpeta del trabajo y rutas relativas en los filtros.
+    la carpeta del trabajo y rutas relativas en los filtros. En Windows no se puede
+    reemplazar ni borrar un archivo abierto: usa `render.reemplazar()` y no dejes
+    descriptores abiertos (`tempfile.mkstemp`).
+11. No se despliega ningún servicio público: el panel es para la red doméstica.
 
 ## Forma de trabajar
 

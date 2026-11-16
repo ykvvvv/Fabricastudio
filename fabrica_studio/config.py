@@ -70,6 +70,7 @@ AJUSTES_POR_DEFECTO: dict = {
     # --- Textos ---
     "proveedor_textos": "auto",       # auto (Gemini si hay clave, si no local), gemini, local
     "gemini_modelo": "",              # vacío = elegir entre los modelos que la API liste
+    "momentos_cantidad": 6,           # propuestas por video largo
     # --- Publicación ---
     "subida_automatica": False,       # False = esperar revisión antes de subir
     "youtube_canal_id": "",           # canal confirmado por el usuario

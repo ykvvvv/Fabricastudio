@@ -225,34 +225,38 @@ def elegir_modelo(disponibles: list[str], preferido: str = "") -> str:
     return max(candidatos, key=puntaje)
 
 
-def _extraer_json(texto: str) -> dict:
+def _extraer_json(texto: str):
     """Acepta JSON con adornos habituales: cercas de código o texto alrededor."""
     t = texto.strip()
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t)
     try:
         return json.loads(t)
     except json.JSONDecodeError:
-        i, j = t.find("{"), t.rfind("}")
-        if i >= 0 and j > i:
-            try:
-                return json.loads(t[i:j + 1])
-            except json.JSONDecodeError:
-                pass
+        for abre, cierra in ("{}", "[]"):
+            i, j = t.find(abre), t.rfind(cierra)
+            if i >= 0 and j > i:
+                try:
+                    return json.loads(t[i:j + 1])
+                except json.JSONDecodeError:
+                    pass
     raise ErrorEtapa("Gemini respondió en un formato que no se pudo interpretar.", "formato")
 
 
-def generar_gemini(transcripcion: str, creador: str, clave: str, modelo_preferido: str = "",
-                   cliente: httpx.Client | None = None, espera: float = 2.0) -> tuple[dict, str]:
-    """Devuelve (propuesta, modelo usado). Reintenta de forma limitada fallos temporales o de formato."""
-    c = cliente or httpx.Client(timeout=60)
+def pedir_json(clave: str, instrucciones: str, contenido: str, esquema: dict, modelo_preferido: str = "",
+               cliente: httpx.Client | None = None, espera: float = 2.0, temperatura: float = 0.7):
+    """Pide a Gemini una respuesta JSON. Devuelve (datos, modelo usado).
+
+    Reintenta de forma limitada los fallos temporales o de formato; los de
+    autenticación, cuota o modelo se devuelven de inmediato con su causa.
+    """
+    c = cliente or httpx.Client(timeout=90)
     try:
         modelo = elegir_modelo(listar_modelos_gemini(clave, c), modelo_preferido)
         cuerpo = {
-            "systemInstruction": {"parts": [{"text": _INSTRUCCIONES}]},
-            "contents": [{"role": "user", "parts": [{"text":
-                f"Creador: {creador}\n<transcripcion>\n{transcripcion[:6000]}\n</transcripcion>"}]}],
-            "generationConfig": {"responseMimeType": "application/json", "responseSchema": _ESQUEMA,
-                                 "temperature": 0.7},
+            "systemInstruction": {"parts": [{"text": instrucciones}]},
+            "contents": [{"role": "user", "parts": [{"text": contenido}]}],
+            "generationConfig": {"responseMimeType": "application/json", "responseSchema": esquema,
+                                 "temperature": temperatura},
         }
         ultimo: ErrorEtapa | None = None
         for intento in range(3):
@@ -280,6 +284,14 @@ def generar_gemini(transcripcion: str, creador: str, clave: str, modelo_preferid
     finally:
         if cliente is None:
             c.close()
+
+
+def generar_gemini(transcripcion: str, creador: str, clave: str, modelo_preferido: str = "",
+                   cliente: httpx.Client | None = None, espera: float = 2.0) -> tuple[dict, str]:
+    """Devuelve (propuesta de textos, modelo usado)."""
+    return pedir_json(clave, _INSTRUCCIONES,
+                      f"Creador: {creador}\n<transcripcion>\n{transcripcion[:6000]}\n</transcripcion>",
+                      _ESQUEMA, modelo_preferido, cliente, espera)
 
 
 # ---------------------------------------------------------------- orquestación

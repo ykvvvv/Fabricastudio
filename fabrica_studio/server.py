@@ -143,31 +143,37 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
     # ------------------------------------------------------------ importación
     @app.post("/api/importar/archivo")
-    def importar_archivo(archivo: UploadFile = File(...), publicar: bool = Form(True)):
+    def importar_archivo(archivo: UploadFile = File(...), publicar: bool = Form(True), modo: str = Form("clip")):
         nombre = Path(archivo.filename or "clip.mp4").name
         with tempfile.NamedTemporaryFile(delete=False, dir=fab.rutas.trabajos, suffix=".subiendo") as tmp:
             shutil.copyfileobj(archivo.file, tmp, 1 << 20)
             ruta_tmp = Path(tmp.name)
         try:
-            return _publico(fab.importar_archivo(ruta_tmp, nombre, "archivo", publicar=publicar, mover=True))
+            return _publico(fab.importar_archivo(ruta_tmp, nombre, "archivo", publicar=publicar, mover=True, modo=modo))
         finally:
             ruta_tmp.unlink(missing_ok=True)
 
     @app.post("/api/importar/enlace")
     async def importar_enlace(request: Request):
         c = await request.json()
-        return _publico(fab.importar_enlace(str(c.get("url", "")), publicar=bool(c.get("publicar", True))))
+        return _publico(fab.importar_enlace(str(c.get("url", "")), publicar=bool(c.get("publicar", True)),
+                                            modo=str(c.get("modo", "clip"))))
 
     # ------------------------------------------------------------ trabajos
     @app.get("/api/trabajos/{jid}")
     def trabajo(jid: str):
         return {**_publico(fab._trabajo(jid)), **fab.detalle(jid)}
 
+    @app.post("/api/trabajos/{jid}/clips")
+    async def crear_clip(jid: str, request: Request):
+        c = await request.json()
+        return _publico(fab.crear_clip(jid, c.get("inicio"), c.get("fin")))
+
     @app.post("/api/trabajos/{jid}/{accion}")
     def accion(jid: str, accion: str):
         acciones = {"reintentar": fab.reintentar, "subir": fab.solicitar_subida,
                     "renderizar": fab.renderizar_de_nuevo, "regenerar-textos": fab.regenerar_textos,
-                    "restaurar-subtitulos": fab.restaurar_subtitulos}
+                    "restaurar-subtitulos": fab.restaurar_subtitulos, "proponer-momentos": fab.proponer_de_nuevo}
         if accion not in acciones:
             raise ErrorEtapa("Acción desconocida.", "entrada")
         acciones[accion](jid)
@@ -191,6 +197,12 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def medio(jid: str, archivo: str):
         permitidos = {"short.mp4": "video/mp4", "miniatura.jpg": "image/jpeg"}
         fab._trabajo(jid)
+        if archivo == "entrada":                 # video original, para revisar momentos de un video largo
+            nombre = fab.detalle(jid)["entrada"]
+            if not nombre:
+                return JSONResponse({"error": "No disponible."}, status_code=404)
+            tipos = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
+            return FileResponse(fab.rutas.trabajo(jid) / nombre, media_type=tipos[Path(nombre).suffix.lower()])
         ruta = fab.rutas.trabajo(jid) / archivo
         if archivo not in permitidos or not ruta.exists():
             return JSONResponse({"error": "No disponible."}, status_code=404)
@@ -241,12 +253,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         try:
             b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a)
             d = render.calcular_disposicion(1920, 1080, a, b)
-            tmp = Path(tempfile.mkstemp(suffix=".png", dir=fab.rutas.trabajos)[1])
-            try:
-                render.dibujar_capa(tmp, banner, d, b, a, fab.rutas.recursos)
-                capa = Image.open(tmp).convert("RGBA")
-            finally:
-                tmp.unlink(missing_ok=True)
+            capa = render.dibujar_capa(d, b, a, fab.rutas.recursos)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
         lienzo = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), "black")
@@ -293,6 +300,11 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         modelos = textos.listar_modelos_gemini(clave, forzar=True)
         return {"clave": True, "modelos": modelos,
                 "elegido": textos.elegir_modelo(modelos, fab.db.ajustes()["gemini_modelo"])}
+
+    @app.get("/api/diagnostico")
+    def diagnostico(autoprueba: bool = False):
+        from . import diagnostico as diag
+        return diag.revisar(fab.rutas, fab.db.ajustes(), autoprueba=autoprueba)
 
     # ------------------------------------------------------------ YouTube
     def _redirect() -> str:
@@ -350,7 +362,11 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
 
 def main() -> None:
+    import sys
+
     import uvicorn
+    if hasattr(sys.stdout, "reconfigure"):          # consolas de Windows sin UTF-8
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ip = acceso.ip_red_local()
     print(f"\n  Fábrica Studio {__version__}\n  En este PC:   http://127.0.0.1:{PUERTO}"

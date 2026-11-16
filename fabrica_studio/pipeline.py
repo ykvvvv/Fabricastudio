@@ -17,7 +17,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import importar, media, render, subtitulos, textos, transcribe
+from . import importar, media, momentos, render, subtitulos, textos, transcribe
 from .config import AJUSTES_DE_DISENO, Rutas
 from .db import DB
 from .errores import ErrorEtapa, sin_secretos
@@ -35,6 +35,10 @@ def _escribir(ruta: Path, datos) -> None:
     tmp = ruta.with_suffix(ruta.suffix + ".tmp")
     tmp.write_text(json.dumps(datos, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, ruta)
+
+
+def _reloj(seg: float) -> str:
+    return f"{int(seg) // 60}:{int(seg) % 60:02d}"
 
 
 def _nombre_seguro(nombre: str) -> str:
@@ -56,7 +60,7 @@ class Fabrica:
 
     # ------------------------------------------------------------ importación
     def importar_archivo(self, origen: Path, nombre: str, origen_tipo: str = "archivo",
-                         publicar: bool = True, mover: bool = False) -> dict:
+                         publicar: bool = True, mover: bool = False, modo: str = "clip") -> dict:
         """Crea un trabajo a partir de un archivo local. Rechaza duplicados exactos."""
         if Path(nombre).suffix.lower() not in media.EXTENSIONES:
             raise ErrorEtapa(f"Formato no admitido: {Path(nombre).suffix or 'sin extensión'}. "
@@ -67,7 +71,8 @@ class Fabrica:
         if previo:
             raise ErrorEtapa(f"Este mismo archivo ya se importó como «{previo['nombre']}» "
                              f"(estado: {previo['estado']}). No se creó un trabajo duplicado.", "duplicado")
-        t = self.db.crear_trabajo(_nombre_seguro(nombre), origen_tipo,
+        modo = "largo" if modo == "largo" else "clip"
+        t = self.db.crear_trabajo(_nombre_seguro(nombre), origen_tipo, modo=modo,
                                   origen_ref=str(origen) if origen_tipo == "carpeta" else nombre, publicar=publicar)
         carpeta = self.rutas.trabajo(t["id"])
         carpeta.mkdir(parents=True)
@@ -80,13 +85,14 @@ class Fabrica:
         self.db.marcar_etapa(t["id"], "importar", "hecho")
         return self.db.trabajo(t["id"])
 
-    def importar_enlace(self, url: str, publicar: bool = True) -> dict:
+    def importar_enlace(self, url: str, publicar: bool = True, modo: str = "clip") -> dict:
         url = importar.validar_enlace(url)
         for t in self.db.trabajos():
             if t["origen_tipo"] == "enlace" and t["origen_ref"] == url:
                 raise ErrorEtapa(f"Ese enlace ya está en la cola como «{t['nombre']}».", "duplicado")
         nombre = _nombre_seguro(url.rstrip("/").rsplit("/", 1)[-1] or "clip-kick")
-        t = self.db.crear_trabajo(nombre, "enlace", origen_ref=url, publicar=publicar)
+        t = self.db.crear_trabajo(nombre, "enlace", origen_ref=url, publicar=publicar,
+                                  modo="largo" if modo == "largo" else "clip")
         self.rutas.trabajo(t["id"]).mkdir(parents=True)
         return t
 
@@ -109,7 +115,10 @@ class Fabrica:
 
         # 1. Importar (solo los enlaces descargan aquí).
         entrada = self._entrada(carpeta)
-        if not entrada:
+        if not entrada and t["origen_tipo"] == "momento":
+            self._etapa(jid, "importar", "Recortando el momento del video original…")
+            entrada = self._recortar(jid, carpeta)
+        elif not entrada:
             if t["origen_tipo"] != "enlace":
                 raise ErrorEtapa("Falta el archivo de entrada de este trabajo.", "entrada")
             self._etapa(jid, "importar", "Descargando el enlace…")
@@ -128,8 +137,9 @@ class Fabrica:
             self._etapa(jid, "comprobar")
             _escribir(f_prop, media.sondear(entrada))
         prop = _leer(f_prop)
-        if prop["duracion"] > 180:
-            self.db.anadir_aviso(jid, f"Dura {prop['duracion']:.0f} s: YouTube solo trata como Short hasta 3 minutos.")
+        if prop["duracion"] > 180 and t["modo"] != "largo":
+            self.db.anadir_aviso(jid, f"Dura {prop['duracion']:.0f} s: YouTube solo trata como Short hasta 3 minutos. "
+                                      "Para videos largos, impórtalo como «Video largo» y elige momentos.")
         if not prop["tiene_audio"]:
             self.db.anadir_aviso(jid, "El video no tiene audio: no habrá subtítulos.")
         self.db.marcar_etapa(jid, "comprobar", "hecho",
@@ -151,6 +161,10 @@ class Fabrica:
         if prop["tiene_audio"] and not tr["palabras"]:
             self.db.anadir_aviso(jid, "No se detectó voz en el audio: el Short no tendrá subtítulos.")
         self.db.marcar_etapa(jid, "transcribir", "hecho", f"{len(tr['palabras'])} palabras · {tr['motor']}")
+
+        if t["modo"] == "largo":
+            self._proponer_momentos(jid, carpeta, tr, a)
+            return
 
         # 4. Textos.
         f_ia = carpeta / "textos_generados.json"
@@ -192,14 +206,84 @@ class Fabrica:
                 self.db.anadir_aviso(jid, aviso)
             datos.update(huella_render=huella, salida=res["propiedades"], disposicion=res["disposicion"])
             copia = self.rutas.renderizados / f"{t['nombre']}__{jid[-6:]}.mp4"
-            shutil.copyfile(carpeta / "short.mp4", copia)
-            datos["copia"] = copia.name
+            try:
+                shutil.copyfile(carpeta / "short.mp4", copia)
+                datos["copia"] = copia.name
+            except OSError:      # la copia anterior está abierta en un reproductor (Windows)
+                self.db.anadir_aviso(jid, f"No se pudo actualizar la copia en 2_shorts_renderizados ({copia.name}): "
+                                          "está abierta en otro programa. El Short del panel sí está al día.")
             self.db.actualizar(jid, datos=datos, subida={})   # un render nuevo invalida subidas a medias
         s = datos["salida"]
+        datos.setdefault("copia", "")
         self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s")
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="renderizado", etapa="render",
                            subir_solicitado=bool(t["publicar"] and a["subida_automatica"]))
+
+    # ------------------------------------------------------------ video largo
+    def _proponer_momentos(self, jid: str, carpeta: Path, tr: dict, a: dict) -> None:
+        f = carpeta / "momentos.json"
+        if not f.exists():
+            self._etapa(jid, "momentos", "Buscando momentos para recortar…")
+            res = momentos.proponer(tr["segmentos"], a["proveedor_textos"],
+                                    textos.leer_clave_gemini(self.rutas.secretos),
+                                    int(a["momentos_cantidad"]), a["gemini_modelo"])
+            if res["aviso"]:
+                self.db.anadir_aviso(jid, res["aviso"])
+            _escribir(f, res)
+        res = _leer(f)
+        self.db.marcar_etapa(jid, "momentos", "hecho", f"{len(res['propuestas'])} propuestas · origen: {res['origen']}")
+        self.progreso.pop(jid, None)
+        self.db.actualizar(jid, estado="propuestas", etapa="momentos")
+
+    def crear_clip(self, jid: str, inicio: float, fin: float) -> dict:
+        """Crea un trabajo de clip a partir de un tramo de un video largo."""
+        padre = self._trabajo(jid)
+        carpeta = self.rutas.trabajo(jid)
+        if padre["modo"] != "largo" or not (carpeta / "propiedades.json").exists():
+            raise ErrorEtapa("Este trabajo no es un video largo ya analizado.", "entrada")
+        try:
+            inicio, fin = round(float(inicio), 2), round(float(fin), 2)
+        except (TypeError, ValueError):
+            raise ErrorEtapa("Los tiempos del momento no son válidos.", "entrada")
+        duracion = _leer(carpeta / "propiedades.json")["duracion"]
+        if inicio < 0 or fin > duracion + 0.5 or fin - inicio < 3:
+            raise ErrorEtapa("El tramo debe estar dentro del video y durar al menos 3 segundos.", "entrada")
+        if fin - inicio > 180:
+            raise ErrorEtapa("El tramo supera los 3 minutos que admite un Short.", "entrada")
+        ref = f"{jid}:{inicio:.2f}-{fin:.2f}"
+        if any(t["origen_tipo"] == "momento" and t["origen_ref"] == ref for t in self.db.trabajos()):
+            raise ErrorEtapa("Ya existe un clip creado con ese mismo tramo.", "duplicado")
+        hijo = self.db.crear_trabajo(f"{padre['nombre']} {_reloj(inicio)}-{_reloj(fin)}".replace(":", "m"),
+                                     "momento", origen_ref=ref, publicar=padre["publicar"])
+        self.rutas.trabajo(hijo["id"]).mkdir(parents=True)
+        self.db.actualizar(hijo["id"], datos={"padre": jid, "inicio": inicio, "fin": fin})
+        return self.db.trabajo(hijo["id"])
+
+    def _recortar(self, jid: str, carpeta: Path) -> Path:
+        """Corta el tramo del video original y reutiliza su transcripción (no se transcribe otra vez)."""
+        d = self.db.trabajo(jid)["datos"]
+        origen = self.rutas.trabajo(d["padre"])
+        fuente = self._entrada(origen) if origen.exists() else None
+        if not fuente or not (origen / "transcripcion.json").exists():
+            raise ErrorEtapa("El video largo original ya no está disponible; no se puede recortar.", "entrada")
+        media.ejecutar([media.herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{d['inicio']:.3f}",
+                        "-i", str(fuente), "-t", f"{d['fin'] - d['inicio']:.3f}", "-map", "0:v:0", "-map", "0:a:0?",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "recorte_tmp.mp4"], cwd=carpeta)
+        render.reemplazar(carpeta / "recorte_tmp.mp4", carpeta / "entrada.mp4")
+        _escribir(carpeta / "transcripcion.json",
+                  momentos.recortar_transcripcion(_leer(origen / "transcripcion.json"), d["inicio"], d["fin"]))
+        self.db.actualizar(jid, sha256=media.sha256(carpeta / "entrada.mp4"))
+        return carpeta / "entrada.mp4"
+
+    def proponer_de_nuevo(self, jid: str) -> None:
+        t = self._trabajo(jid)
+        if t["modo"] != "largo" or t["estado"] not in ("propuestas", "error"):
+            raise ErrorEtapa("Solo se pueden volver a proponer momentos en un video largo ya analizado.", "entrada")
+        (self.rutas.trabajo(jid) / "momentos.json").unlink(missing_ok=True)
+        self.db.actualizar(jid, estado="pendiente", error="", error_tipo="",
+                           avisos=[x for x in t["avisos"] if not x.startswith("Momentos propuestos")])
 
     def subir(self, jid: str) -> None:
         t = self.db.trabajo(jid)
@@ -233,7 +317,11 @@ class Fabrica:
                 destino = self.rutas.procesados / origen.name
                 if destino.exists():
                     destino = self.rutas.procesados / f"{origen.stem}__{jid[-6:]}{origen.suffix}"
-                shutil.move(str(origen), destino)
+                try:
+                    shutil.move(str(origen), destino)
+                except OSError:
+                    self.db.anadir_aviso(jid, f"Subido, pero no se pudo mover {origen.name} a 3_procesados_ok "
+                                              "(¿abierto en otro programa?). Muévelo a mano.")
 
     def _ejecutar(self, t: dict) -> None:
         jid = t["id"]
@@ -282,6 +370,8 @@ class Fabrica:
             raise ErrorEtapa("El trabajo está en proceso; espera a que termine.", "entrada")
         if t["youtube_id"]:
             raise ErrorEtapa("Este Short ya se subió. Edita el título o la descripción en YouTube Studio.", "entrada")
+        if t["modo"] == "largo":
+            raise ErrorEtapa("Un video largo no se edita ni renderiza: crea clips a partir de sus momentos.", "entrada")
         return t
 
     def editar_textos(self, jid: str, cambios: dict) -> dict:
@@ -342,7 +432,15 @@ class Fabrica:
 
     def detalle(self, jid: str) -> dict:
         carpeta = self.rutas.trabajo(jid)
-        d = {"transcripcion": "", "bloques": [], "subtitulos_editados": False, "propiedades": None}
+        d = {"transcripcion": "", "bloques": [], "subtitulos_editados": False, "propiedades": None,
+             "momentos": None, "clips": [], "entrada": ""}
+        entrada = self._entrada(carpeta) if carpeta.exists() else None
+        if entrada and entrada.suffix.lower() in (".mp4", ".m4v", ".webm", ".mov"):
+            d["entrada"] = entrada.name
+        if (carpeta / "momentos.json").exists():
+            d["momentos"] = _leer(carpeta / "momentos.json")
+            d["clips"] = [{"id": t["id"], "nombre": t["nombre"], "estado": t["estado"], **{k: t["datos"].get(k) for k in ("inicio", "fin")}}
+                          for t in self.db.trabajos() if t["origen_tipo"] == "momento" and t["datos"].get("padre") == jid]
         if (carpeta / "transcripcion.json").exists():
             d["transcripcion"] = _leer(carpeta / "transcripcion.json")["texto"]
         if (carpeta / "subtitulos.json").exists():

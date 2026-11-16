@@ -16,7 +16,7 @@ from typing import Any
 from .config import AJUSTES_POR_DEFECTO
 
 ETAPAS = ["importar", "comprobar", "transcribir", "textos", "subtitulos", "render", "subir"]
-ESTADOS = ["pendiente", "procesando", "renderizado", "subiendo", "publicado", "error"]
+ESTADOS = ["pendiente", "procesando", "propuestas", "renderizado", "subiendo", "publicado", "error"]
 
 _ESQUEMA = """
 CREATE TABLE IF NOT EXISTS trabajos (

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -131,7 +132,8 @@ def cargar_logo(recursos: Path, alto: int) -> Image.Image:
     return logo.resize((ancho, alto), Image.LANCZOS)
 
 
-def dibujar_capa(destino: Path, banner_texto: str, d: dict, banner: dict, a: dict, recursos: Path) -> None:
+def dibujar_capa(d: dict, banner: dict, a: dict, recursos: Path) -> Image.Image:
+    """Capa transparente con la tarjeta, el banner, el logo y el nombre."""
     capa = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), (0, 0, 0, 0))
     dib = ImageDraw.Draw(capa)
     t = d["tarjeta"]
@@ -146,7 +148,21 @@ def dibujar_capa(destino: Path, banner_texto: str, d: dict, banner: dict, a: dic
     if "nombre" in d and a["creador"].strip():
         dib.text((LIENZO_ANCHO // 2, d["nombre"]["y"] + d["nombre"]["h"] // 2), a["creador"].strip(),
                  font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill="white", anchor="mm")
-    capa.save(destino)
+    return capa
+
+
+def reemplazar(origen: Path, destino: Path, intentos: int = 12) -> None:
+    """Sustituye `destino` por `origen`. En Windows falla si el archivo está abierto
+    (por ejemplo, reproduciéndose en la vista previa): se reintenta unos segundos."""
+    for i in range(intentos):
+        try:
+            os.replace(origen, destino)
+            return
+        except PermissionError:
+            if i == intentos - 1:
+                raise ErrorEtapa(f"No se pudo actualizar {destino.name} porque otro programa lo tiene abierto. "
+                                 "Cierra la vista previa o el reproductor y pulsa Reintentar.", "temporal")
+            time.sleep(0.5)
 
 
 def _preparar_fuentes(carpeta: Path) -> None:
@@ -166,7 +182,7 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas."""
     banner = componer_banner(banner_texto, a)
     d = calcular_disposicion(propiedades["ancho"], propiedades["alto"], a, banner)
-    dibujar_capa(carpeta / "capa.png", banner_texto, d, banner, a, recursos)
+    dibujar_capa(d, banner, a, recursos).save(carpeta / "capa.png")
     (carpeta / "subtitulos.ass").write_text(
         a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"]), encoding="utf-8")
     _preparar_fuentes(carpeta)
@@ -187,7 +203,7 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     resultado = sondear(carpeta / temporal)
     if (resultado["ancho"], resultado["alto"]) != (LIENZO_ANCHO, LIENZO_ALTO) or resultado["codec_video"] != "h264":
         raise ErrorEtapa(f"El render no tiene el formato esperado: {resultado}", "interno")
-    os.replace(carpeta / temporal, carpeta / salida)   # el archivo final solo aparece si está completo
+    reemplazar(carpeta / temporal, carpeta / salida)   # el archivo final solo aparece si está completo
     ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{min(1.0, resultado['duracion'] / 2):.2f}",
               "-i", salida, "-frames:v", "1", "-vf", "scale=360:-2", "miniatura.jpg"], cwd=carpeta)
     return {"propiedades": resultado, "disposicion": d}

@@ -40,7 +40,12 @@ def _cargar(modelo: str, dispositivo: str, carpeta_modelos: Path):
         if clave in _cache:
             return _cache[clave], f"{modelo} en {dev}"
         try:
-            m = WhisperModel(modelo, device=dev, compute_type=tipo, download_root=str(carpeta_modelos))
+            try:
+                # Si el modelo ya está descargado se usa sin tocar internet (funciona sin conexión).
+                m = WhisperModel(modelo, device=dev, compute_type=tipo, download_root=str(carpeta_modelos),
+                                 local_files_only=True)
+            except Exception:
+                m = WhisperModel(modelo, device=dev, compute_type=tipo, download_root=str(carpeta_modelos))
             _cache.clear()
             _cache[clave] = m
             return m, f"{modelo} en {dev}"

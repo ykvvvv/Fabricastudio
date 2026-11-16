@@ -60,6 +60,15 @@ Deja la ventana de PowerShell abierta mientras trabajas.
 La primera vez que proceses un clip se descarga el modelo de Whisper (unos 500 MB
 para `small`); necesita internet solo esa vez.
 
+**4. Comprobar que todo funciona en tu PC** (recomendado la primera vez):
+
+```powershell
+.\scripts\diagnostico.ps1
+```
+
+Muestra una lista con `[ OK ]`, `[FALLA]` o `[ -- ]` (opcional) e incluye un render de
+prueba de 2 segundos. Si algo falla, copia la salida completa y pégala en el chat.
+
 ## Usar la tablet
 
 1. PC y tablet deben estar en el mismo wifi.
@@ -70,6 +79,15 @@ para `small`); necesita internet solo esa vez.
    (algo como `http://192.168.1.20:8765`) y escribe el código.
 
 Conectar cuentas, guardar claves y elegir el canal solo se puede hacer desde el PC.
+
+## Videos largos
+
+Al importar, elige «Video largo». El programa transcribe todo el video y propone
+momentos para recortar. Tú revisas cada tramo, ajustas los tiempos si quieres y pulsas
+«Crear Short»: se genera un clip nuevo que sigue el flujo normal, sin transcribir otra vez.
+
+Sin clave de Gemini las propuestas vienen de una heurística que mide ritmo de habla y
+exclamaciones pero no entiende el contenido: tómalas como punto de partida.
 
 ## Carpetas
 

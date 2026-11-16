@@ -8,7 +8,11 @@ const crudo = (s) => ({ __crudo: String(s) });
 const h = (partes, ...vals) => partes.reduce((a, p, i) => a + p + (i < vals.length ? (vals[i]?.__crudo ?? (Array.isArray(vals[i]) ? vals[i].map((x) => x?.__crudo ?? esc(x)).join("") : esc(vals[i]))) : ""), "");
 
 const ETAPAS = [["importar", "Importar"], ["comprobar", "Comprobar"], ["transcribir", "Transcribir"], ["textos", "Textos"], ["subtitulos", "Subtítulos"], ["render", "Render"], ["subir", "Subir"]];
-const ESTADOS = { pendiente: "En cola", procesando: "Procesando", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
+const ETAPAS_LARGO = [["importar", "Importar"], ["comprobar", "Comprobar"], ["transcribir", "Transcribir"], ["momentos", "Momentos"]];
+const etapasDe = (t) => (t.modo === "largo" ? ETAPAS_LARGO : ETAPAS);
+const reloj = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
+const ESTADOS = { pendiente: "En cola", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
 let S = { sesion: null, estado: null, vista: "cola", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
 
 async function api(ruta, opciones = {}) {
@@ -84,14 +88,14 @@ function pintar(completo) {
 
 function filaTrabajo(t) {
   const mini = t.tiene_video ? h`<img class="mini" src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">` : `<div class="mini"></div>`;
-  const barras = ETAPAS.map(([k]) => h`<i class="${t.etapas[k]?.estado || ""}"></i>`).join("");
+  const barras = etapasDe(t).map(([k]) => h`<i class="${t.etapas[k]?.estado || ""}"></i>`).join("");
   const linea = t.estado === "error" ? t.error.split("\n")[0] : t.progreso || t.textos.titulo || etiquetaOrigen(t);
   return h`<button class="trabajo" data-ir="${t.id}">${crudo(mini)}
     <span class="info"><span class="nombre">${t.nombre}</span><span class="etapas" aria-hidden="true">${crudo(barras)}</span>
     <span class="pequeno tenue nombre">${linea}</span></span>
     <span class="estado ${t.estado}">${ESTADOS[t.estado]}</span></button>`;
 }
-const etiquetaOrigen = (t) => ({ archivo: "Archivo importado", carpeta: "Carpeta 1_clips_crudos", enlace: "Enlace de Kick" }[t.origen_tipo]);
+const etiquetaOrigen = (t) => ({ archivo: "Archivo importado", carpeta: "Carpeta 1_clips_crudos", enlace: "Enlace de Kick", momento: "Momento de un video largo" }[t.origen_tipo]) + (t.modo === "largo" ? " · video largo" : "");
 
 function pintarCola(m, completo) {
   if (completo || !$("#cola-lista")) {
@@ -110,6 +114,9 @@ function pintarCola(m, completo) {
         <div class="fila separado"><span class="pequeno tenue">Si Kick exige iniciar sesión o bloquea la descarga, se indicará el motivo.</span><button>Añadir a la cola</button></div>
       </form>
     </div>
+    <label style="margin-bottom:12px;max-width:520px">Tipo de video<select id="modo">
+      <option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
+      <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label>
     <label class="linea" style="margin-bottom:18px"><input type="checkbox" id="publicar" checked> Los clips importados se destinan a YouTube (siempre en privado y tras tu revisión, salvo que actives la subida automática en Ajustes)</label>
     <div id="cola-carpeta"></div><div class="lista" id="cola-lista"></div>`;
     const soltar = $("#soltar");
@@ -119,7 +126,7 @@ function pintarCola(m, completo) {
     $("#archivo").addEventListener("change", (e) => { subirArchivos(e.target.files); e.target.value = ""; });
     $("#form-enlace").addEventListener("submit", intentar(async (e) => {
       e.preventDefault();
-      await api("/api/importar/enlace", { method: "POST", json: { url: $("#enlace").value, publicar: $("#publicar").checked } });
+      await api("/api/importar/enlace", { method: "POST", json: { url: $("#enlace").value, publicar: $("#publicar").checked, modo: $("#modo").value } });
       $("#enlace").value = ""; avisar("Enlace añadido a la cola."); refrescar();
     }));
   }
@@ -135,7 +142,7 @@ async function subirArchivos(archivos) {
   for (const f of archivos) {
     $("#subiendo").textContent = `Enviando ${f.name}…`;
     const datos = new FormData();
-    datos.append("archivo", f); datos.append("publicar", $("#publicar").checked);
+    datos.append("archivo", f); datos.append("publicar", $("#publicar").checked); datos.append("modo", $("#modo").value);
     try { await api("/api/importar/archivo", { method: "POST", body: datos }); avisar(`${f.name} añadido a la cola.`); }
     catch (e) { avisar(`${f.name}: ${e.message}`, true); }
   }
@@ -162,6 +169,7 @@ document.addEventListener("click", (e) => {
 function pintarTrabajo(m, completo) {
   const t = S.detalle;
   if (!t) { m.innerHTML = `<div class="cabecera"><h1>Trabajo</h1></div><div class="vacio">Cargando… Si no aparece, el trabajo ya no existe. <a href="#cola">Volver a la cola</a></div>`; return; }
+  if (t.modo === "largo") return pintarLargo(m, t, completo);
   if (completo || !$("#t-estado") || $("#t-estado").dataset.id !== t.id) {
     m.innerHTML = h`<div class="cabecera"><h1 id="t-nombre"></h1><a class="boton" href="#cola">← Volver</a></div>
       <div class="detalle"><div class="pila"><div id="t-video"></div></div>
@@ -245,6 +253,59 @@ function pintarTrabajo(m, completo) {
   }
 }
 
+// ---------------------------------------------------------------- video largo
+function pintarLargo(m, t, completo) {
+  if (completo || !$("#l-estado") || $("#l-estado").dataset.id !== t.id) {
+    m.innerHTML = h`<div class="cabecera"><h1 id="t-nombre"></h1><a class="boton" href="#cola">← Volver</a></div>
+      <div class="pila"><div class="pila" id="l-estado" data-id="${t.id}"></div>
+      ${t.entrada ? crudo(h`<video id="l-video" controls playsinline preload="metadata" src="/media/${t.id}/entrada" style="width:100%;max-width:640px;border-radius:10px;border:1px solid var(--borde);background:#000"></video>`) : crudo(`<p class="pequeno tenue">El formato del original no se puede reproducir en el navegador; guíate por el texto de cada momento.</p>`)}
+      <div class="pila" id="l-momentos"></div></div>`;
+    S.version = null; S.sucio = false;
+  }
+  $("#t-nombre").textContent = t.nombre;
+  const pasos = ETAPAS_LARGO.map(([k, n]) => h`<li class="${t.etapas[k]?.estado || ""}"><span class="punto"></span><span>${n}</span><span>${t.etapas[k]?.detalle || ""}</span></li>`).join("");
+  $("#l-estado").innerHTML = h`<div class="fila"><span class="estado ${t.estado}">${ESTADOS[t.estado]}</span><span class="tenue pequeno">${t.progreso || etiquetaOrigen(t)}</span></div>
+    ${t.error ? crudo(h`<p class="nota mal" role="alert">${t.error}</p>`) : ""}
+    ${t.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}
+    <ul class="pasos tarjeta">${crudo(pasos)}</ul>
+    <div class="fila">${t.estado === "error" ? crudo(`<button class="primario" data-accion="reintentar">Reintentar</button>`) : ""}
+      ${["propuestas", "error"].includes(t.estado) ? crudo(`<button data-accion="proponer-momentos">Proponer momentos de nuevo</button>`) : ""}
+      ${t.estado !== "procesando" ? crudo(`<button class="texto peligro" data-accion="eliminar">Eliminar</button>`) : ""}</div>`;
+  const mo = t.momentos;
+  const version = `${t.actualizado}|${t.clips.map((c) => c.id + c.estado).join()}`;
+  if (!mo || S.sucio || S.version === version || $("#l-momentos").contains(document.activeElement)) return;
+  S.version = version;
+  const clipDe = (p) => t.clips.find((c) => Math.abs(c.inicio - p.inicio) < 0.02 && Math.abs(c.fin - p.fin) < 0.02);
+  const local = mo.origen === "local";
+  $("#l-momentos").innerHTML = h`<div class="fila separado"><h2>Momentos propuestos</h2><span class="pequeno tenue">Origen: ${mo.origen}</span></div>
+    ${local ? crudo(`<p class="nota">Propuestas de la heurística local: mide ritmo de habla, exclamaciones y preguntas, pero no entiende el contenido. Revisa cada tramo antes de crear el Short. Con una clave de Gemini las propuestas se basan en lo que se dice.</p>`) : ""}
+    ${mo.propuestas.length ? "" : crudo(`<div class="vacio">No hay propuestas. Puedes crear un clip indicando los tiempos abajo.</div>`)}
+    ${mo.propuestas.map((p) => { const c = clipDe(p); return crudo(h`<form class="tarjeta pila momento" data-ini="${p.inicio}" data-fin="${p.fin}">
+      <div class="fila separado"><b>${reloj(p.inicio)} – ${reloj(p.fin)} · ${Math.round(p.fin - p.inicio)} s</b><span class="pequeno tenue">${p.motivo}</span></div>
+      <p class="transcripcion">${p.texto}</p>
+      <div class="fila"><label style="width:110px">Inicio (m:ss)<input name="ini" value="${reloj(p.inicio)}" inputmode="numeric"></label>
+        <label style="width:110px">Fin (m:ss)<input name="fin" value="${reloj(p.fin)}" inputmode="numeric"></label>
+        ${t.entrada ? crudo(`<button type="button" data-accion="ver-momento">Ver tramo</button>`) : ""}
+        ${c ? crudo(h`<a class="boton" href="#trabajo/${c.id}">Abrir clip (${ESTADOS[c.estado]})</a>`) : crudo(`<button class="primario">Crear Short</button>`)}</div></form>`); })}
+    <form class="tarjeta pila momento"><h3>Tramo manual</h3><div class="fila">
+      <label style="width:110px">Inicio (m:ss)<input name="ini" placeholder="0:00" required></label>
+      <label style="width:110px">Fin (m:ss)<input name="fin" placeholder="0:40" required></label>
+      ${t.entrada ? crudo(`<button type="button" data-accion="ver-momento">Ver tramo</button>`) : ""}<button>Crear Short</button></div></form>
+    ${t.clips.length ? crudo(h`<div class="tarjeta pila"><h3>Clips creados</h3>${t.clips.map((c) => crudo(h`<a class="fila separado" href="#trabajo/${c.id}" style="text-decoration:none"><span>${reloj(c.inicio)} – ${reloj(c.fin)} · ${c.nombre}</span><span class="estado ${c.estado}">${ESTADOS[c.estado]}</span></a>`))}</div>`) : ""}`;
+  document.querySelectorAll("form.momento").forEach((f) => {
+    f.addEventListener("input", () => { S.sucio = true; });
+    f.addEventListener("submit", intentar(async (e) => {
+      e.preventDefault();
+      // Si no se tocaron los tiempos se usan los exactos de la propuesta (con decimales).
+      const intacto = f.dataset.ini && f.ini.value === reloj(+f.dataset.ini) && f.fin.value === reloj(+f.dataset.fin);
+      const inicio = intacto ? +f.dataset.ini : aSegundos(f.ini.value), fin = intacto ? +f.dataset.fin : aSegundos(f.fin.value);
+      if (isNaN(inicio) || isNaN(fin)) throw new Error("Escribe los tiempos como minutos:segundos, por ejemplo 1:25.");
+      await api(`/api/trabajos/${t.id}/clips`, { method: "POST", json: { inicio, fin } });
+      S.sucio = false; avisar("Clip añadido a la cola."); document.activeElement.blur(); refrescar();
+    }));
+  });
+}
+
 const accionTrabajo = (nombre, mensaje) => intentar(async () => {
   await api(`/api/trabajos/${S.jid}/${nombre}`, { method: "POST" });
   S.sucio = false; if (mensaje) avisar(mensaje); refrescar();
@@ -252,6 +313,21 @@ const accionTrabajo = (nombre, mensaje) => intentar(async () => {
 const acciones = {
   reintentar: accionTrabajo("reintentar", "Reintentando desde la etapa que falló."),
   renderizar: accionTrabajo("renderizar", "En cola para renderizar con los ajustes actuales."),
+  "proponer-momentos": accionTrabajo("proponer-momentos", "Buscando momentos de nuevo."),
+  "ver-momento": (b) => {
+    const f = b.closest("form"), v = $("#l-video"), ini = aSegundos(f.ini.value), fin = aSegundos(f.fin.value);
+    if (!v || isNaN(ini)) return;
+    v.currentTime = ini; v.play();
+    clearInterval(v._tope); v._tope = setInterval(() => { if (!isNaN(fin) && v.currentTime >= fin) { v.pause(); clearInterval(v._tope); } }, 200);
+    v.scrollIntoView({ behavior: "smooth", block: "center" });
+  },
+  diagnostico: intentar(async (b) => {
+    b.disabled = true; $("#diag").innerHTML = `<p class="pequeno tenue">Comprobando (incluye un render de prueba de 2 s)…</p>`;
+    try {
+      const r = await api("/api/diagnostico?autoprueba=true");
+      $("#diag").innerHTML = r.map((x) => h`<div class="dato"><span>${x.ok === true ? "✓" : x.ok === false ? "✗ Falla" : "– Opcional"} · ${x.nombre}</span><span class="${x.ok === false ? "error" : ""}">${x.detalle}</span></div>`).join("");
+    } finally { b.disabled = false; }
+  }),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),
   subir: intentar(async () => {
@@ -340,11 +416,14 @@ async function pintarAjustes(m) {
       <div class="dato"><span>Transcripción</span><span>faster-whisper (local, sin coste) · modelo ${p.whisper.modelo} · ${p.whisper.descargado ? "descargado" : "se descargará en el primer uso"}</span></div>
       <div class="dato"><span>Textos</span><span>${p.gemini.clave ? "Gemini (API de pago por uso o cuota gratuita, según tu cuenta de Google)" : "Borrador local (sin IA): no hay clave de Gemini"}</span></div>
     </div>
+    <div class="tarjeta pila"><div class="fila separado"><h3>Diagnóstico de este PC</h3><button data-accion="diagnostico">Comprobar ahora</button></div>
+      <div id="diag"><p class="pequeno tenue">Verifica FFmpeg, Whisper, GPU y hace un render de prueba. También se puede ejecutar con <code>scripts\\diagnostico.ps1</code>.</p></div></div>
     <form class="tarjeta pila" id="form-prov"><h3>Transcripción</h3><div class="campos">
       <label>Modelo de Whisper<select name="whisper_modelo">${["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"].map((x) => crudo(h`<option ${x === v.whisper_modelo ? "selected" : ""}>${x}</option>`))}</select></label>
       <label>Dispositivo<select name="whisper_dispositivo">${[["auto", "Automático (GPU si funciona)"], ["cpu", "CPU"], ["cuda", "GPU NVIDIA"]].map(([k, n]) => crudo(h`<option value="${k}" ${k === v.whisper_dispositivo ? "selected" : ""}>${n}</option>`))}</select></label>
       <label>Textos<select name="proveedor_textos">${[["auto", "Gemini si hay clave; si no, local"], ["gemini", "Gemini"], ["local", "Solo borrador local"]].map(([k, n]) => crudo(h`<option value="${k}" ${k === v.proveedor_textos ? "selected" : ""}>${n}</option>`))}</select></label>
-      <label>Modelo de Gemini (vacío = automático)<input name="gemini_modelo" value="${v.gemini_modelo}"></label></div>
+      <label>Modelo de Gemini (vacío = automático)<input name="gemini_modelo" value="${v.gemini_modelo}"></label>
+      <label>Momentos a proponer por video largo<input name="momentos_cantidad" type="number" min="1" max="20" value="${v.momentos_cantidad}"></label></div>
       <p class="pequeno tenue">Modelos más grandes transcriben mejor pero tardan más. «small» es un punto de partida razonable en CPU.</p>
       <div><button class="primario">Guardar</button></div></form>
     <div class="tarjeta pila"><h3>Clave de Gemini</h3>${crudo(soloPc)}

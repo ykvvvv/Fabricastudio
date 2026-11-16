@@ -75,3 +75,38 @@ def test_el_panel_no_recibe_secretos_ni_puede_cambiar_canal_por_ajustes(fabrica,
         assert pc.post("/api/importar/archivo", files={"archivo": ("otra.mp4", fh, "video/mp4")}).status_code == 409
     assert pc.post(f"/api/trabajos/{jid}/subir").status_code == 400       # aún no está renderizado
     assert pc.get("/api/diseno/vista").headers["content-type"] == "image/jpeg"
+
+
+def test_diagnostico_y_ruta_con_espacios_y_acentos(tmp_path, clip, monkeypatch):
+    """Las rutas de Windows suelen llevar espacios y acentos (p. ej. «C:\\Users\\Cristóbal\\Mis videos»)."""
+    from fabrica_studio import transcribe
+    from fabrica_studio.config import Rutas
+    from fabrica_studio.pipeline import Fabrica
+    monkeypatch.setattr(transcribe, "transcribir", lambda *a: {
+        "idioma": "es", "motor": "prueba", "texto": "Hola chat.", "segmentos": [],
+        "palabras": [{"inicio": 0.2, "fin": 0.9, "texto": "Hola"}, {"inicio": 1.0, "fin": 1.6, "texto": "chat."}]})
+    f = Fabrica(Rutas(tmp_path / "Mis vídeos de Cristóbal" / "datos ñ"))
+    pc = TestClient(crear_app(f, iniciar_hilos=False), base_url="http://127.0.0.1:8765", client=PC)
+    r = pc.get("/api/diagnostico?autoprueba=true").json()
+    assert not [x for x in r if x["ok"] is False], r
+    assert any(x["nombre"] == "Autoprueba de render" and x["ok"] for x in r)
+    with open(clip, "rb") as fh:
+        jid = pc.post("/api/importar/archivo", files={"archivo": ("Clip ñandú (1).mp4", fh, "video/mp4")}).json()["id"]
+    f._ejecutar(f.db.trabajo(jid))
+    assert f.db.trabajo(jid)["estado"] == "renderizado", f.db.trabajo(jid)["error"]
+    assert pc.get(f"/media/{jid}/short.mp4", headers={"Range": "bytes=0-9"}).status_code == 206
+    assert pc.get(f"/media/{jid}/entrada").status_code == 200
+
+
+def test_crear_clip_por_api_no_choca_con_las_acciones(fabrica, clip):
+    pc, _, _ = _clientes(fabrica)
+    with open(clip, "rb") as fh:
+        t = pc.post("/api/importar/archivo", files={"archivo": ("largo.mp4", fh, "video/mp4")}, data={"modo": "largo"}).json()
+    assert t["modo"] == "largo"
+    fabrica._ejecutar(fabrica.db.trabajo(t["id"]))
+    assert pc.get(f"/api/trabajos/{t['id']}").json()["estado"] == "propuestas"
+    r = pc.post(f"/api/trabajos/{t['id']}/clips", json={"inicio": 0, "fin": 3})
+    assert r.status_code == 200 and r.json()["origen_tipo"] == "momento"
+    assert pc.post(f"/api/trabajos/{t['id']}/clips", json={"inicio": 0, "fin": 3}).status_code == 409
+    assert pc.post(f"/api/trabajos/{t['id']}/proponer-momentos").status_code == 200
+    assert pc.post(f"/api/trabajos/{t['id']}/inventada").status_code == 400

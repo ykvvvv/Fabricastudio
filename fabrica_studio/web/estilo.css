@@ -60,7 +60,7 @@ label.linea { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 @media (prefers-reduced-motion: reduce) { .etapas i.en_curso { animation: none; } }
 .estado { font-size: 12px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--borde); white-space: nowrap; color: var(--tenue); }
 .estado.procesando, .estado.subiendo { color: var(--acento); border-color: #5a3324; }
-.estado.renderizado { color: var(--alerta); border-color: #57482a; }
+.estado.renderizado, .estado.propuestas { color: var(--alerta); border-color: #57482a; }
 .estado.publicado { color: var(--ok); border-color: #24503c; }
 .estado.error { color: var(--mal); border-color: #5a2c2c; }
 .vacio { padding: 34px; text-align: center; color: var(--tenue); border: 1px dashed var(--borde); border-radius: var(--radio); }
@@ -117,3 +117,4 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   button, .boton, input, select { min-height: 44px; }
   .dato { grid-template-columns: 1fr; gap: 2px; }
 }
+.momento .fila { align-items: flex-end; }

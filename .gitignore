@@ -9,3 +9,12 @@ client_secret*.json
 token*.json
 *.keystore
 *.jks
+.env.*
+# Videos y audio: pesan demasiado para el repositorio.
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.m4v
+*.wav
+*.zip
