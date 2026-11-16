@@ -12,8 +12,8 @@ const ETAPAS_LARGO = [["importar", "Importar"], ["comprobar", "Comprobar"], ["tr
 const etapasDe = (t) => (t.modo === "largo" ? ETAPAS_LARGO : ETAPAS);
 const reloj = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
-const ESTADOS = { pendiente: "En cola", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
-let S = { sesion: null, estado: null, vista: "cola", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
+const ESTADOS = { pendiente: "En espera", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
+let S = { busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
 
 async function api(ruta, opciones = {}) {
   if (opciones.json !== undefined) {
@@ -36,6 +36,125 @@ function avisar(texto, mal = false) {
 }
 const intentar = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { avisar(e.message, true); } };
 
+// ---------------------------------------------------------------- piezas comunes
+const ic = (n) => crudo(icono(n));
+const GERUNDIOS = { importar: "Importando", comprobar: "Comprobando", transcribir: "Transcribiendo", textos: "Creando textos", subtitulos: "Subtitulando", render: "Renderizando", subir: "Subiendo", momentos: "Buscando momentos" };
+const CLASE_ESTADO = { pendiente: "", procesando: "proceso", subiendo: "proceso", propuestas: "listo", renderizado: "listo", publicado: "subido", error: "fallo" };
+const FILTROS = [["todos", "Todos", () => true], ["espera", "En espera", (t) => t.estado === "pendiente"],
+  ["generando", "Generando", (t) => ["procesando", "subiendo"].includes(t.estado)],
+  ["listos", "Listos", (t) => ["renderizado", "propuestas", "publicado"].includes(t.estado)], ["error", "Con error", (t) => t.estado === "error"]];
+const NOMBRES_VISTA = { resumen: "Resumen", cola: "Cola de clips", biblioteca: "Biblioteca", ajustes: "Ajustes", trabajo: "Clip" };
+const enCola = (t) => ["pendiente", "procesando", "subiendo"].includes(t.estado);
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+const coincide = (t) => !S.busca || `${t.nombre} ${t.textos.titulo || ""}`.toLowerCase().includes(S.busca);
+const etiquetaOrigen = (t) => ({ archivo: "Archivo importado", carpeta: "Carpeta 1_clips_crudos", enlace: "Enlace de Kick", momento: "Momento de un video largo" }[t.origen_tipo]) + (t.modo === "largo" ? " · video largo" : "");
+
+// Cambia el contenido solo si es distinto (no reinicia animaciones) y conserva el foco del teclado.
+function poner(el, html) {
+  if (!el || el._html === html) return;
+  const a = document.activeElement, clave = el.contains(a) && (a.getAttribute("href") ? `[href="${a.getAttribute("href")}"]` : a.dataset.foco ? `[data-foco="${a.dataset.foco}"]` : "");
+  el.innerHTML = el._html = html;
+  if (clave) el.querySelector(clave)?.focus();
+}
+function hidratar(raiz = document) { raiz.querySelectorAll("i[data-icono]").forEach((i) => { i.outerHTML = icono(i.dataset.icono); }); }
+
+function pastilla(t) {
+  const texto = t.estado === "procesando" ? GERUNDIOS[t.etapa] || ESTADOS.procesando : t.estado === "renderizado" ? "Listo para revisar" : ESTADOS[t.estado];
+  return h`<span class="pastilla ${CLASE_ESTADO[t.estado]}">${texto}</span>`;
+}
+function clipHtml(t) {
+  const mini = t.tiene_video ? h`<img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">` : icono("pelicula");
+  const mal = t.estado === "error";
+  const linea = mal ? t.error.split("\n")[0] : t.progreso || t.textos.titulo || etiquetaOrigen(t);
+  const etapas = enCola(t) || mal ? h`<span class="segmentos" role="img" aria-label="Etapas: ${etapasDe(t).filter(([k]) => t.etapas[k]?.estado === "hecho").length} de ${etapasDe(t).length} completadas">${etapasDe(t).map(([k]) => crudo(h`<i class="${t.etapas[k]?.estado || ""}"></i>`))}</span>` : "";
+  return h`<a class="clip" href="#trabajo/${t.id}"><span class="miniatura">${crudo(mini)}</span>
+    <span class="clip-texto"><span class="clip-nombre">${t.nombre}</span><span class="clip-meta ${mal ? "mal" : ""}">${linea}</span>${crudo(etapas)}</span></a>`;
+}
+
+// ---------------------------------------------------------------- ventanas
+let modalAntes = null, modalResuelve = null;
+function abrirModal(titulo, cuerpo, pie = "") {
+  modalAntes = modalAntes || document.activeElement;
+  $("#modal-titulo").textContent = titulo;
+  $("#modal-cuerpo").innerHTML = cuerpo; $("#modal-pie").innerHTML = pie;
+  $("#modal-fondo").hidden = false; document.body.style.overflow = "hidden";
+  ($("#modal-cuerpo").querySelector("input:not([type=file]), textarea, select") || $("#modal-pie button:last-child") || $("#modal button")).focus();
+}
+function cerrarModal(valor = false) {
+  if ($("#modal-fondo").hidden) return;
+  $("#modal-fondo").hidden = true; document.body.style.overflow = "";
+  if (modalAntes && document.contains(modalAntes)) modalAntes.focus();
+  modalAntes = null;
+  const r = modalResuelve; modalResuelve = null; r?.(valor);
+}
+// Sustituye a confirm(): devuelve una promesa con true si se acepta.
+function confirmar(titulo, texto, etiqueta, peligro = false) {
+  return new Promise((resolver) => {
+    abrirModal(titulo, h`<p>${texto}</p>`, h`<button data-accion="cerrar-modal">Cancelar</button><button class="primario ${peligro ? "peligro" : ""}" id="modal-si">${etiqueta}</button>`);
+    modalResuelve = resolver;
+    $("#modal-si").onclick = () => cerrarModal(true);
+  });
+}
+$("#modal-fondo").addEventListener("mousedown", (e) => { if (e.target.id === "modal-fondo") cerrarModal(); });
+document.addEventListener("keydown", (e) => {
+  const abierto = !$("#modal-fondo").hidden;
+  if (e.key === "Escape") { cerrarModal(); cerrarMenu(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !abierto) { e.preventDefault(); $("#buscar").focus(); }
+  if (e.key === "Tab" && abierto) {      // el foco no sale de la ventana
+    const f = [...$("#modal").querySelectorAll("button, input, textarea, select, a[href]")].filter((x) => !x.disabled && x.offsetParent !== null);
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+});
+
+function nuevoClip(pestana = "enlace") {
+  let modo = pestana, archivos = [];
+  abrirModal("Añadir un clip", h`<div class="modal-pestanas" role="tablist">
+      <button role="tab" id="np-enlace" aria-controls="nc-enlace" data-p="enlace">Enlace de Kick</button><button role="tab" id="np-archivo" aria-controls="nc-archivo" data-p="archivo">Archivo de video</button></div>
+    <div id="nc-enlace" role="tabpanel" aria-labelledby="np-enlace"><label>Enlace público del clip<textarea id="nc-urls" rows="3" placeholder="https://kick.com/…"></textarea>
+      <span>Puedes pegar varios, uno por línea. Si Kick bloquea la descarga, se indicará el motivo.</span></label></div>
+    <div id="nc-archivo" role="tabpanel" aria-labelledby="np-archivo"><label class="soltar" id="nc-soltar">${ic("subir")}<span id="nc-elegidos">Arrastra videos aquí o pulsa para elegirlos</span><small>MP4, MOV, MKV o WebM</small>
+      <input type="file" id="nc-archivos" class="solo-lector" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm,.m4v" multiple></label></div>
+    <label>Tipo de video<select id="nc-modo"><option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
+      <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label>
+    <label class="linea"><input type="checkbox" id="nc-publicar" checked> Destinar a YouTube (siempre en privado)</label>
+    <p class="error" id="nc-error" role="alert" hidden></p>`,
+  h`<span class="pequeno tenue" id="nc-progreso" style="margin-right:auto"></span><button data-accion="cerrar-modal">Cancelar</button><button class="primario" id="nc-anadir">${ic("mas")}Añadir a la cola</button>`);
+  const pestanas = () => ["enlace", "archivo"].forEach((p) => { $(`#np-${p}`).setAttribute("aria-selected", p === modo); $(`#nc-${p}`).hidden = p !== modo; });
+  pestanas();
+  $("#modal .modal-pestanas").addEventListener("click", (e) => { const b = e.target.closest("[data-p]"); if (b) { modo = b.dataset.p; pestanas(); } });
+  const elegir = (lista) => { archivos = [...lista]; $("#nc-elegidos").textContent = archivos.length ? archivos.map((f) => f.name).join(", ") : "Arrastra videos aquí o pulsa para elegirlos"; };
+  const soltar = $("#nc-soltar");
+  ["dragover", "dragenter"].forEach((ev) => soltar.addEventListener(ev, (e) => { e.preventDefault(); soltar.classList.add("encima"); }));
+  ["dragleave", "drop"].forEach((ev) => soltar.addEventListener(ev, () => soltar.classList.remove("encima")));
+  soltar.addEventListener("drop", (e) => { e.preventDefault(); elegir(e.dataTransfer.files); });
+  $("#nc-archivos").addEventListener("change", (e) => elegir(e.target.files));
+  if (pestana === "archivo") $("#nc-archivos").focus();
+  $("#nc-anadir").onclick = async () => {
+    const urls = [...new Set($("#nc-urls").value.split(/[\s,]+/).filter(Boolean))];
+    const cosas = modo === "enlace" ? urls : archivos, fallos = [];
+    const error = $("#nc-error"); error.hidden = true;
+    if (!cosas.length) { error.textContent = modo === "enlace" ? "Pega al menos un enlace." : "Elige al menos un archivo de video."; error.hidden = false; return; }
+    const publicar = $("#nc-publicar").checked, tipo = $("#nc-modo").value, boton = $("#nc-anadir");
+    boton.disabled = true;
+    let bien = 0;
+    for (const [i, c] of cosas.entries()) {
+      $("#nc-progreso").textContent = `Enviando ${i + 1} de ${cosas.length}…`;
+      try {
+        if (modo === "enlace") await api("/api/importar/enlace", { method: "POST", json: { url: c, publicar, modo: tipo } });
+        else { const d = new FormData(); d.append("archivo", c); d.append("publicar", publicar); d.append("modo", tipo); await api("/api/importar/archivo", { method: "POST", body: d }); }
+        bien++;
+      } catch (e) { fallos.push(`${c.name || c}: ${e.message}`); }
+    }
+    if (bien) avisar(`${plural(bien, "clip añadido", "clips añadidos")} a la cola.`);
+    refrescar();
+    if (!fallos.length) return cerrarModal();
+    if (!$("#nc-anadir")) return avisar(fallos.join("\n"), true);     // la ventana se cerró mientras se enviaba
+    boton.disabled = false; $("#nc-progreso").textContent = "";
+    error.textContent = fallos.join("\n"); error.style.whiteSpace = "pre-wrap"; error.hidden = false;
+  };
+}
+
 // ---------------------------------------------------------------- arranque y navegación
 function mostrarVinculacion() { $("#app").hidden = true; $("#vincular").hidden = false; }
 
@@ -47,28 +166,42 @@ $("#form-vincular").addEventListener("submit", async (e) => {
   } catch (err) { $("#v-error").textContent = err.message; }
 });
 
+function cerrarMenu() { $("#lateral").classList.remove("abierto"); $("#velo").classList.remove("abierto"); $("#boton-menu").setAttribute("aria-expanded", "false"); }
+$("#boton-menu").addEventListener("click", () => { const a = $("#lateral").classList.toggle("abierto"); $("#velo").classList.toggle("abierto", a); $("#boton-menu").setAttribute("aria-expanded", a); });
+$("#velo").addEventListener("click", cerrarMenu);
+$("#buscar").addEventListener("input", (e) => { S.busca = e.target.value.trim().toLowerCase(); pintar(false); });
+
 function navegar() {
   const [vista, jid] = location.hash.replace("#", "").split("/");
-  S.vista = ["cola", "biblioteca", "ajustes", "trabajo"].includes(vista) ? vista : "cola";
+  S.vista = vista in NOMBRES_VISTA ? vista : "resumen";
   S.jid = S.vista === "trabajo" ? jid : null;
   S.detalle = null; S.sucio = false;
-  document.querySelectorAll(".lateral a").forEach((a) => a.classList.toggle("activa", a.dataset.vista === S.vista));
-  pintar(true);
+  const activa = S.vista === "trabajo" ? "cola" : S.vista;
+  document.querySelectorAll(".nav a").forEach((a) => { const si = a.dataset.vista === activa; a.classList.toggle("activa", si); si ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
+  $("#miga").textContent = NOMBRES_VISTA[S.vista];
+  document.title = `${NOMBRES_VISTA[S.vista]} · Fábrica Studio`;
+  cerrarMenu(); cerrarModal();
+  const m = $("#principal");
+  m._html = null; m.classList.remove("entra"); void m.offsetWidth; m.classList.add("entra");   // transición solo al cambiar de vista
+  pintar(true); window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", navegar);
 
 async function refrescar() {
   try {
     S.estado = await api("/api/estado");
+    S.conectado = true;
     if (S.jid) S.detalle = await api(`/api/trabajos/${S.jid}`).catch(() => null);
-    pintar(false);
-  } catch (e) { /* se reintenta en el siguiente ciclo */ }
+  } catch (e) { S.conectado = false; /* se reintenta en el siguiente ciclo */ }
+  pintar(false);
 }
 
 (async function iniciar() {
+  hidratar();
   S.sesion = await (await fetch("/api/sesion")).json();
   if (!S.sesion.autorizado) return mostrarVinculacion();
   $("#app").hidden = false;
+  S.ajustes = await api("/api/ajustes").catch(() => null);
   await refrescar();
   navegar();
   setInterval(refrescar, 2000);
@@ -77,81 +210,106 @@ async function refrescar() {
 // ---------------------------------------------------------------- vistas
 function pintar(completo) {
   if (!S.estado) return;
-  const yt = S.estado.youtube;
-  $("#pie-canal").innerHTML = yt.canal_id ? h`Canal de destino<br><b>${yt.canal_nombre}</b><br>${yt.canal_id}<br>Subida automática: ${S.estado.subida_automatica ? "activa (privado)" : "desactivada"}` : "Sin canal de YouTube confirmado";
+  document.documentElement.style.setProperty("--fase", `-${Date.now() % 1400}ms`);   // el brillo de la etapa no salta al repintar
+  pintarLateral();
   const m = $("#principal");
-  if (S.vista === "cola") pintarCola(m, completo);
+  if (S.vista === "resumen") pintarResumen(m, completo);
+  else if (S.vista === "cola") pintarCola(m, completo);
   else if (S.vista === "biblioteca") m.innerHTML = vistaBiblioteca();
   else if (S.vista === "trabajo") pintarTrabajo(m, completo);
   else if (S.vista === "ajustes" && completo) pintarAjustes(m);
 }
 
-function filaTrabajo(t) {
-  const mini = t.tiene_video ? h`<img class="mini" src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">` : `<div class="mini"></div>`;
-  const barras = etapasDe(t).map(([k]) => h`<i class="${t.etapas[k]?.estado || ""}"></i>`).join("");
-  const linea = t.estado === "error" ? t.error.split("\n")[0] : t.progreso || t.textos.titulo || etiquetaOrigen(t);
-  return h`<button class="trabajo" data-ir="${t.id}">${crudo(mini)}
-    <span class="info"><span class="nombre">${t.nombre}</span><span class="etapas" aria-hidden="true">${crudo(barras)}</span>
-    <span class="pequeno tenue nombre">${linea}</span></span>
-    <span class="estado ${t.estado}">${ESTADOS[t.estado]}</span></button>`;
+function pintarLateral() {
+  const e = S.estado, yt = e.youtube, p = e.proveedores, n = e.trabajos.filter(enCola).length;
+  $("#nav-cuenta").hidden = !n; $("#nav-cuenta").textContent = n;
+  $("#nav-cuenta").setAttribute("aria-label", plural(n, "clip en cola", "clips en cola"));
+  const creador = S.ajustes?.valores.creador || "Fábrica Studio";
+  poner($("#espacio"), h`<div class="avatar" aria-hidden="true">${creador.slice(0, 2).toUpperCase()}</div><div><strong>${creador}</strong><small>${yt.canal_id ? `Canal: ${yt.canal_nombre}` : "Sin canal de YouTube confirmado"}</small></div>`);
+  poner($("#tarjeta-pc"), h`<b>${ic("monitor")}PC anfitrión<span class="punto ${S.conectado ? "bien" : "mal"}"></span></b>
+    ${S.conectado ? crudo(h`${p.ffmpeg && p.ffprobe ? "FFmpeg disponible" : "FFmpeg no encontrado"}<br>Whisper ${p.whisper.modelo}<br>Carpeta vigilada ${e.carpeta.activa ? "activa" : "desactivada"}`) : "Sin conexión con el PC. Se reintenta cada 2 s."}`);
+  poner($("#perfil"), h`<div class="avatar" aria-hidden="true">${ic(S.sesion.local ? "monitor" : "dispositivos")}</div><div><strong>${S.sesion.local ? "Este PC" : "Dispositivo vinculado"}</strong><small>Versión ${S.sesion.version}</small></div>`);
 }
-const etiquetaOrigen = (t) => ({ archivo: "Archivo importado", carpeta: "Carpeta 1_clips_crudos", enlace: "Enlace de Kick", momento: "Momento de un video largo" }[t.origen_tipo]) + (t.modo === "largo" ? " · video largo" : "");
+
+function pintarResumen(m, completo) {
+  const e = S.estado, yt = e.youtube, ts = e.trabajos;
+  if (completo || !$("#r-cifras")) {
+    m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">Tu espacio creativo</div><h1>Tu estudio</h1><p>De un buen momento a tu próximo Short.</p></div>
+        <button class="primario" data-accion="nuevo">${ic("mas")}Nuevo clip</button></div>
+      <div class="cifras" id="r-cifras"></div>
+      <div class="dos-columnas"><div class="panel">
+          <div class="panel-titulo"><div><h2>Un enlace. Un nuevo clip.</h2><p>Añade un momento de tu stream a la cola.</p></div></div>
+          <form class="entrada" id="r-form"><div class="entrada-caja">${ic("enlace")}<input id="r-url" type="url" aria-label="Enlace del clip de Kick" placeholder="Pega un enlace de Kick…" autocomplete="off" required>
+            <button class="primario">Añadir${ic("flecha")}</button></div>
+            <div class="entrada-pie"><span>Se procesa en tu PC y se destina a YouTube en privado.</span><button type="button" class="enlace-fino" data-accion="nuevo" data-p="archivo">${ic("subir")}O elige un archivo</button></div>
+            <p class="error" id="r-error" role="alert" hidden></p></form>
+          <div class="franja"><h3>Actividad reciente</h3><a class="enlace-fino" href="#cola">Ver la cola${ic("flecha")}</a></div>
+          <div class="recientes escalonada" id="r-recientes"></div>
+          <div class="panel-pie" id="r-pie"></div></div>
+        <div class="panel formato"><div class="panel-titulo"><div><h2>Tu formato</h2><p id="r-estilo"></p></div><span class="pequeno tenue">9:16</span></div>
+          <div class="formato-escena"><img src="/api/diseno/vista?t=${Date.now()}" alt="Maqueta del diseño actual de tus Shorts" width="176" height="313"></div>
+          <div class="panel-pie"><span>1080 × 1920</span><a class="enlace-fino" href="#ajustes" data-accion="ir-ajustes" data-p="diseno">Personalizar${ic("flecha")}</a></div></div></div>
+      <div class="dos-columnas"><div class="panel conexion" id="r-youtube"></div><div class="panel conexion" id="r-tablet"></div></div>`;
+    $("#r-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const error = $("#r-error"); error.hidden = true;
+      try {
+        await api("/api/importar/enlace", { method: "POST", json: { url: $("#r-url").value, publicar: true, modo: "clip" } });
+        $("#r-url").value = ""; avisar("1 clip añadido a la cola."); refrescar();
+      } catch (err) { error.textContent = err.message; error.hidden = false; }
+    });
+    S.dispositivos = null;
+    api("/api/dispositivos").then((d) => { S.dispositivos = d; pintar(false); }).catch(() => {});
+  }
+  const cola = ts.filter(enCola).length, fallos = ts.filter((t) => t.estado === "error").length;
+  const listos = ts.filter((t) => t.estado === "renderizado").length, subidos = ts.filter((t) => t.estado === "publicado").length;
+  const dos = (n) => String(n).padStart(2, "0");
+  poner($("#r-cifras"), h`<div class="cifra"><div class="cifra-titulo">Clips en la cola${ic("capas")}</div><div class="cifra-valor">${dos(cola)} <small>${cola === 1 ? "clip" : "clips"}</small></div>
+      <div class="cifra-nota">${fallos ? `${plural(fallos, "clip con error", "clips con error")}: revísalos en la cola` : "En espera o generándose"}</div></div>
+    <div class="cifra"><div class="cifra-titulo">Listos para revisar${ic("check-circulo")}</div><div class="cifra-valor">${dos(listos)} <small>${listos === 1 ? "Short" : "Shorts"}</small></div>
+      <div class="cifra-nota">${plural(subidos, "subido", "subidos")} en privado a YouTube</div></div>
+    <div class="cifra"><div class="cifra-titulo">Canal de YouTube${ic("youtube")}</div><div class="cifra-valor texto">${yt.canal_id ? yt.canal_nombre : "Sin confirmar"}</div>
+      <div class="cifra-nota">${yt.canal_id ? `${yt.canal_id} · subidas siempre en privado` : "No se puede subir hasta confirmar el canal"}</div></div>`);
+  const recientes = [...ts].filter(coincide).sort((a, b) => b.creado - a.creado).slice(0, 3);
+  poner($("#r-recientes"), recientes.map((t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`).join("")
+    || `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
+  poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
+  $("#r-estilo").textContent = e.estilo === "completo" ? "Pantalla completa con seguimiento" : "Clásico: video completo con tarjeta";
+  poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
+      <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}</p></div>
+    <a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">${yt.canal_id ? "Ver" : "Conectar"}</a>`);
+  const d = S.dispositivos;
+  poner($("#r-tablet"), h`<div class="conexion-icono">${ic("dispositivos")}</div><div><h3>PC + tablet</h3>
+      <p>${d === null ? "Un estudio. La misma cola." : d.length ? `${plural(d.length, "dispositivo vinculado", "dispositivos vinculados")}: ${d.map((x) => x.nombre).join(", ")}` : "Ningún dispositivo vinculado todavía."}</p></div>
+    ${S.sesion.local ? crudo(h`<a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="dispositivos">Vincular</a>`) : ""}`);
+}
 
 function pintarCola(m, completo) {
-  if (completo || !$("#cola-lista")) {
-    m.innerHTML = h`<div class="cabecera"><h1>Cola</h1><span class="tenue pequeno" id="cola-resumen"></span></div>
-    <div class="rejilla2" style="margin-bottom:22px">
-      <div class="tarjeta pila">
-        <h3>Importar archivo</h3>
-        <div class="soltar" id="soltar">Arrastra un video aquí o
-          <label class="boton" style="display:inline-flex;flex-direction:row;color:var(--texto)">elige un archivo<input type="file" id="archivo" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm,.m4v" multiple hidden></label>
-        </div>
-        <p class="pequeno tenue" id="subiendo"></p>
-      </div>
-      <form class="tarjeta pila" id="form-enlace">
-        <h3>Importar enlace de Kick</h3>
-        <label>Enlace público del clip<input id="enlace" type="url" placeholder="https://kick.com/…" required></label>
-        <div class="fila separado"><span class="pequeno tenue">Si Kick exige iniciar sesión o bloquea la descarga, se indicará el motivo.</span><button>Añadir a la cola</button></div>
-      </form>
-    </div>
-    <label style="margin-bottom:12px;max-width:520px">Tipo de video<select id="modo">
-      <option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
-      <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label>
-    <label class="linea" style="margin-bottom:18px"><input type="checkbox" id="publicar" checked> Los clips importados se destinan a YouTube (siempre en privado y tras tu revisión, salvo que actives la subida automática en Ajustes)</label>
-    <div id="cola-carpeta"></div><div class="lista" id="cola-lista"></div>`;
-    const soltar = $("#soltar");
-    ["dragover", "dragenter"].forEach((ev) => soltar.addEventListener(ev, (e) => { e.preventDefault(); soltar.classList.add("encima"); }));
-    ["dragleave", "drop"].forEach((ev) => soltar.addEventListener(ev, () => soltar.classList.remove("encima")));
-    soltar.addEventListener("drop", (e) => { e.preventDefault(); subirArchivos(e.dataTransfer.files); });
-    $("#archivo").addEventListener("change", (e) => { subirArchivos(e.target.files); e.target.value = ""; });
-    $("#form-enlace").addEventListener("submit", intentar(async (e) => {
-      e.preventDefault();
-      await api("/api/importar/enlace", { method: "POST", json: { url: $("#enlace").value, publicar: $("#publicar").checked, modo: $("#modo").value } });
-      $("#enlace").value = ""; avisar("Enlace añadido a la cola."); refrescar();
-    }));
+  const e = S.estado, ts = e.trabajos.filter(coincide);
+  if (completo || !$("#cola-cuerpo")) {
+    m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">En producción</div><h1>Cola de clips</h1><p>Cada momento, en su lugar.</p></div>
+        <button class="primario" data-accion="nuevo">${ic("mas")}Nuevo clip</button></div>
+      <div class="herramientas"><div class="filtros" id="cola-filtros" role="group" aria-label="Filtrar por estado"></div></div>
+      <div class="pila" id="cola-carpeta" style="margin-bottom:14px"></div>
+      <div class="panel"><div class="tabla-desliza"><table class="tabla-cola"><thead><tr><th scope="col">Clip</th><th scope="col">Estado</th><th scope="col">Origen</th><th scope="col">Duración</th><th scope="col"><span class="solo-lector">Acciones</span></th></tr></thead>
+        <tbody id="cola-cuerpo" class="escalonada"></tbody></table></div><div id="cola-vacia" class="sin-nada" hidden></div></div>`;
   }
-  const activos = S.estado.trabajos.filter((t) => t.estado !== "publicado");
-  const c = S.estado.carpeta;
-  $("#cola-resumen").textContent = `${activos.length} en curso · ${S.estado.trabajos.length - activos.length} subidos`;
-  $("#cola-carpeta").innerHTML = c.pendientes.map((p) => h`<p class="nota" style="margin-bottom:8px"><b>${p.archivo}</b> (carpeta): ${p.motivo}</p>`).join("");
-  $("#cola-lista").innerHTML = activos.length ? activos.map(filaTrabajo).join("")
-    : h`<div class="vacio">No hay trabajos en curso. Importa un clip arriba${c.activa ? crudo(h` o cópialo en <code>${c.ruta}</code>`) : ""}.</div>`;
-}
-
-async function subirArchivos(archivos) {
-  for (const f of archivos) {
-    $("#subiendo").textContent = `Enviando ${f.name}…`;
-    const datos = new FormData();
-    datos.append("archivo", f); datos.append("publicar", $("#publicar").checked); datos.append("modo", $("#modo").value);
-    try { await api("/api/importar/archivo", { method: "POST", body: datos }); avisar(`${f.name} añadido a la cola.`); }
-    catch (e) { avisar(`${f.name}: ${e.message}`, true); }
-  }
-  $("#subiendo").textContent = ""; refrescar();
+  poner($("#cola-filtros"), FILTROS.map(([k, n, f]) => h`<button data-accion="filtro" data-foco="f-${k}" data-f="${k}" aria-pressed="${S.filtro === k}">${n} <span>${ts.filter(f).length}</span></button>`).join(""));
+  poner($("#cola-carpeta"), e.carpeta.pendientes.map((p) => h`<p class="nota"><b>${p.archivo}</b> (carpeta vigilada): ${p.motivo}</p>`).join(""));
+  const visibles = ts.filter(FILTROS.find(([k]) => k === S.filtro)[2]);
+  const origen = { archivo: "Archivo", carpeta: "Carpeta", enlace: "Kick", momento: "Video largo" };
+  poner($("#cola-cuerpo"), visibles.map((t) => h`<tr><td>${crudo(clipHtml(t))}</td><td>${crudo(pastilla(t))}</td><td>${origen[t.origen_tipo]}${t.modo === "largo" ? " · largo" : ""}</td>
+    <td>${t.duracion ? reloj(t.duracion) : "—"}</td>
+    <td>${["procesando", "subiendo"].includes(t.estado) ? "" : crudo(h`<button class="icono-boton" data-accion="quitar" data-foco="q-${t.id}" data-id="${t.id}" data-nombre="${t.nombre}" aria-label="Eliminar ${t.nombre}">${ic("papelera")}</button>`)}</td></tr>`).join(""));
+  $("#cola-vacia").hidden = visibles.length > 0;
+  poner($("#cola-vacia"), `${icono("capas")}` + (S.busca ? "Ningún clip coincide con la búsqueda."
+    : S.filtro !== "todos" ? "No hay clips en este estado."
+    : h`Aún no hay clips. Pulsa «Nuevo clip»${e.carpeta.activa ? crudo(h` o copia un video en <code>${e.carpeta.ruta}</code>`) : ""}.`));
 }
 
 function vistaBiblioteca() {
-  const listos = S.estado.trabajos.filter((t) => t.tiene_video);
-  return h`<div class="cabecera"><h1>Biblioteca</h1><span class="tenue pequeno">${listos.length} Shorts renderizados</span></div>` +
+  const listos = S.estado.trabajos.filter((t) => t.tiene_video && coincide(t));
+  return h`<div class="cabecera"><div><div class="antetitulo">Tus resultados</div><h1>Biblioteca</h1><p>${plural(listos.length, "Short renderizado", "Shorts renderizados")}</p></div></div>` +
     (listos.length ? `<div class="galeria">` + listos.map((t) => h`<button class="pieza" data-ir="${t.id}">
       <img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">
       <div><b>${t.textos.titulo || t.nombre}</b><span class="estado ${t.estado}">${ESTADOS[t.estado]}</span></div></button>`).join("") + `</div>`
@@ -325,6 +483,14 @@ const accionTrabajo = (nombre, mensaje) => intentar(async () => {
   S.sucio = false; if (mensaje) avisar(mensaje); refrescar();
 });
 const acciones = {
+  nuevo: (b) => nuevoClip(b.dataset.p),
+  "cerrar-modal": () => cerrarModal(false),
+  "ir-ajustes": (b) => { S.pestana = b.dataset.p; },
+  filtro: (b) => { S.filtro = b.dataset.f; pintar(false); },
+  quitar: intentar(async (b) => {
+    if (!await confirmar("Eliminar el clip", `Se eliminará «${b.dataset.nombre}» y sus archivos intermedios de este PC. No borra nada de YouTube.`, "Eliminar", true)) return;
+    await api(`/api/trabajos/${b.dataset.id}`, { method: "DELETE" }); avisar("Clip eliminado."); refrescar();
+  }),
   reintentar: accionTrabajo("reintentar", "Reintentando desde la etapa que falló."),
   renderizar: accionTrabajo("renderizar", "En cola para renderizar con los ajustes actuales."),
   "proponer-momentos": accionTrabajo("proponer-momentos", "Buscando momentos de nuevo."),
@@ -346,11 +512,11 @@ const acciones = {
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),
   subir: intentar(async () => {
     const yt = S.estado.youtube;
-    if (!confirm(`Se subirá este Short en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}). ¿Continuar?`)) return;
+    if (!await confirmar("Subir a YouTube", `Se subirá este Short en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}).`, "Subir en privado")) return;
     await api(`/api/trabajos/${S.jid}/subir`, { method: "POST" }); avisar("Subida en cola."); refrescar();
   }),
   eliminar: intentar(async () => {
-    if (!confirm("Se eliminará el trabajo y sus archivos intermedios de este PC. No borra nada de YouTube. ¿Continuar?")) return;
+    if (!await confirmar("Eliminar el trabajo", "Se eliminará el trabajo y sus archivos intermedios de este PC. No borra nada de YouTube.", "Eliminar", true)) return;
     await api(`/api/trabajos/${S.jid}`, { method: "DELETE" }); location.hash = "cola";
   }),
   pestana: (b) => { S.pestana = b.dataset.p; pintarAjustes($("#principal")); },
@@ -359,9 +525,9 @@ const acciones = {
     $("#zona-codigo").innerHTML = h`<p class="codigo">${c.codigo}</p><p class="pequeno tenue">Válido 10 minutos y para un solo dispositivo. En la tablet abre <code>${c.direccion || "http://IP-del-PC:8765"}</code> en el navegador, conectada al mismo wifi.</p>`;
   }),
   "quitar-dispositivo": intentar(async (b) => { await api(`/api/dispositivos/${b.dataset.id}`, { method: "DELETE" }); pintarAjustes($("#principal")); }),
-  "yt-desconectar": intentar(async () => { if (confirm("¿Desconectar la cuenta de YouTube de Fábrica Studio?")) { await api("/api/youtube/desconectar", { method: "POST" }); await refrescar(); pintarAjustes($("#principal")); } }),
+  "yt-desconectar": intentar(async () => { if (await confirmar("Desconectar YouTube", "Se desconectará la cuenta de YouTube de Fábrica Studio y habrá que confirmar el canal de nuevo.", "Desconectar", true)) { await api("/api/youtube/desconectar", { method: "POST" }); await refrescar(); pintarAjustes($("#principal")); } }),
   "yt-confirmar": intentar(async (b) => {
-    if (!confirm(`¿Confirmas «${b.dataset.titulo}» (${b.dataset.id}) como canal de destino de las subidas?`)) return;
+    if (!await confirmar("Confirmar canal de destino", `Las subidas irán, siempre en privado, al canal «${b.dataset.titulo}» (${b.dataset.id}).`, "Confirmar canal")) return;
     await api("/api/youtube/canal", { method: "POST", json: { id: b.dataset.id } }); await refrescar(); pintarAjustes($("#principal"));
   }),
   "gemini-borrar": intentar(async () => { await api("/api/secretos/gemini", { method: "DELETE" }); await refrescar(); pintarAjustes($("#principal")); }),

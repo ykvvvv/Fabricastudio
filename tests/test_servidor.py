@@ -98,6 +98,15 @@ def test_diagnostico_y_ruta_con_espacios_y_acentos(tmp_path, clip, monkeypatch):
     assert pc.get(f"/media/{jid}/entrada").status_code == 200
 
 
+def test_duracion_real_solo_tras_comprobar(fabrica, clip):
+    pc, _, _ = _clientes(fabrica)
+    with open(clip, "rb") as fh:
+        t = pc.post("/api/importar/archivo", files={"archivo": ("clip.mp4", fh, "video/mp4")}).json()
+    assert t["duracion"] is None                      # aún no se midió: el panel muestra «—», no un valor inventado
+    fabrica._ejecutar(fabrica.db.trabajo(t["id"]))
+    assert abs(pc.get("/api/estado").json()["trabajos"][0]["duracion"] - 3.0) < 0.2
+
+
 def test_crear_clip_por_api_no_choca_con_las_acciones(fabrica, clip):
     pc, _, _ = _clientes(fabrica)
     with open(clip, "rb") as fh:

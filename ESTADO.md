@@ -88,6 +88,39 @@ del trabajo anterior.
 - Conclusión: ese trabajo se hizo **probablemente en ChatGPT web**. Para recuperarlo: exportar el historial
   de chatgpt.com o copiar los tres archivos a `referencias/`, revisando antes que no tengan claves.
 
+## Panel nuevo según `docs/diseno/referencia-panel.html` (en curso)
+
+Plan aprobado por Cristóbal el 2026-11-16, en 4 fases. El detalle del clip sigue siendo una página
+(`#trabajo/<id>`), no un modal. No hay skill `design`: la revisión de accesibilidad se hace a mano con Playwright.
+
+**Fase 1 hecha (2026-11-16): estructura, Resumen y Cola.**
+
+- Barra lateral (riel de iconos en tablet vertical, menú desplegable por debajo de 680 px), barra superior con
+  buscador (Ctrl K), avisos, ventanas accesibles que sustituyen a `confirm()`, pantalla de vinculación con el estilo nuevo.
+- Resumen con datos reales: clips en cola, listos para revisar, canal confirmado, enlace rápido, actividad
+  reciente, maqueta real del formato (`/api/diseno/vista`), estado de YouTube y dispositivos vinculados.
+- Cola en tabla con filtros (Todos / En espera / Generando / Listos / Con error), búsqueda, eliminar con
+  confirmación y progreso por etapas (un segmento por etapa; el motor no da porcentaje).
+- Ventana «Nuevo clip»: varios enlaces o varios archivos, tipo clip / video largo, casilla de YouTube.
+- API: el trabajo público incluye `duracion` (leída de `propiedades.json`; `null` hasta la etapa «comprobar»). Prueba nueva.
+- Quitado de la referencia por no tener datos reales: curvas de las estadísticas, textos de demo, «Pausar»,
+  «Probar el flujo», campo «Nombre», tipos de clip por color. Letra mínima 12 px y grises más claros (contraste AA).
+- Biblioteca, detalle del clip, video largo y Ajustes **funcionan igual que antes** con la paleta nueva; se
+  rediseñan en las fases 2 a 4. «Plantilla» y «Cómo funciona» aún no están en el menú (fases 3 y 4).
+
+Probado aquí (PC, Chromium con Playwright, servidor de prueba con datos temporales y transcripción fija,
+3 clips sintéticos): 62 pruebas de pytest; recorrido a 1280×800 y 800×1280 (enlace rechazado por el servidor,
+subir 2 clips y 1 video largo, duplicado rechazado, etapas en vivo, filtros, búsqueda, eliminar, servidor caído);
+sin desborde horizontal a 1280, 800 y 600 px; sin errores de JavaScript (solo los 400/409 provocados a propósito).
+Accesibilidad medida: contraste ≥ 4,5:1 en todo el texto de Resumen, Cola y ventana; foco visible y atrapado en
+la ventana; Esc cierra y devuelve el foco; el foco sobrevive al refresco de 2 s; objetivos táctiles ≥ 44 px
+(la casilla mide 22 px pero toda su fila es pulsable); `prefers-reduced-motion` desactiva las animaciones.
+
+**No probado:** la tablet real, la pantalla de vinculación vista desde otro dispositivo, un enlace real de Kick,
+Gemini, y el panel con los datos reales de Cristóbal (canal confirmado, Shorts ya subidos).
+
+**Falta:** fase 2 (Biblioteca en tarjetas y detalle), fase 3 (Plantilla con vista previa en vivo), fase 4 (Ajustes y ayuda).
+
 ## Beta 0.1 encontrada (2026-11-16)
 
 Cristóbal indicó la carpeta `C:\Users\notea\Downloads\FabricaStudio`: es el trabajo anterior (beta 0.1,
@@ -387,3 +420,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-16 · Claude Code (nube)** — Estilo pantalla completa con seguimiento de rostros (fase 1 de
   `docs/ESTILO_OPUSCLIP.md`), selector de estilo general y por clip, diagnóstico de OpenCV. 61 pruebas.
   Siguiente: Cristóbal reinstala dependencias y prueba 3–5 clips reales en ambos estilos.
+- **2026-11-16 · Claude Code (PC Windows)** — Beta 0.1 de `Descargas\FabricaStudio` revisada en solo lectura (sin
+  credenciales). Panel nuevo, fase 1: estructura, Resumen, Cola con filtros, ventana «Nuevo clip», campo
+  `duracion` en la API. 62 pruebas. Siguiente: Cristóbal revisa en el navegador y pide la fase 2.

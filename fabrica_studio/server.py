@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import shutil
 import tempfile
@@ -108,6 +109,18 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         return {"ok": True}
 
     # ------------------------------------------------------------ estado general
+    duraciones: dict[str, float] = {}     # propiedades.json no cambia una vez escrito
+
+    def _duracion(t: dict) -> float | None:
+        """Duración real del clip (ffprobe); None hasta que termina la etapa «comprobar»."""
+        if t["id"] not in duraciones:
+            f = fab.rutas.trabajo(t["id"]) / "propiedades.json"
+            try:
+                duraciones[t["id"]] = float(json.loads(f.read_text(encoding="utf-8"))["duracion"])
+            except (OSError, ValueError, KeyError):
+                return None
+        return duraciones[t["id"]]
+
     def _publico(t: dict) -> dict:
         """Versión del trabajo para el panel: sin sesiones de subida ni rutas internas."""
         s = t["subida"]
@@ -116,7 +129,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                                      "textos", "youtube_id", "modo")},
                 "origen_ref": t["origen_ref"] if t["origen_tipo"] == "enlace" else Path(t["origen_ref"]).name,
                 "salida": t["datos"].get("salida"), "copia": t["datos"].get("copia", ""),
-                "estilo": t["datos"].get("estilo", ""),
+                "estilo": t["datos"].get("estilo", ""), "duracion": _duracion(t),
                 "tiene_video": (fab.rutas.trabajo(t["id"]) / "short.mp4").exists(),
                 "subida": {k: s[k] for k in ("canal_id", "terminado", "privacidad") if k in s},
                 "progreso": fab.progreso.get(t["id"], "")}

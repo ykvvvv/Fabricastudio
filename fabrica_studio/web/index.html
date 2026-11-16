@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#13181c">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0c0d">
 <title>Fábrica Studio</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
@@ -20,16 +22,40 @@
 </div>
 
 <div id="app" class="app" hidden>
-  <nav class="lateral" aria-label="Secciones">
-    <div class="marca">Fábrica<span>Studio</span></div>
-    <a href="#cola" data-vista="cola">Cola</a>
-    <a href="#biblioteca" data-vista="biblioteca">Biblioteca</a>
-    <a href="#ajustes" data-vista="ajustes">Ajustes</a>
-    <div class="pie" id="pie-canal"></div>
-  </nav>
-  <main id="principal"></main>
+  <aside class="lateral" id="lateral" aria-label="Navegación principal">
+    <div class="marca"><i class="marca-signo" aria-hidden="true"></i><span class="marca-texto">Fábrica <small>Studio</small></span></div>
+    <div class="espacio" id="espacio"></div>
+    <nav class="nav" aria-label="Secciones">
+      <a href="#resumen" data-vista="resumen"><i data-icono="rejilla"></i><span class="nav-texto">Resumen</span></a>
+      <a href="#cola" data-vista="cola"><i data-icono="capas"></i><span class="nav-texto">Cola de clips</span><span class="cuenta" id="nav-cuenta" hidden></span></a>
+      <a href="#biblioteca" data-vista="biblioteca"><i data-icono="pelicula"></i><span class="nav-texto">Biblioteca</span></a>
+      <a href="#ajustes" data-vista="ajustes"><i data-icono="ajustes"></i><span class="nav-texto">Ajustes</span></a>
+    </nav>
+    <div class="lateral-pie">
+      <div class="tarjeta-pc" id="tarjeta-pc"></div>
+      <div class="perfil" id="perfil"></div>
+    </div>
+  </aside>
+  <div class="velo" id="velo"></div>
+  <div class="cuerpo">
+    <header class="barra">
+      <button class="icono-boton solo-movil" id="boton-menu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lateral"><i data-icono="menu"></i></button>
+      <div class="miga"><i data-icono="panel"></i><span>Estudio</span><span aria-hidden="true">/</span><span id="miga"></span></div>
+      <label class="buscar"><i data-icono="buscar"></i><span class="solo-lector">Buscar un clip</span><input id="buscar" type="search" placeholder="Buscar un clip…" autocomplete="off"><kbd>Ctrl K</kbd></label>
+    </header>
+    <main id="principal" class="principal"></main>
+  </div>
 </div>
-<div id="avisos" class="avisos" aria-live="polite"></div>
+
+<div class="modal-fondo" id="modal-fondo" hidden>
+  <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <header class="modal-cabeza"><h2 id="modal-titulo"></h2><button class="icono-boton" data-accion="cerrar-modal" aria-label="Cerrar ventana"><i data-icono="cerrar"></i></button></header>
+    <div class="modal-cuerpo" id="modal-cuerpo"></div>
+    <footer class="modal-pie" id="modal-pie"></footer>
+  </section>
+</div>
+<div id="avisos" class="avisos" role="status" aria-live="polite"></div>
+<script src="iconos.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
