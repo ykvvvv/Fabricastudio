@@ -13,7 +13,7 @@ const etapasDe = (t) => (t.modo === "largo" ? ETAPAS_LARGO : ETAPAS);
 const reloj = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
 const ESTADOS = { pendiente: "En espera", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
-let S = { busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
+let S = { orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
 
 async function api(ruta, opciones = {}) {
   if (opciones.json !== undefined) {
@@ -176,7 +176,8 @@ function navegar() {
   S.vista = vista in NOMBRES_VISTA ? vista : "resumen";
   S.jid = S.vista === "trabajo" ? jid : null;
   S.detalle = null; S.sucio = false;
-  const activa = S.vista === "trabajo" ? "cola" : S.vista;
+  if (S.vista !== "trabajo") S.desde = S.vista === "biblioteca" ? "biblioteca" : "cola";   // a dónde vuelve el detalle
+  const activa = S.vista === "trabajo" ? S.desde : S.vista;
   document.querySelectorAll(".nav a").forEach((a) => { const si = a.dataset.vista === activa; a.classList.toggle("activa", si); si ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   $("#miga").textContent = NOMBRES_VISTA[S.vista];
   document.title = `${NOMBRES_VISTA[S.vista]} · Fábrica Studio`;
@@ -215,7 +216,7 @@ function pintar(completo) {
   const m = $("#principal");
   if (S.vista === "resumen") pintarResumen(m, completo);
   else if (S.vista === "cola") pintarCola(m, completo);
-  else if (S.vista === "biblioteca") m.innerHTML = vistaBiblioteca();
+  else if (S.vista === "biblioteca") pintarBiblioteca(m, completo);
   else if (S.vista === "trabajo") pintarTrabajo(m, completo);
   else if (S.vista === "ajustes" && completo) pintarAjustes(m);
 }
@@ -307,13 +308,25 @@ function pintarCola(m, completo) {
     : h`Aún no hay clips. Pulsa «Nuevo clip»${e.carpeta.activa ? crudo(h` o copia un video en <code>${e.carpeta.ruta}</code>`) : ""}.`));
 }
 
-function vistaBiblioteca() {
-  const listos = S.estado.trabajos.filter((t) => t.tiene_video && coincide(t));
-  return h`<div class="cabecera"><div><div class="antetitulo">Tus resultados</div><h1>Biblioteca</h1><p>${plural(listos.length, "Short renderizado", "Shorts renderizados")}</p></div></div>` +
-    (listos.length ? `<div class="galeria">` + listos.map((t) => h`<button class="pieza" data-ir="${t.id}">
-      <img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">
-      <div><b>${t.textos.titulo || t.nombre}</b><span class="estado ${t.estado}">${ESTADOS[t.estado]}</span></div></button>`).join("") + `</div>`
-      : `<div class="vacio">Aún no hay Shorts renderizados.</div>`);
+function pintarBiblioteca(m, completo) {
+  if (completo || !$("#bib-rejilla")) {
+    m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">Tus resultados</div><h1>Biblioteca</h1><p>Una colección de buenos momentos.</p></div>
+        <button data-accion="nuevo" data-p="archivo">${ic("subir")}Importar un video</button></div>
+      <div class="herramientas"><span class="pequeno tenue" id="bib-cuenta"></span>
+        <select id="bib-orden" aria-label="Ordenar la biblioteca" style="width:auto"><option value="recientes">Más recientes primero</option><option value="nombre">Por nombre</option></select></div>
+      <div class="galeria escalonada" id="bib-rejilla"></div><div id="bib-vacia" class="panel sin-nada" hidden></div>`;
+    $("#bib-orden").value = S.orden;
+    $("#bib-orden").addEventListener("change", (e) => { S.orden = e.target.value; pintar(false); });
+  }
+  const titulo = (t) => t.textos.titulo || t.nombre;
+  const listos = S.estado.trabajos.filter((t) => t.tiene_video && coincide(t))
+    .sort(S.orden === "nombre" ? (a, b) => titulo(a).localeCompare(titulo(b), "es") : (a, b) => b.creado - a.creado);
+  $("#bib-cuenta").textContent = plural(listos.length, "Short renderizado", "Shorts renderizados");
+  poner($("#bib-rejilla"), listos.map((t) => h`<a class="pieza" href="#trabajo/${t.id}"><span class="pieza-arte">
+      <img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">${crudo(pastilla(t))}${t.duracion ? crudo(h`<span class="duracion">${reloj(t.duracion)}</span>`) : ""}</span>
+    <b>${titulo(t)}</b><small>${new Date(t.creado * 1000).toLocaleDateString("es-CL")} · ${t.youtube_id ? "En YouTube (privado)" : "Sin subir"}</small></a>`).join(""));
+  $("#bib-vacia").hidden = listos.length > 0;
+  poner($("#bib-vacia"), icono("pelicula") + (S.busca ? "Ningún Short coincide con la búsqueda." : "Aún no hay Shorts renderizados. Aparecerán aquí cuando termine el primer render."));
 }
 
 document.addEventListener("change", intentar(async (e) => {
@@ -324,8 +337,6 @@ document.addEventListener("change", intentar(async (e) => {
 }));
 
 document.addEventListener("click", (e) => {
-  const ir = e.target.closest("[data-ir]");
-  if (ir) location.hash = `trabajo/${ir.dataset.ir}`;
   const acc = e.target.closest("[data-accion]");
   if (acc) acciones[acc.dataset.accion]?.(acc);
 });
@@ -333,12 +344,12 @@ document.addEventListener("click", (e) => {
 // ---------------------------------------------------------------- detalle del trabajo
 function pintarTrabajo(m, completo) {
   const t = S.detalle;
-  if (!t) { m.innerHTML = `<div class="cabecera"><h1>Trabajo</h1></div><div class="vacio">Cargando… Si no aparece, el trabajo ya no existe. <a href="#cola">Volver a la cola</a></div>`; return; }
+  if (!t) { m.innerHTML = `<div class="cabecera"><h1>Clip</h1></div><div class="panel sin-nada">Cargando… Si no aparece, el clip ya no existe. <a href="#cola">Volver a la cola</a></div>`; return; }
   if (t.modo === "largo") return pintarLargo(m, t, completo);
   if (completo || !$("#t-estado") || $("#t-estado").dataset.id !== t.id) {
-    m.innerHTML = h`<div class="cabecera"><h1 id="t-nombre"></h1><a class="boton" href="#cola">← Volver</a></div>
-      <div class="detalle"><div class="pila"><div id="t-video"></div></div>
-      <div class="pila"><div class="pila" id="t-estado" data-id="${t.id}"></div><div class="pila" id="t-edicion"></div></div></div>`;
+    m.innerHTML = h`<div class="cabecera"><div><a class="enlace-fino" href="#${S.desde}">← ${S.desde === "biblioteca" ? "Biblioteca" : "Cola de clips"}</a><h1 id="t-nombre" style="margin-top:8px"></h1></div></div>
+      <div class="detalle"><div id="t-video"></div>
+      <div class="pila"><div class="tarjeta pila" id="t-estado" data-id="${t.id}"></div><div class="pila" id="t-edicion"></div></div></div>`;
     S.sucio = false; S.version = null;
   }
   $("#t-nombre").textContent = t.nombre;
@@ -354,29 +365,34 @@ function pintarTrabajo(m, completo) {
   const ocupado = ["procesando", "subiendo"].includes(t.estado) || t.subir_solicitado || t.estado === "pendiente";
   const pasos = ETAPAS.map(([k, n]) => h`<li class="${t.etapas[k]?.estado || ""}"><span class="punto"></span><span>${n}</span><span>${t.etapas[k]?.detalle || ""}</span></li>`).join("");
   let botones = "";
-  if (t.estado === "error") botones += `<button class="primario" data-accion="reintentar">Reintentar</button>`;
+  if (t.estado === "error") botones += `<button class="primario" data-accion="reintentar" data-foco="b-reintentar">Reintentar</button>`;
   if (t.estado === "renderizado" && !t.subir_solicitado) {
-    botones += yt.canal_id ? h`<button class="primario" data-accion="subir">Subir en privado a ${yt.canal_nombre}</button>` : `<a class="boton" href="#ajustes">Conectar YouTube para subir</a>`;
-    botones += `<button data-accion="renderizar">Renderizar de nuevo</button>`;
+    botones += yt.canal_id ? h`<button class="primario" data-accion="subir" data-foco="b-subir">Subir en privado a ${yt.canal_nombre}</button>` : `<a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">Conectar YouTube para subir</a>`;
+    botones += `<button data-accion="renderizar" data-foco="b-render">Renderizar de nuevo</button>`;
   }
   if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
     const general = S.estado.estilo === "completo" ? "pantalla completa" : "clásico";
-    botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo>
+    botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo data-foco="b-estilo">
       <option value="" ${t.estilo === "" ? "selected" : ""}>General de Ajustes (${general})</option>
       <option value="clasico" ${t.estilo === "clasico" ? "selected" : ""}>Clásico: video completo con tarjeta</option>
       <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option></select></label>`;
   }
   if (t.tiene_video) botones += h`<a class="boton" href="/media/${t.id}/short.mp4" download="${t.nombre}.mp4">Descargar MP4</a>`;
-  if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar">Eliminar</button>`;
-  $("#t-estado").innerHTML = h`<div class="fila"><span class="estado ${t.estado}">${ESTADOS[t.estado]}</span>
-      <span class="tenue pequeno">${t.progreso || (t.subir_solicitado ? "En cola para subir…" : etiquetaOrigen(t))}</span></div>
+  if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`;
+  const sal = t.salida;
+  const destino = t.youtube_id ? "Subido en privado" : t.subir_solicitado || t.estado === "subiendo" ? "En cola para subir en privado" : t.publicar ? "Sin subir" : "No destinado a YouTube";
+  poner($("#t-estado"), h`<div class="fila">${crudo(pastilla(t))}<span class="tenue pequeno">${t.progreso || (t.subir_solicitado ? "En cola para subir…" : "")}</span></div>
     ${t.error ? crudo(h`<p class="nota mal" role="alert">${t.error}</p>`) : ""}
     ${t.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}
     ${t.youtube_id ? crudo(h`<p class="nota bien">Subido en privado. ID de YouTube: <code>${t.youtube_id}</code> ·
       <a href="https://studio.youtube.com/video/${t.youtube_id}/edit" target="_blank" rel="noopener">Abrir en YouTube Studio</a></p>`) : ""}
-    <ul class="pasos tarjeta">${crudo(pasos)}</ul>
-    ${t.salida ? crudo(h`<p class="pequeno tenue">Resultado: ${t.salida.ancho}×${t.salida.alto} · ${t.salida.duracion.toFixed(1)} s · ${t.salida.codec_video}/${t.salida.codec_audio || "sin audio"} · ${(t.salida.tamano_bytes / 1048576).toFixed(1)} MB · copia en 2_shorts_renderizados/${t.copia}</p>`) : ""}
-    <div class="fila">${crudo(botones)}</div>`;
+    <dl class="ficha"><dt>Origen</dt><dd>${etiquetaOrigen(t)}</dd>
+      <dt>Duración</dt><dd>${t.duracion ? reloj(t.duracion) : "—"}</dd>
+      <dt>Resultado</dt><dd>${sal ? `${sal.ancho} × ${sal.alto} · ${sal.codec_video}/${sal.codec_audio || "sin audio"} · ${(sal.tamano_bytes / 1048576).toFixed(1)} MB` : "Aún sin renderizar"}</dd>
+      ${sal && t.copia ? crudo(h`<dt>Copia</dt><dd>2_shorts_renderizados/${t.copia}</dd>`) : ""}
+      <dt>YouTube</dt><dd>${destino}</dd></dl>
+    <ul class="pasos">${crudo(pasos)}</ul>
+    <div class="fila">${crudo(botones)}</div>`);
 
   // Formularios: se repintan solo si el trabajo cambió y no hay cambios sin guardar.
   const version = `${t.actualizado}|${ocupado}`;
@@ -428,21 +444,21 @@ function pintarTrabajo(m, completo) {
 // ---------------------------------------------------------------- video largo
 function pintarLargo(m, t, completo) {
   if (completo || !$("#l-estado") || $("#l-estado").dataset.id !== t.id) {
-    m.innerHTML = h`<div class="cabecera"><h1 id="t-nombre"></h1><a class="boton" href="#cola">← Volver</a></div>
-      <div class="pila"><div class="pila" id="l-estado" data-id="${t.id}"></div>
+    m.innerHTML = h`<div class="cabecera"><div><a class="enlace-fino" href="#${S.desde}">← ${S.desde === "biblioteca" ? "Biblioteca" : "Cola de clips"}</a><h1 id="t-nombre" style="margin-top:8px"></h1></div></div>
+      <div class="pila"><div class="tarjeta pila" id="l-estado" data-id="${t.id}"></div>
       ${t.entrada ? crudo(h`<video id="l-video" controls playsinline preload="metadata" src="/media/${t.id}/entrada" style="width:100%;max-width:640px;border-radius:10px;border:1px solid var(--borde);background:#000"></video>`) : crudo(`<p class="pequeno tenue">El formato del original no se puede reproducir en el navegador; guíate por el texto de cada momento.</p>`)}
       <div class="pila" id="l-momentos"></div></div>`;
     S.version = null; S.sucio = false;
   }
   $("#t-nombre").textContent = t.nombre;
   const pasos = ETAPAS_LARGO.map(([k, n]) => h`<li class="${t.etapas[k]?.estado || ""}"><span class="punto"></span><span>${n}</span><span>${t.etapas[k]?.detalle || ""}</span></li>`).join("");
-  $("#l-estado").innerHTML = h`<div class="fila"><span class="estado ${t.estado}">${ESTADOS[t.estado]}</span><span class="tenue pequeno">${t.progreso || etiquetaOrigen(t)}</span></div>
+  poner($("#l-estado"), h`<div class="fila">${crudo(pastilla(t))}<span class="tenue pequeno">${t.progreso || etiquetaOrigen(t)}</span></div>
     ${t.error ? crudo(h`<p class="nota mal" role="alert">${t.error}</p>`) : ""}
     ${t.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}
-    <ul class="pasos tarjeta">${crudo(pasos)}</ul>
-    <div class="fila">${t.estado === "error" ? crudo(`<button class="primario" data-accion="reintentar">Reintentar</button>`) : ""}
-      ${["propuestas", "error"].includes(t.estado) ? crudo(`<button data-accion="proponer-momentos">Proponer momentos de nuevo</button>`) : ""}
-      ${t.estado !== "procesando" ? crudo(`<button class="texto peligro" data-accion="eliminar">Eliminar</button>`) : ""}</div>`;
+    <ul class="pasos">${crudo(pasos)}</ul>
+    <div class="fila">${t.estado === "error" ? crudo(`<button class="primario" data-accion="reintentar" data-foco="b-reintentar">Reintentar</button>`) : ""}
+      ${["propuestas", "error"].includes(t.estado) ? crudo(`<button data-accion="proponer-momentos" data-foco="b-proponer">Proponer momentos de nuevo</button>`) : ""}
+      ${t.estado !== "procesando" ? crudo(`<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`) : ""}</div>`);
   const mo = t.momentos;
   const version = `${t.actualizado}|${t.clips.map((c) => c.id + c.estado).join()}`;
   if (!mo || S.sucio || S.version === version || $("#l-momentos").contains(document.activeElement)) return;
@@ -451,7 +467,7 @@ function pintarLargo(m, t, completo) {
   const local = mo.origen === "local";
   $("#l-momentos").innerHTML = h`<div class="fila separado"><h2>Momentos propuestos</h2><span class="pequeno tenue">Origen: ${mo.origen}</span></div>
     ${local ? crudo(`<p class="nota">Propuestas de la heurística local: mide ritmo de habla, exclamaciones y preguntas, pero no entiende el contenido. Revisa cada tramo antes de crear el Short. Con una clave de Gemini las propuestas se basan en lo que se dice.</p>`) : ""}
-    ${mo.propuestas.length ? "" : crudo(`<div class="vacio">No hay propuestas. Puedes crear un clip indicando los tiempos abajo.</div>`)}
+    ${mo.propuestas.length ? "" : crudo(`<div class="panel sin-nada">No hay propuestas. Puedes crear un clip indicando los tiempos abajo.</div>`)}
     ${mo.propuestas.map((p) => { const c = clipDe(p); return crudo(h`<form class="tarjeta pila momento" data-ini="${p.inicio}" data-fin="${p.fin}">
       <div class="fila separado"><b>${reloj(p.inicio)} – ${reloj(p.fin)} · ${Math.round(p.fin - p.inicio)} s</b><span class="pequeno tenue">${p.motivo}</span></div>
       <p class="transcripcion">${p.texto}</p>
@@ -463,7 +479,7 @@ function pintarLargo(m, t, completo) {
       <label style="width:110px">Inicio (m:ss)<input name="ini" placeholder="0:00" required></label>
       <label style="width:110px">Fin (m:ss)<input name="fin" placeholder="0:40" required></label>
       ${t.entrada ? crudo(`<button type="button" data-accion="ver-momento">Ver tramo</button>`) : ""}<button>Crear Short</button></div></form>
-    ${t.clips.length ? crudo(h`<div class="tarjeta pila"><h3>Clips creados</h3>${t.clips.map((c) => crudo(h`<a class="fila separado" href="#trabajo/${c.id}" style="text-decoration:none"><span>${reloj(c.inicio)} – ${reloj(c.fin)} · ${c.nombre}</span><span class="estado ${c.estado}">${ESTADOS[c.estado]}</span></a>`))}</div>`) : ""}`;
+    ${t.clips.length ? crudo(h`<div class="tarjeta pila"><h3>Clips creados</h3>${t.clips.map((c) => crudo(h`<a class="fila separado" href="#trabajo/${c.id}" style="text-decoration:none"><span>${reloj(c.inicio)} – ${reloj(c.fin)} · ${c.nombre}</span>${crudo(pastilla(c))}</a>`))}</div>`) : ""}`;
   document.querySelectorAll("form.momento").forEach((f) => {
     f.addEventListener("input", () => { S.sucio = true; });
     f.addEventListener("submit", intentar(async (e) => {
@@ -517,7 +533,7 @@ const acciones = {
   }),
   eliminar: intentar(async () => {
     if (!await confirmar("Eliminar el trabajo", "Se eliminará el trabajo y sus archivos intermedios de este PC. No borra nada de YouTube.", "Eliminar", true)) return;
-    await api(`/api/trabajos/${S.jid}`, { method: "DELETE" }); location.hash = "cola";
+    await api(`/api/trabajos/${S.jid}`, { method: "DELETE" }); location.hash = S.desde;
   }),
   pestana: (b) => { S.pestana = b.dataset.p; pintarAjustes($("#principal")); },
   "codigo": intentar(async () => {
@@ -676,7 +692,7 @@ async function pintarAjustes(m) {
     try {
       const canales = await api("/api/youtube/canales");
       $("#yt-canales").innerHTML = canales.length ? canales.map((c) => h`<div class="fila separado"><span><b>${c.titulo}</b> ${c.identificador} · <code>${c.id}</code></span>
-        ${c.id === yt.canal_id ? crudo(`<span class="estado publicado">Destino confirmado</span>`) : crudo(h`<button data-accion="yt-confirmar" data-id="${c.id}" data-titulo="${c.titulo}" ${local ? "" : "disabled"}>Confirmar como destino</button>`)}</div>`).join("")
+        ${c.id === yt.canal_id ? crudo(`<span class="pastilla subido">Destino confirmado</span>`) : crudo(h`<button data-accion="yt-confirmar" data-id="${c.id}" data-titulo="${c.titulo}" ${local ? "" : "disabled"}>Confirmar como destino</button>`)}</div>`).join("")
         : `<p class="nota">La cuenta conectada no tiene ningún canal de YouTube.</p>`;
     } catch (e) { $("#yt-canales").innerHTML = h`<p class="nota mal">${e.message}</p>`; }
   }

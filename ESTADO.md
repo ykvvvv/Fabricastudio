@@ -119,7 +119,22 @@ la ventana; Esc cierra y devuelve el foco; el foco sobrevive al refresco de 2 s;
 **No probado:** la tablet real, la pantalla de vinculación vista desde otro dispositivo, un enlace real de Kick,
 Gemini, y el panel con los datos reales de Cristóbal (canal confirmado, Shorts ya subidos).
 
-**Falta:** fase 2 (Biblioteca en tarjetas y detalle), fase 3 (Plantilla con vista previa en vivo), fase 4 (Ajustes y ayuda).
+**Fase 2 hecha (2026-11-16, sin commit todavía): Biblioteca en tarjetas y detalle del clip.** Solo `web/app.js` y `web/estilo.css`.
+
+- Biblioteca: tarjetas 9:16 con miniatura real, estado, duración, fecha y «Sin subir / En YouTube (privado)»;
+  orden (recientes / por nombre), búsqueda, botón «Importar un video». Ya no se repinta entera cada 2 s.
+- Detalle: ficha con estado, Origen, Duración, Resultado, Copia y YouTube, etapas y acciones en una tarjeta.
+  El enlace «←» y el menú recuerdan si se llegó desde la Biblioteca o desde la Cola; eliminar vuelve ahí.
+  El estado ya no se reescribe cada 2 s (el selector de estilo y los botones conservan el foco).
+- Video largo: misma cabecera y pastillas de estado; los formularios de momentos no cambian.
+- Probado aquí (Chromium/Playwright, servidor de prueba con transcripción fija, 2 clips y 1 video largo sintéticos):
+  abrir tarjeta, cambiar estilo y re-render, búsqueda sin resultados, eliminar desde el detalle, video largo desde la
+  cola; sin desborde a 1280, 800 y 600 px; contraste mínimo 5,56:1; letra mínima 12 px; sin errores de JavaScript.
+- pytest tras el cambio: 62 pasan (no se añadieron pruebas: el cambio es solo de interfaz).
+- **No probado:** el orden «por nombre» con títulos distintos, un clip en
+  `error` o ya subido en la ficha nueva, el centrado del video en tablet tras el último ajuste de CSS, la tablet real.
+
+**Falta:** fase 3 (Plantilla con vista previa en vivo), fase 4 (Ajustes y ayuda).
 
 ## Beta 0.1 encontrada (2026-11-16)
 
