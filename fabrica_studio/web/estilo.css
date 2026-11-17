@@ -8,7 +8,7 @@
   --texto: #e9e9eb; --tenue: #a6a6ab; --apagado: #8e8e95;
   --acento: #d8aa91; --acento-tinta: #222224; --claro: #e5e4e2;
   --ok: #a3c9ad; --alerta: #d8bfa2; --mal: #df9690;
-  --radio: 12px; --radio-c: 7px;
+  --radio: 12px; --radio-c: 7px; --curva: cubic-bezier(.3, .7, .2, 1);
   --letra: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "HarmonyOS Sans", Roboto, sans-serif;
   --titulos: var(--letra);
   color-scheme: dark;
@@ -27,26 +27,31 @@ p { margin: 0; } a { color: inherit; }
 svg.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------------------------------------------------------------- estructura */
-.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100%; }
-.lateral { background: var(--lateral); border-right: 1px solid var(--borde-suave); padding: 28px 16px 20px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; z-index: 20; }
+/* La barra lateral se pliega animando la columna de la rejilla (única animación de tamaño del panel).
+   Su contenido mide siempre 195 px: al plegar no se recoloca, solo queda oculto, y los iconos no se mueven. */
+.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100%; transition: grid-template-columns .22s var(--curva); }
+.lateral { background: var(--lateral); border-right: 1px solid var(--borde-suave); padding: 28px 14px 20px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow: hidden auto; z-index: 20; }
+.lateral > * { width: 195px; flex-shrink: 0; }
+.marca-texto, .nav-texto, .espacio > div:last-child, .tarjeta-pc, .perfil > div:last-child { animation: aparece .22s ease-out; }
+.espacio .avatar { transition: transform .22s var(--curva); }
 .marca { display: flex; gap: 11px; align-items: center; padding: 0 12px; font-size: 17px; font-weight: 600; letter-spacing: -0.03em; }
 .marca small { color: var(--tenue); font-size: 12px; font-weight: 400; letter-spacing: 0.02em; }
 .marca-signo { width: 22px; height: 22px; position: relative; flex: none; }
 .marca-signo::before, .marca-signo::after { content: ""; position: absolute; width: 8px; height: 18px; background: var(--claro); transform: rotate(-28deg); border-radius: 2px; left: 3px; top: 1px; }
 .marca-signo::after { left: 12px; top: 5px; height: 13px; opacity: .65; }
-.espacio { margin: 28px 0 24px; border: 1px solid var(--borde); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.espacio { margin: 28px 0 24px; border: 1px solid var(--borde); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 80px; }
 .avatar { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #363033; background: #282326; border-radius: 8px; font-size: 12px; font-weight: 600; color: #cfbdb2; flex: none; }
 .espacio strong, .perfil strong { font-size: 13px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .espacio small, .perfil small { font-size: 12px; color: var(--apagado); display: block; overflow-wrap: anywhere; line-height: 1.35; margin-top: 2px; }
 .espacio > div:last-child, .perfil > div:last-child { min-width: 0; }
 .nav { display: flex; flex-direction: column; gap: 4px; }
-.nav a { display: flex; gap: 11px; align-items: center; color: var(--tenue); padding: 10px 13px; border: 1px solid transparent; border-radius: var(--radio-c); font-size: 13px; min-height: 42px; text-decoration: none; }
+.nav a { display: flex; gap: 11px; align-items: center; white-space: nowrap; color: var(--tenue); padding: 10px 13px; border: 1px solid transparent; border-radius: var(--radio-c); font-size: 13px; min-height: 42px; text-decoration: none; }
 .nav a:hover { color: var(--texto); background: #151516; }
 .nav a.activa { background: linear-gradient(180deg, #28282a, #202022); border-color: #323235; color: #f1f1f2; box-shadow: inset 0 1px 0 #ffffff08; }
 .nav .ic { width: 16px; height: 16px; }
 .cuenta { font-size: 12px; margin-left: auto; background: #2a2a2c; padding: 1px 7px; border-radius: 4px; color: #c2c2c6; }
 .lateral-pie { margin-top: auto; padding-top: 32px; }
-.tarjeta-pc { border: 1px solid var(--borde); border-radius: 10px; padding: 12px 13px; margin-bottom: 16px; font-size: 12px; color: var(--apagado); line-height: 1.6; }
+.tarjeta-pc { border: 1px solid var(--borde); border-radius: 10px; padding: 12px 13px; margin-bottom: 16px; font-size: 12px; color: var(--apagado); line-height: 1.6; min-height: 108px; }
 .tarjeta-pc b { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 13px; color: var(--texto); margin-bottom: 4px; }
 .tarjeta-pc .ic { width: 15px; height: 15px; }
 .punto { width: 7px; height: 7px; border-radius: 50%; background: #85858b; flex: none; margin-left: auto; }
@@ -66,7 +71,22 @@ svg.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-wid
 .principal { padding: 34px 36px 56px; max-width: 1500px; width: 100%; margin: 0 auto; min-width: 0; }
 .principal.entra { animation: entra .18s ease-out; }
 @keyframes entra { from { opacity: 0; transform: translateY(6px); } }
-.velo, .solo-movil { display: none; }
+.velo { display: none; }
+@media (min-width: 681px) {
+  .app.plegada { grid-template-columns: 72px minmax(0, 1fr); }
+  .plegada .lateral { overflow: visible; }
+  .plegada .lateral > :not(.nav) { pointer-events: none; }
+  .plegada .marca-texto, .plegada .espacio > div:last-child, .plegada .tarjeta-pc, .plegada .perfil > div:last-child { visibility: hidden; animation: none; }
+  .plegada .espacio { border-color: transparent; }
+  .plegada .espacio .avatar { transform: translateX(-7px); }
+  .plegada .nav { width: 44px; }
+  .plegada .nav a { position: relative; }
+  .plegada .nav-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; animation: none; }
+  .plegada .cuenta { position: absolute; top: -5px; right: -7px; padding: 0 5px; }
+  /* Nombre de la sección al pasar el mouse o al enfocar con el teclado. */
+  .plegada .nav a::after { content: attr(data-tip); position: absolute; left: calc(100% + 16px); top: 50%; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; background: #29292c; border: 1px solid #49494f; color: #e8e8eb; padding: 5px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; box-shadow: 0 8px 24px #0008; }
+  .plegada .nav a:hover::after, .plegada .nav a:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+}
 
 /* ---------------------------------------------------------------- piezas comunes */
 .cabecera { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 26px; flex-wrap: wrap; }
@@ -127,18 +147,35 @@ label.linea { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 .clip-meta.mal { color: var(--mal); }
 /* Progreso real: un segmento por etapa del motor (no hay porcentaje). */
 .segmentos { display: flex; gap: 3px; margin-top: 8px; max-width: 250px; }
-.segmentos i { flex: 1; height: 3px; border-radius: 9px; background: #2e2b28; transition: background-color .4s; }
+.segmentos i { flex: 1; height: 3px; border-radius: 9px; background: #2e2b28; position: relative; overflow: hidden; }
 .segmentos i.hecho { background: #b59777; }
 .segmentos i.error { background: var(--mal); }
-.segmentos i.en_curso { background: linear-gradient(90deg, #5c4c3c 0 35%, #e4c7a6 50%, #5c4c3c 65% 100%); background-size: 300% 100%; animation: brillo 1.4s linear infinite; animation-delay: var(--fase, 0ms); }
-@keyframes brillo { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* Etapa en curso: un brillo la recorre. Etapa recién completada (según la API): el relleno avanza una vez. */
+.segmentos i.en_curso { background: #5c4c3c; }
+.segmentos i.en_curso::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #e4c7a6, transparent); animation: barrido 1.4s linear infinite; animation-delay: var(--fase, 0ms); }
+.segmentos i.recien { background: #5c4c3c; }
+.segmentos i.recien::after { content: ""; position: absolute; inset: 0; background: #b59777; transform-origin: left; animation: llena .45s var(--curva) backwards; }
+@keyframes barrido { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes llena { from { transform: scaleX(0); } }
+@keyframes late { from { opacity: .4; } }
+.pastilla .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.pastilla.recien .ic { animation: marca .5s cubic-bezier(.3, 1.7, .5, 1); }
+@keyframes marca { from { opacity: 0; transform: scale(.2) rotate(-25deg); } }
+/* Esqueleto de carga. */
+.esqueleto { display: flex; flex-direction: column; gap: 14px; }
+.esqueleto > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 14px 0 8px; }
+.esqueleto i { display: block; height: 14px; border-radius: 8px; background: #1a1a1c; position: relative; overflow: hidden; }
+.esqueleto div i { height: 118px; border-radius: var(--radio); }
+.esqueleto i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #ffffff0f, transparent); animation: barrido 1.5s linear infinite; }
 .sin-nada { padding: 48px 20px; text-align: center; color: var(--tenue); font-size: 13px; line-height: 1.8; }
 .sin-nada .ic { width: 28px; height: 28px; color: var(--apagado); display: block; margin: 0 auto 10px; }
-.escalonada > * { animation: entra .22s ease-out backwards; }
-.escalonada > :nth-child(2) { animation-delay: 30ms; } .escalonada > :nth-child(3) { animation-delay: 60ms; }
-.escalonada > :nth-child(4) { animation-delay: 90ms; } .escalonada > :nth-child(5) { animation-delay: 120ms; }
-.escalonada > :nth-child(6) { animation-delay: 150ms; } .escalonada > :nth-child(7) { animation-delay: 180ms; }
-.escalonada > :nth-child(n+8) { animation-delay: 210ms; }
+/* Entrada escalonada: solo en elementos nuevos (ponerLista en app.js les da --i, de 0 a 8). */
+.entra-fila { animation: entra .22s ease-out backwards; animation-delay: calc(var(--i, 0) * 30ms); }
+@media (hover: hover) {
+  .pieza, .tabla-cola tbody tr { transition: transform .16s var(--curva), box-shadow .16s var(--curva); }
+  .pieza:hover { transform: translateY(-2px); box-shadow: 0 10px 26px #0007; }
+  .tabla-cola tbody tr:hover { transform: translateY(-2px); box-shadow: 0 8px 20px #0008; background: #19191b; }
+}
 
 /* ---------------------------------------------------------------- resumen */
 .cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
@@ -204,12 +241,16 @@ label.linea { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 .modal-pestanas button { padding: 0 2px 11px; min-height: 34px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--tenue); font-weight: 400; }
 .modal-pestanas button:hover { background: none; color: var(--texto); }
 .modal-pestanas button[aria-selected=true] { color: #f1f1f2; border-bottom-color: #ddd; }
-.soltar { border: 1px dashed #48484c; background: #111113; border-radius: 9px; text-align: center; padding: 24px 16px; color: #c3c3c8; font-size: 13px; line-height: 1.8; align-items: center; transition: border-color .15s, background-color .15s; }
+.soltar { border: 1px dashed #48484c; background: #111113; border-radius: 9px; text-align: center; padding: 24px 16px; color: #c3c3c8; font-size: 13px; line-height: 1.8; align-items: center; position: relative; }
 .soltar .ic { width: 25px; height: 25px; color: #999; }
 .soltar small { color: var(--apagado); font-size: 12px; }
-.soltar.encima { border-color: var(--acento); border-style: solid; background: #1d1a16; }
+.soltar .ic { transition: transform .16s var(--curva); }
+/* Al arrastrar un archivo encima: aro con brillo que late (solo opacity). */
+.soltar::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; border: 1px solid var(--acento); background: #d8aa910d; box-shadow: 0 0 0 4px #d8aa911f, 0 0 34px #d8aa9140; opacity: 0; pointer-events: none; transition: opacity .16s; }
+.soltar.encima::after { opacity: 1; animation: late .8s ease-in-out .16s infinite alternate-reverse; }
+.soltar.encima .ic { transform: translateY(-3px); color: var(--acento); }
 .avisos { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 70; width: max-content; max-width: calc(100vw - 30px); }
-.avisos div { background: #29292c; color: #e8e8eb; border: 1px solid #49494f; box-shadow: 0 8px 30px #0007; padding: 11px 18px; border-radius: 9px; font-size: 13px; line-height: 1.5; animation: entra .18s ease-out; max-width: 100%; overflow-wrap: anywhere; }
+.avisos div { background: #29292c; color: #e8e8eb; border: 1px solid #49494f; box-shadow: 0 8px 30px #0007; padding: 11px 18px; border-radius: 9px; font-size: 13px; line-height: 1.5; animation: crece .2s ease-out; max-width: 100%; overflow-wrap: anywhere; }
 .avisos div.mal { border-color: #7a4541; color: #f0c4c0; white-space: pre-wrap; }
 
 /* ---------------------------------------------------------------- biblioteca y detalle; debajo, Ajustes aún sin migrar (fases 3 y 4) */
@@ -230,7 +271,7 @@ label.linea { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 .pasos { list-style: none; margin: 0; padding: 14px 0 0; border-top: 1px solid var(--borde); display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
 .pasos li { display: grid; grid-template-columns: 14px 96px 1fr; gap: 8px; align-items: baseline; }
 .pasos .punto { width: 8px; height: 8px; margin: 0; background: var(--borde-fuerte); align-self: center; }
-.pasos .hecho .punto { background: var(--ok); } .pasos .en_curso .punto { background: var(--acento); } .pasos .error .punto { background: var(--mal); }
+.pasos .hecho .punto { background: var(--ok); } .pasos .en_curso .punto { background: var(--acento); animation: late .9s ease-in-out infinite alternate; } .pasos .error .punto { background: var(--mal); }
 .pasos span:last-child { color: var(--tenue); overflow-wrap: anywhere; }
 .contador { font-size: 12px; color: var(--tenue); align-self: flex-end; } .contador.pasado { color: var(--mal); font-weight: 600; }
 .subs { max-height: 300px; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
@@ -257,24 +298,13 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 
 /* ---------------------------------------------------------------- tamaños de pantalla */
 @media (max-width: 1150px) {
-  .app { grid-template-columns: 200px minmax(0, 1fr); }
-  .lateral { padding-left: 12px; padding-right: 12px; }
   .barra { padding: 0 24px; } .principal { padding: 28px 24px 56px; }
   .buscar kbd { display: none; }
 }
-/* Tablet en vertical: la barra lateral queda en riel de iconos (los nombres siguen para lectores de pantalla). */
+/* Tablet en vertical: la barra lateral arranca plegada (lo decide app.js). */
 @media (max-width: 900px) {
-  .app { grid-template-columns: 76px minmax(0, 1fr); }
-  .lateral { padding: 24px 11px; align-items: stretch; }
-  .marca { padding: 0; justify-content: center; }
-  .marca-texto, .nav-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .espacio, .tarjeta-pc, .perfil > div:last-child { display: none; }
-  .nav { margin-top: 32px; }
-  .nav a { justify-content: center; padding: 12px; position: relative; min-height: 46px; }
-  .nav .ic { width: 19px; height: 19px; }
-  .cuenta { position: absolute; top: 4px; right: 4px; padding: 0 5px; }
-  .perfil { padding: 0; justify-content: center; }
   .dos-columnas { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
+  .app:not(.plegada) .dos-columnas { grid-template-columns: 1fr; }     /* con la barra desplegada queda poco ancho */
   .rejilla2, .detalle, .diseno { grid-template-columns: 1fr; }
   .detalle video, .detalle .hueco { max-width: 300px; margin: 0 auto; }
   .diseno img { max-width: 260px; margin: 0 auto; display: block; position: static; }
@@ -282,19 +312,16 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .buscar input { width: 130px; }
 }
 @media (max-width: 680px) {
+  /* Móvil: la barra es un menú que entra deslizándose sobre un fondo oscurecido. */
   .app { display: block; }
-  .lateral { display: none; }
-  .lateral.abierto { display: flex; position: fixed; left: 0; top: 0; width: 240px; padding: 28px 16px 20px; z-index: 41; }
-  .lateral.abierto .marca { justify-content: flex-start; padding: 0 12px; }
-  .lateral.abierto .marca-texto, .lateral.abierto .nav-texto { position: static; width: auto; height: auto; clip-path: none; }
-  .lateral.abierto .espacio { display: flex; } .lateral.abierto .tarjeta-pc, .lateral.abierto .perfil > div:last-child { display: block; }
-  .lateral.abierto .nav { margin: 0; } .lateral.abierto .nav a { justify-content: flex-start; }
-  .lateral.abierto .cuenta { position: static; }
-  .lateral.abierto .perfil { justify-content: flex-start; }
-  .velo.abierto { display: block; position: fixed; inset: 0; background: #0009; z-index: 40; }
-  .solo-movil { display: inline-flex; }
+  .lateral { position: fixed; left: 0; top: 0; width: 240px; z-index: 41; transform: translateX(-100%); visibility: hidden; transition: transform .22s var(--curva), visibility 0s .22s; }
+  .lateral > * { width: auto; }
+  /* Al abrir, visible desde el primer instante para que el foco pueda entrar al menú. */
+  .lateral.abierto { transform: none; visibility: visible; transition: transform .22s var(--curva); box-shadow: 24px 0 70px #000a; }
+  .velo { display: block; position: fixed; inset: 0; background: #0009; z-index: 40; opacity: 0; pointer-events: none; transition: opacity .22s; }
+  .velo.abierto { opacity: 1; pointer-events: auto; }
   .barra { padding: 0 14px; height: 60px; gap: 6px; }
-  .miga .ic, .miga span:not(:last-child) { display: none; }
+  .miga span:not(:last-child) { display: none; }
   .buscar input { width: 110px; }
   .principal { padding: 24px 16px 56px; }
   h1 { font-size: 25px; }
@@ -316,7 +343,9 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  /* Los brillos pasan a indicadores fijos. */
   .segmentos i.en_curso { background: #e4c7a6; }
+  .segmentos i.en_curso::after, .esqueleto i::after { display: none; }
 }
 .soltar:focus-within { outline: 2px solid var(--acento); outline-offset: 2px; }
 button.primario.peligro { background: var(--mal); border-color: var(--mal); color: #2a1210; }

@@ -26,10 +26,10 @@
     <div class="marca"><i class="marca-signo" aria-hidden="true"></i><span class="marca-texto">Fábrica <small>Studio</small></span></div>
     <div class="espacio" id="espacio"></div>
     <nav class="nav" aria-label="Secciones">
-      <a href="#resumen" data-vista="resumen"><i data-icono="rejilla"></i><span class="nav-texto">Resumen</span></a>
-      <a href="#cola" data-vista="cola"><i data-icono="capas"></i><span class="nav-texto">Cola de clips</span><span class="cuenta" id="nav-cuenta" hidden></span></a>
-      <a href="#biblioteca" data-vista="biblioteca"><i data-icono="pelicula"></i><span class="nav-texto">Biblioteca</span></a>
-      <a href="#ajustes" data-vista="ajustes"><i data-icono="ajustes"></i><span class="nav-texto">Ajustes</span></a>
+      <a href="#resumen" data-vista="resumen" data-tip="Resumen"><i data-icono="rejilla"></i><span class="nav-texto">Resumen</span></a>
+      <a href="#cola" data-vista="cola" data-tip="Cola de clips"><i data-icono="capas"></i><span class="nav-texto">Cola de clips</span><span class="cuenta" id="nav-cuenta" hidden></span></a>
+      <a href="#biblioteca" data-vista="biblioteca" data-tip="Biblioteca"><i data-icono="pelicula"></i><span class="nav-texto">Biblioteca</span></a>
+      <a href="#ajustes" data-vista="ajustes" data-tip="Ajustes"><i data-icono="ajustes"></i><span class="nav-texto">Ajustes</span></a>
     </nav>
     <div class="lateral-pie">
       <div class="tarjeta-pc" id="tarjeta-pc"></div>
@@ -39,8 +39,8 @@
   <div class="velo" id="velo"></div>
   <div class="cuerpo">
     <header class="barra">
-      <button class="icono-boton solo-movil" id="boton-menu" aria-label="Abrir menú" aria-expanded="false" aria-controls="lateral"><i data-icono="menu"></i></button>
-      <div class="miga"><i data-icono="panel"></i><span>Estudio</span><span aria-hidden="true">/</span><span id="miga"></span></div>
+      <button class="icono-boton" id="boton-menu" aria-label="Barra lateral" title="Plegar o desplegar la barra lateral (Ctrl+B)" aria-expanded="true" aria-controls="lateral"><i data-icono="panel"></i></button>
+      <div class="miga"><span>Estudio</span><span aria-hidden="true">/</span><span id="miga"></span></div>
       <label class="buscar"><i data-icono="buscar"></i><span class="solo-lector">Buscar un clip</span><input id="buscar" type="search" placeholder="Buscar un clip…" autocomplete="off"><kbd>Ctrl K</kbd></label>
     </header>
     <main id="principal" class="principal"></main>

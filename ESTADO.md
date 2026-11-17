@@ -1,6 +1,6 @@
 # Estado de Fábrica Studio
 
-Registro compartido entre Cristóbal, Claude Code y Codex. Última actualización: 2026-11-16.
+Registro compartido entre Cristóbal, Claude Code y Codex. Última actualización: 2026-11-17.
 
 ## Resumen
 
@@ -119,7 +119,7 @@ la ventana; Esc cierra y devuelve el foco; el foco sobrevive al refresco de 2 s;
 **No probado:** la tablet real, la pantalla de vinculación vista desde otro dispositivo, un enlace real de Kick,
 Gemini, y el panel con los datos reales de Cristóbal (canal confirmado, Shorts ya subidos).
 
-**Fase 2 hecha (2026-11-16, sin commit todavía): Biblioteca en tarjetas y detalle del clip.** Solo `web/app.js` y `web/estilo.css`.
+**Fase 2 hecha (2026-11-16): Biblioteca en tarjetas y detalle del clip.** Solo `web/app.js` y `web/estilo.css`.
 
 - Biblioteca: tarjetas 9:16 con miniatura real, estado, duración, fecha y «Sin subir / En YouTube (privado)»;
   orden (recientes / por nombre), búsqueda, botón «Importar un video». Ya no se repinta entera cada 2 s.
@@ -133,6 +133,40 @@ Gemini, y el panel con los datos reales de Cristóbal (canal confirmado, Shorts 
 - pytest tras el cambio: 62 pasan (no se añadieron pruebas: el cambio es solo de interfaz).
 - **No probado:** el orden «por nombre» con títulos distintos, un clip en
   `error` o ya subido en la ficha nueva, el centrado del video en tablet tras el último ajuste de CSS, la tablet real.
+
+**Fase de movimiento hecha (2026-11-17): animaciones del panel.** Solo `web/` (`index.html`, `app.js`, `estilo.css`,
+`iconos.js`). Sin librerías: CSS, `@keyframes` y Web Animations API. Se anima solo `transform` y `opacity`; la única
+excepción es la barra lateral (`grid-template-columns`). Ninguna animación inventa progreso: todas salen de la API.
+
+- **Barra lateral plegable:** botón en la barra superior y Ctrl+B; 224 px ↔ 72 px en 220 ms; plegada muestra iconos con
+  el nombre al pasar el mouse o enfocar. Se recuerda en `localStorage` (`fabrica.lateral`); sin valor guardado, arranca
+  plegada si la pantalla mide 900 px o menos. Bajo 680 px es un menú que entra deslizándose sobre un fondo oscurecido
+  (Esc o tocar fuera lo cierra; el foco entra al menú y vuelve al botón). `aria-expanded` en el botón.
+- **Vistas:** fundido + 6 px en 180 ms solo al cambiar de vista. Las listas (Cola, Biblioteca, actividad reciente) ahora
+  se actualizan fila por fila (`ponerLista`): el refresco de 2 s no vuelve a animar nada.
+- **Resumen:** las dos cifras cuentan desde 0 hasta el número real al abrir la vista (600 ms), no al refrescar.
+- **Progreso:** brillo que recorre la etapa en curso; cuando la API marca una etapa como hecha, su segmento se rellena
+  una vez; cuando un clip pasa a renderizado, subido o «momentos listos», aparece un check animado en su fila y un aviso.
+- **Filas y tarjetas:** entrada escalonada (30 ms, máximo 8) solo para elementos nuevos; elevación de 2 px con sombra
+  al pasar el mouse (solo en las que son enlaces: tarjetas de la Biblioteca y filas de la Cola).
+- **Esqueleto de carga** al abrir el panel, el detalle de un clip y Ajustes. El detalle ya no espera al ciclo de 2 s.
+- **Zona de soltar:** aro con brillo que late mientras se arrastra un archivo encima.
+- **Ventanas y avisos:** entran con escala 0,98 → 1 y fundido; salen deslizándose 10 px (180 ms).
+- **«Reducir movimiento»:** todo cambia al instante; el brillo de la etapa y el esqueleto quedan como indicadores fijos.
+- Con la barra desplegada en tablet (≤ 900 px), el Resumen pasa a una columna para que no se apriete.
+
+Probado aquí (PC, Chromium con Playwright, servidor de prueba con datos temporales y transcripción fija, 3 clips
+sintéticos procesados de verdad): 63 pruebas de pytest tras integrar el cambio de la nube. A 1280×800, 800×1280 y 600×900: plegar y desplegar con el botón
+y con Ctrl+B, estado recordado tras recargar, nombres al pasar el mouse, menú móvil con foco y Esc; sin desborde
+horizontal con la barra plegada ni desplegada; sin errores de JavaScript. Medido con eventos `animationstart` durante el
+proceso de los 3 clips: 3 entradas de fila (una por clip), 3 rellenos de etapa, 3 checks y 3 avisos «listo para
+revisar»; tras dos refrescos sin cambios, 0 animaciones nuevas y el contador quieto. Plegar y desplegar 6 veces a
+800×1280: 16,7 ms por cuadro de media, peor cuadro 17 ms, también con la CPU de Chromium frenada ×4.
+Capturas en `.playwright-mcp/movimiento/` (carpeta local, no se sube al repositorio).
+
+**No probado:** la tablet real (la fluidez se midió en el Chromium del PC, no en la MatePad); arrastrar un archivo real
+con el mouse (se simuló el evento); el check de «subido» y el de «momentos listos» (solo se vio el de «renderizado»);
+Firefox y Safari.
 
 **Falta:** fase 3 (Plantilla con vista previa en vivo), fase 4 (Ajustes y ayuda).
 
@@ -442,3 +476,7 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   (`/canal/clips/clip_…`, `?clip=clip_…`) o a un video (`/canal/videos/<id>`, `/video/<id>`). Antes se
   aceptaba la página de clips del canal y se intentaba descargarla. Límite de un solo video por enlace
   (`playlistend`). 63 pruebas. Falta probar con un enlace real de Kick en el PC.
+- **2026-11-17 · Claude Code (PC Windows)** — Fase 2 del panel en su propio commit. Fase de movimiento: barra lateral
+  plegable (botón y Ctrl+B), contadores, progreso en vivo con check y aviso, entrada escalonada solo de elementos nuevos,
+  esqueletos de carga, zona de soltar, salida de ventanas y avisos; todo respeta «reducir movimiento». 63 pruebas (con la del enlace de Kick que llegó de la nube).
+  Siguiente: Cristóbal lo revisa en el navegador y en la tablet; después, fase 3 (Plantilla).

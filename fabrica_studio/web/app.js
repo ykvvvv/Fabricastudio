@@ -13,7 +13,9 @@ const etapasDe = (t) => (t.modo === "largo" ? ETAPAS_LARGO : ETAPAS);
 const reloj = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
 const ESTADOS = { pendiente: "En espera", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
-let S = { orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
+const dos = (n) => String(n).padStart(2, "0");
+const calma = matchMedia("(prefers-reduced-motion: reduce)");   // con «reducir movimiento» nada se anima
+let S = { cambios: {}, orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
 
 async function api(ruta, opciones = {}) {
   if (opciones.json !== undefined) {
@@ -32,7 +34,14 @@ function avisar(texto, mal = false) {
   d.textContent = texto;
   if (mal) d.className = "mal";
   $("#avisos").append(d);
-  setTimeout(() => d.remove(), mal ? 9000 : 4000);
+  setTimeout(() => salir(d, () => d.remove()), mal ? 9000 : 4000);
+}
+// Salida deslizándose (Web Animations API); al terminar llama a hecho().
+function salir(el, hecho) {
+  if (calma.matches) return void hecho();
+  const a = el.animate({ opacity: [1, 0], transform: ["none", "translateY(10px)"] }, { duration: 180, easing: "ease-in" });
+  a.onfinish = hecho;
+  return a;
 }
 const intentar = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { avisar(e.message, true); } };
 
@@ -56,35 +65,73 @@ function poner(el, html) {
   el.innerHTML = el._html = html;
   if (clave) el.querySelector(clave)?.focus();
 }
+// Lista con clave (id del trabajo): cada elemento se actualiza por separado y solo los nuevos
+// llevan la animación de entrada (al abrir la vista o al llegar un trabajo), escalonada hasta 8.
+function ponerLista(el, trabajos, etiqueta, html) {
+  el._html = null;
+  const viejos = new Map([...el.children].map((c) => [c.dataset.k, c]));
+  let nuevos = 0;
+  trabajos.forEach((t, i) => {
+    let c = viejos.get(t.id);
+    viejos.delete(t.id);
+    if (!c) { c = document.createElement(etiqueta); c.dataset.k = t.id; c.className = "entra-fila"; c.style.setProperty("--i", Math.min(nuevos++, 8)); }
+    poner(c, html(t));
+    if (el.children[i] !== c) el.insertBefore(c, el.children[i] || null);
+  });
+  viejos.forEach((c) => c.remove());
+}
+// Esqueleto de carga mientras llegan los datos de la API.
+function esqueleto(m) {
+  if (!S.conectado) m.innerHTML = `<div class="panel sin-nada" role="status">Sin conexión con el PC. Se reintenta cada 2 s.</div>`;
+  else if (!$(".esqueleto", m)) m.innerHTML = `<div class="esqueleto" role="status"><span class="solo-lector">Cargando…</span><i style="width:38%;height:34px"></i><i style="width:24%"></i><div><i></i><i></i><i></i></div><i style="height:220px"></i></div>`;
+}
+// Cuenta desde cero hasta el número real que ya entregó la API (solo al abrir el Resumen).
+function contar(raiz) {
+  if (calma.matches) return;
+  raiz.querySelectorAll("[data-cuenta]").forEach((el) => {
+    const fin = +el.dataset.cuenta, t0 = performance.now();
+    const paso = (t) => {
+      const p = Math.min((t - t0) / 600, 1);
+      el.textContent = dos(Math.round(fin * (1 - (1 - p) ** 3)));
+      if (p < 1 && el.isConnected) requestAnimationFrame(paso);
+    };
+    if (fin) paso(t0);
+  });
+}
 function hidratar(raiz = document) { raiz.querySelectorAll("i[data-icono]").forEach((i) => { i.outerHTML = icono(i.dataset.icono); }); }
 
 function pastilla(t) {
   const texto = t.estado === "procesando" ? GERUNDIOS[t.etapa] || ESTADOS.procesando : t.estado === "renderizado" ? "Listo para revisar" : ESTADOS[t.estado];
-  return h`<span class="pastilla ${CLASE_ESTADO[t.estado]}">${texto}</span>`;
+  const terminado = ["renderizado", "publicado", "propuestas"].includes(t.estado);
+  return h`<span class="pastilla ${CLASE_ESTADO[t.estado]} ${S.cambios[t.id]?.logro ? "recien" : ""}">${terminado ? ic("check") : ""}${texto}</span>`;
 }
 function clipHtml(t) {
   const mini = t.tiene_video ? h`<img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">` : icono("pelicula");
   const mal = t.estado === "error";
   const linea = mal ? t.error.split("\n")[0] : t.progreso || t.textos.titulo || etiquetaOrigen(t);
-  const etapas = enCola(t) || mal ? h`<span class="segmentos" role="img" aria-label="Etapas: ${etapasDe(t).filter(([k]) => t.etapas[k]?.estado === "hecho").length} de ${etapasDe(t).length} completadas">${etapasDe(t).map(([k]) => crudo(h`<i class="${t.etapas[k]?.estado || ""}"></i>`))}</span>` : "";
+  const etapas = enCola(t) || mal ? h`<span class="segmentos" role="img" aria-label="Etapas: ${etapasDe(t).filter(([k]) => t.etapas[k]?.estado === "hecho").length} de ${etapasDe(t).length} completadas">${etapasDe(t).map(([k]) => crudo(h`<i class="${t.etapas[k]?.estado || ""} ${S.cambios[t.id]?.etapas.includes(k) ? "recien" : ""}"></i>`))}</span>` : "";
   return h`<a class="clip" href="#trabajo/${t.id}"><span class="miniatura">${crudo(mini)}</span>
     <span class="clip-texto"><span class="clip-nombre">${t.nombre}</span><span class="clip-meta ${mal ? "mal" : ""}">${linea}</span>${crudo(etapas)}</span></a>`;
 }
 
 // ---------------------------------------------------------------- ventanas
-let modalAntes = null, modalResuelve = null;
+let modalAntes = null, modalResuelve = null, modalSalida = null;
 function abrirModal(titulo, cuerpo, pie = "") {
   modalAntes = modalAntes || document.activeElement;
+  $("#modal-fondo").getAnimations({ subtree: true }).forEach((a) => a.cancel()); modalSalida = null;   // corta una salida a medias
   $("#modal-titulo").textContent = titulo;
   $("#modal-cuerpo").innerHTML = cuerpo; $("#modal-pie").innerHTML = pie;
   $("#modal-fondo").hidden = false; document.body.style.overflow = "hidden";
   ($("#modal-cuerpo").querySelector("input:not([type=file]), textarea, select") || $("#modal-pie button:last-child") || $("#modal button")).focus();
 }
 function cerrarModal(valor = false) {
-  if ($("#modal-fondo").hidden) return;
-  $("#modal-fondo").hidden = true; document.body.style.overflow = "";
+  const fondo = $("#modal-fondo");
+  if (fondo.hidden || modalSalida) return;
+  document.body.style.overflow = "";
   if (modalAntes && document.contains(modalAntes)) modalAntes.focus();
   modalAntes = null;
+  const velo = calma.matches ? null : fondo.animate({ opacity: [1, 0] }, { duration: 180, fill: "forwards" });
+  modalSalida = salir($("#modal"), () => { fondo.hidden = true; velo?.cancel(); modalSalida = null; });
   const r = modalResuelve; modalResuelve = null; r?.(valor);
 }
 // Sustituye a confirm(): devuelve una promesa con true si se acepta.
@@ -100,6 +147,7 @@ document.addEventListener("keydown", (e) => {
   const abierto = !$("#modal-fondo").hidden;
   if (e.key === "Escape") { cerrarModal(); cerrarMenu(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !abierto) { e.preventDefault(); $("#buscar").focus(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b" && !abierto) { e.preventDefault(); alternarLateral(); }
   if (e.key === "Tab" && abierto) {      // el foco no sale de la ventana
     const f = [...$("#modal").querySelectorAll("button, input, textarea, select, a[href]")].filter((x) => !x.disabled && x.offsetParent !== null);
     if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
@@ -126,7 +174,7 @@ function nuevoClip(pestana = "enlace") {
   const elegir = (lista) => { archivos = [...lista]; $("#nc-elegidos").textContent = archivos.length ? archivos.map((f) => f.name).join(", ") : "Arrastra videos aquí o pulsa para elegirlos"; };
   const soltar = $("#nc-soltar");
   ["dragover", "dragenter"].forEach((ev) => soltar.addEventListener(ev, (e) => { e.preventDefault(); soltar.classList.add("encima"); }));
-  ["dragleave", "drop"].forEach((ev) => soltar.addEventListener(ev, () => soltar.classList.remove("encima")));
+  ["dragleave", "drop"].forEach((ev) => soltar.addEventListener(ev, (e) => { if (ev === "drop" || !soltar.contains(e.relatedTarget)) soltar.classList.remove("encima"); }));
   soltar.addEventListener("drop", (e) => { e.preventDefault(); elegir(e.dataTransfer.files); });
   $("#nc-archivos").addEventListener("change", (e) => elegir(e.target.files));
   if (pestana === "archivo") $("#nc-archivos").focus();
@@ -166,8 +214,31 @@ $("#form-vincular").addEventListener("submit", async (e) => {
   } catch (err) { $("#v-error").textContent = err.message; }
 });
 
-function cerrarMenu() { $("#lateral").classList.remove("abierto"); $("#velo").classList.remove("abierto"); $("#boton-menu").setAttribute("aria-expanded", "false"); }
-$("#boton-menu").addEventListener("click", () => { const a = $("#lateral").classList.toggle("abierto"); $("#velo").classList.toggle("abierto", a); $("#boton-menu").setAttribute("aria-expanded", a); });
+// Barra lateral: plegada (72 px, solo iconos) o desplegada (224 px). Bajo 680 px es un menú que se desliza.
+const movil = matchMedia("(max-width: 680px)");
+let plegada = innerWidth <= 900;      // en tablet arranca plegada, salvo que se haya elegido otra cosa
+try { const g = localStorage.getItem("fabrica.lateral"); if (g) plegada = g === "plegada"; } catch (e) { /* sin almacenamiento: vale el valor inicial */ }
+function ponerLateral(menu = false) {
+  $("#app").classList.toggle("plegada", plegada);
+  if (!menu && $("#lateral.abierto")?.contains(document.activeElement)) $("#boton-menu").focus();   // el foco no se queda en el menú oculto
+  $("#lateral").classList.toggle("abierto", menu); $("#velo").classList.toggle("abierto", menu);
+  $("#boton-menu").setAttribute("aria-expanded", movil.matches ? menu : !plegada);
+}
+function alternarLateral() {
+  if (movil.matches) {
+    const abrir = !$("#lateral").classList.contains("abierto");
+    ponerLateral(abrir);
+    if (abrir) $(".nav a").focus();
+    return;
+  }
+  plegada = !plegada;
+  try { localStorage.setItem("fabrica.lateral", plegada ? "plegada" : "abierta"); } catch (e) { /* no se recuerda entre visitas */ }
+  ponerLateral();
+}
+const cerrarMenu = () => ponerLateral();
+movil.addEventListener("change", cerrarMenu);
+ponerLateral();
+$("#boton-menu").addEventListener("click", alternarLateral);
 $("#velo").addEventListener("click", cerrarMenu);
 $("#buscar").addEventListener("input", (e) => { S.busca = e.target.value.trim().toLowerCase(); pintar(false); });
 
@@ -185,16 +256,35 @@ function navegar() {
   const m = $("#principal");
   m._html = null; m.classList.remove("entra"); void m.offsetWidth; m.classList.add("entra");   // transición solo al cambiar de vista
   pintar(true); window.scrollTo(0, 0);
+  if (S.jid && S.estado) refrescar();     // el detalle se pide ya, sin esperar al ciclo de 2 s
 }
 window.addEventListener("hashchange", navegar);
 
+// Cambios reales entre dos lecturas de la API: etapas recién completadas y clips que terminan.
+const LOGROS = { renderizado: "está listo para revisar", publicado: "se subió en privado a YouTube", propuestas: "tiene momentos propuestos" };
+function anunciar(antes) {
+  S.cambios = {};
+  if (!antes) return;
+  const previo = new Map(antes.trabajos.map((t) => [t.id, t]));
+  for (const t of S.estado.trabajos) {
+    const p = previo.get(t.id);
+    if (!p) continue;
+    const logro = p.estado !== t.estado && t.estado in LOGROS;
+    S.cambios[t.id] = { logro, etapas: Object.keys(t.etapas).filter((k) => t.etapas[k]?.estado === "hecho" && p.etapas[k]?.estado !== "hecho") };
+    if (logro) avisar(`«${t.nombre}» ${LOGROS[t.estado]}.`);
+  }
+}
+
 async function refrescar() {
+  const primera = !S.estado;
   try {
-    S.estado = await api("/api/estado");
+    const nuevo = await api("/api/estado"), antes = S.estado;
+    S.estado = nuevo;
     S.conectado = true;
-    if (S.jid) S.detalle = await api(`/api/trabajos/${S.jid}`).catch(() => null);
+    anunciar(antes);
+    if (S.jid) S.detalle = await api(`/api/trabajos/${S.jid}`).catch(() => false);
   } catch (e) { S.conectado = false; /* se reintenta en el siguiente ciclo */ }
-  pintar(false);
+  pintar(primera);
 }
 
 (async function iniciar() {
@@ -202,23 +292,23 @@ async function refrescar() {
   S.sesion = await (await fetch("/api/sesion")).json();
   if (!S.sesion.autorizado) return mostrarVinculacion();
   $("#app").hidden = false;
+  navegar();                                   // esqueleto mientras llegan los datos
   S.ajustes = await api("/api/ajustes").catch(() => null);
   await refrescar();
-  navegar();
   setInterval(refrescar, 2000);
 })();
 
 // ---------------------------------------------------------------- vistas
 function pintar(completo) {
-  if (!S.estado) return;
+  const m = $("#principal");
+  if (!S.estado) return esqueleto(m);
   document.documentElement.style.setProperty("--fase", `-${Date.now() % 1400}ms`);   // el brillo de la etapa no salta al repintar
   pintarLateral();
-  const m = $("#principal");
   if (S.vista === "resumen") pintarResumen(m, completo);
   else if (S.vista === "cola") pintarCola(m, completo);
   else if (S.vista === "biblioteca") pintarBiblioteca(m, completo);
   else if (S.vista === "trabajo") pintarTrabajo(m, completo);
-  else if (S.vista === "ajustes" && completo) pintarAjustes(m);
+  else if (S.vista === "ajustes" && completo) { esqueleto(m); pintarAjustes(m); }
 }
 
 function pintarLateral() {
@@ -234,7 +324,8 @@ function pintarLateral() {
 
 function pintarResumen(m, completo) {
   const e = S.estado, yt = e.youtube, ts = e.trabajos;
-  if (completo || !$("#r-cifras")) {
+  const abrir = completo || !$("#r-cifras");
+  if (abrir) {
     m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">Tu espacio creativo</div><h1>Tu estudio</h1><p>De un buen momento a tu próximo Short.</p></div>
         <button class="primario" data-accion="nuevo">${ic("mas")}Nuevo clip</button></div>
       <div class="cifras" id="r-cifras"></div>
@@ -245,7 +336,7 @@ function pintarResumen(m, completo) {
             <div class="entrada-pie"><span>Se procesa en tu PC y se destina a YouTube en privado.</span><button type="button" class="enlace-fino" data-accion="nuevo" data-p="archivo">${ic("subir")}O elige un archivo</button></div>
             <p class="error" id="r-error" role="alert" hidden></p></form>
           <div class="franja"><h3>Actividad reciente</h3><a class="enlace-fino" href="#cola">Ver la cola${ic("flecha")}</a></div>
-          <div class="recientes escalonada" id="r-recientes"></div>
+          <div class="recientes" id="r-recientes"></div>
           <div class="panel-pie" id="r-pie"></div></div>
         <div class="panel formato"><div class="panel-titulo"><div><h2>Tu formato</h2><p id="r-estilo"></p></div><span class="pequeno tenue">9:16</span></div>
           <div class="formato-escena"><img src="/api/diseno/vista?t=${Date.now()}" alt="Maqueta del diseño actual de tus Shorts" width="176" height="313"></div>
@@ -264,16 +355,16 @@ function pintarResumen(m, completo) {
   }
   const cola = ts.filter(enCola).length, fallos = ts.filter((t) => t.estado === "error").length;
   const listos = ts.filter((t) => t.estado === "renderizado").length, subidos = ts.filter((t) => t.estado === "publicado").length;
-  const dos = (n) => String(n).padStart(2, "0");
-  poner($("#r-cifras"), h`<div class="cifra"><div class="cifra-titulo">Clips en la cola${ic("capas")}</div><div class="cifra-valor">${dos(cola)} <small>${cola === 1 ? "clip" : "clips"}</small></div>
+  poner($("#r-cifras"), h`<div class="cifra"><div class="cifra-titulo">Clips en la cola${ic("capas")}</div><div class="cifra-valor"><span data-cuenta="${cola}">${dos(cola)}</span> <small>${cola === 1 ? "clip" : "clips"}</small></div>
       <div class="cifra-nota">${fallos ? `${plural(fallos, "clip con error", "clips con error")}: revísalos en la cola` : "En espera o generándose"}</div></div>
-    <div class="cifra"><div class="cifra-titulo">Listos para revisar${ic("check-circulo")}</div><div class="cifra-valor">${dos(listos)} <small>${listos === 1 ? "Short" : "Shorts"}</small></div>
+    <div class="cifra"><div class="cifra-titulo">Listos para revisar${ic("check-circulo")}</div><div class="cifra-valor"><span data-cuenta="${listos}">${dos(listos)}</span> <small>${listos === 1 ? "Short" : "Shorts"}</small></div>
       <div class="cifra-nota">${plural(subidos, "subido", "subidos")} en privado a YouTube</div></div>
     <div class="cifra"><div class="cifra-titulo">Canal de YouTube${ic("youtube")}</div><div class="cifra-valor texto">${yt.canal_id ? yt.canal_nombre : "Sin confirmar"}</div>
       <div class="cifra-nota">${yt.canal_id ? `${yt.canal_id} · subidas siempre en privado` : "No se puede subir hasta confirmar el canal"}</div></div>`);
+  if (abrir) contar($("#r-cifras"));
   const recientes = [...ts].filter(coincide).sort((a, b) => b.creado - a.creado).slice(0, 3);
-  poner($("#r-recientes"), recientes.map((t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`).join("")
-    || `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
+  if (recientes.length) ponerLista($("#r-recientes"), recientes, "div", (t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`);
+  else poner($("#r-recientes"), `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
   poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
   $("#r-estilo").textContent = e.estilo === "completo" ? "Pantalla completa con seguimiento" : "Clásico: video completo con tarjeta";
   poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
@@ -293,15 +384,15 @@ function pintarCola(m, completo) {
       <div class="herramientas"><div class="filtros" id="cola-filtros" role="group" aria-label="Filtrar por estado"></div></div>
       <div class="pila" id="cola-carpeta" style="margin-bottom:14px"></div>
       <div class="panel"><div class="tabla-desliza"><table class="tabla-cola"><thead><tr><th scope="col">Clip</th><th scope="col">Estado</th><th scope="col">Origen</th><th scope="col">Duración</th><th scope="col"><span class="solo-lector">Acciones</span></th></tr></thead>
-        <tbody id="cola-cuerpo" class="escalonada"></tbody></table></div><div id="cola-vacia" class="sin-nada" hidden></div></div>`;
+        <tbody id="cola-cuerpo"></tbody></table></div><div id="cola-vacia" class="sin-nada" hidden></div></div>`;
   }
   poner($("#cola-filtros"), FILTROS.map(([k, n, f]) => h`<button data-accion="filtro" data-foco="f-${k}" data-f="${k}" aria-pressed="${S.filtro === k}">${n} <span>${ts.filter(f).length}</span></button>`).join(""));
   poner($("#cola-carpeta"), e.carpeta.pendientes.map((p) => h`<p class="nota"><b>${p.archivo}</b> (carpeta vigilada): ${p.motivo}</p>`).join(""));
   const visibles = ts.filter(FILTROS.find(([k]) => k === S.filtro)[2]);
   const origen = { archivo: "Archivo", carpeta: "Carpeta", enlace: "Kick", momento: "Video largo" };
-  poner($("#cola-cuerpo"), visibles.map((t) => h`<tr><td>${crudo(clipHtml(t))}</td><td>${crudo(pastilla(t))}</td><td>${origen[t.origen_tipo]}${t.modo === "largo" ? " · largo" : ""}</td>
+  ponerLista($("#cola-cuerpo"), visibles, "tr", (t) => h`<td>${crudo(clipHtml(t))}</td><td>${crudo(pastilla(t))}</td><td>${origen[t.origen_tipo]}${t.modo === "largo" ? " · largo" : ""}</td>
     <td>${t.duracion ? reloj(t.duracion) : "—"}</td>
-    <td>${["procesando", "subiendo"].includes(t.estado) ? "" : crudo(h`<button class="icono-boton" data-accion="quitar" data-foco="q-${t.id}" data-id="${t.id}" data-nombre="${t.nombre}" aria-label="Eliminar ${t.nombre}">${ic("papelera")}</button>`)}</td></tr>`).join(""));
+    <td>${["procesando", "subiendo"].includes(t.estado) ? "" : crudo(h`<button class="icono-boton" data-accion="quitar" data-foco="q-${t.id}" data-id="${t.id}" data-nombre="${t.nombre}" aria-label="Eliminar ${t.nombre}">${ic("papelera")}</button>`)}</td>`);
   $("#cola-vacia").hidden = visibles.length > 0;
   poner($("#cola-vacia"), `${icono("capas")}` + (S.busca ? "Ningún clip coincide con la búsqueda."
     : S.filtro !== "todos" ? "No hay clips en este estado."
@@ -314,7 +405,7 @@ function pintarBiblioteca(m, completo) {
         <button data-accion="nuevo" data-p="archivo">${ic("subir")}Importar un video</button></div>
       <div class="herramientas"><span class="pequeno tenue" id="bib-cuenta"></span>
         <select id="bib-orden" aria-label="Ordenar la biblioteca" style="width:auto"><option value="recientes">Más recientes primero</option><option value="nombre">Por nombre</option></select></div>
-      <div class="galeria escalonada" id="bib-rejilla"></div><div id="bib-vacia" class="panel sin-nada" hidden></div>`;
+      <div class="galeria" id="bib-rejilla"></div><div id="bib-vacia" class="panel sin-nada" hidden></div>`;
     $("#bib-orden").value = S.orden;
     $("#bib-orden").addEventListener("change", (e) => { S.orden = e.target.value; pintar(false); });
   }
@@ -322,9 +413,9 @@ function pintarBiblioteca(m, completo) {
   const listos = S.estado.trabajos.filter((t) => t.tiene_video && coincide(t))
     .sort(S.orden === "nombre" ? (a, b) => titulo(a).localeCompare(titulo(b), "es") : (a, b) => b.creado - a.creado);
   $("#bib-cuenta").textContent = plural(listos.length, "Short renderizado", "Shorts renderizados");
-  poner($("#bib-rejilla"), listos.map((t) => h`<a class="pieza" href="#trabajo/${t.id}"><span class="pieza-arte">
+  ponerLista($("#bib-rejilla"), listos, "div", (t) => h`<a class="pieza" href="#trabajo/${t.id}"><span class="pieza-arte">
       <img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy">${crudo(pastilla(t))}${t.duracion ? crudo(h`<span class="duracion">${reloj(t.duracion)}</span>`) : ""}</span>
-    <b>${titulo(t)}</b><small>${new Date(t.creado * 1000).toLocaleDateString("es-CL")} · ${t.youtube_id ? "En YouTube (privado)" : "Sin subir"}</small></a>`).join(""));
+    <b>${titulo(t)}</b><small>${new Date(t.creado * 1000).toLocaleDateString("es-CL")} · ${t.youtube_id ? "En YouTube (privado)" : "Sin subir"}</small></a>`);
   $("#bib-vacia").hidden = listos.length > 0;
   poner($("#bib-vacia"), icono("pelicula") + (S.busca ? "Ningún Short coincide con la búsqueda." : "Aún no hay Shorts renderizados. Aparecerán aquí cuando termine el primer render."));
 }
@@ -344,7 +435,8 @@ document.addEventListener("click", (e) => {
 // ---------------------------------------------------------------- detalle del trabajo
 function pintarTrabajo(m, completo) {
   const t = S.detalle;
-  if (!t) { m.innerHTML = `<div class="cabecera"><h1>Clip</h1></div><div class="panel sin-nada">Cargando… Si no aparece, el clip ya no existe. <a href="#cola">Volver a la cola</a></div>`; return; }
+  if (t === null) return esqueleto(m);
+  if (!t) { m.innerHTML = `<div class="cabecera"><h1>Clip</h1></div><div class="panel sin-nada">No se pudo cargar el clip: puede que ya no exista. <a href="#cola">Volver a la cola</a></div>`; return; }
   if (t.modo === "largo") return pintarLargo(m, t, completo);
   if (completo || !$("#t-estado") || $("#t-estado").dataset.id !== t.id) {
     m.innerHTML = h`<div class="cabecera"><div><a class="enlace-fino" href="#${S.desde}">← ${S.desde === "biblioteca" ? "Biblioteca" : "Cola de clips"}</a><h1 id="t-nombre" style="margin-top:8px"></h1></div></div>
@@ -579,7 +671,11 @@ const CAMPOS_DISENO = [
 
 async function pintarAjustes(m) {
   let a;
-  try { a = S.ajustes = await api("/api/ajustes"); } catch (e) { return avisar(e.message, true); }
+  try { a = S.ajustes = await api("/api/ajustes"); } catch (e) {
+    if ($(".esqueleto", m)) m.innerHTML = `<div class="panel sin-nada" role="alert">No se pudieron cargar los ajustes. Vuelve a entrar en Ajustes para reintentar.</div>`;
+    return avisar(e.message, true);
+  }
+  if (S.vista !== "ajustes") return;     // se cambió de vista mientras llegaban los datos
   const v = a.valores, local = S.sesion.local, yt = S.estado.youtube, p = S.estado.proveedores;
   const soloPc = local ? "" : `<p class="nota">Por seguridad, esta sección solo se puede modificar desde el panel abierto en el PC.</p>`;
   const pestanas = [["diseno", "Diseño"], ["youtube", "YouTube"], ["proveedores", "Proveedores"], ["dispositivos", "Dispositivos"]];
