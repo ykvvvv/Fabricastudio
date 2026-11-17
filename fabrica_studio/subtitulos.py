@@ -4,6 +4,42 @@ from __future__ import annotations
 from .config import LIENZO_ALTO, LIENZO_ANCHO
 
 
+def leer_correcciones(texto: str) -> dict[str, str]:
+    """«mal => bien» por línea (también acepta «mal = bien»). Claves en minúsculas, sin puntuación."""
+    reglas: dict[str, str] = {}
+    for linea in (texto or "").splitlines():
+        if "=>" in linea:
+            mal, bien = linea.split("=>", 1)
+        elif "=" in linea:
+            mal, bien = linea.split("=", 1)
+        else:
+            continue
+        mal, bien = mal.strip().lower().strip(".,;:!?¡¿\"'"), bien.strip()
+        if mal and bien:
+            reglas[mal] = bien
+    return reglas
+
+
+def corregir_palabras(palabras: list[dict], reglas: dict[str, str]) -> list[dict]:
+    """Corrige la escritura de palabras sueltas conservando puntuación y mayúscula inicial.
+    No agrega ni quita palabras: solo cambia cómo se escribe cada una."""
+    if not reglas:
+        return palabras
+    salida = []
+    for p in palabras:
+        t = p["texto"]
+        inicio = len(t) - len(t.lstrip(".,;:!?¡¿\"'«(-"))
+        fin = len(t.rstrip(".,;:!?¡¿\"'»)-"))
+        nucleo = t[inicio:fin]
+        nuevo = reglas.get(nucleo.lower())
+        if nuevo is not None:
+            if nucleo[:1].isupper() and nuevo[:1].islower():
+                nuevo = nuevo[:1].upper() + nuevo[1:]
+            t = t[:inicio] + nuevo + t[fin:]
+        salida.append({**p, "texto": t})
+    return salida
+
+
 def agrupar(palabras: list[dict], palabras_max: int = 4, caracteres_max: int = 22,
             pausa: float = 0.6, duracion_max: float = 2.8) -> list[dict]:
     """Bloques de pocas palabras, cortando en pausas y signos de puntuación."""

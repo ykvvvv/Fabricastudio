@@ -69,13 +69,19 @@ def _leer_wav(ruta: Path):
     return np.frombuffer(datos, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def transcribir(audio: Path, modelo: str, dispositivo: str, idioma: str, carpeta_modelos: Path) -> dict:
+def transcribir(audio: Path, modelo: str, dispositivo: str, idioma: str, carpeta_modelos: Path,
+                vocabulario: str = "") -> dict:
+    """`vocabulario`: frase de contexto (initial_prompt de Whisper) que orienta el reconocimiento de jerga y
+    nombres; nunca se inserta en el texto. Se usa una frase y no una lista de palabras (hotwords) porque
+    la lista hacía perder tildes y puntuación en pruebas reales."""
+    vocabulario = " ".join(vocabulario.replace("\n", " ").split())[:600]
     with _lock:
         m, descripcion = _cargar(modelo, dispositivo, carpeta_modelos)
         try:
             segmentos, info = m.transcribe(
                 _leer_wav(audio), language=idioma or None, word_timestamps=True,
-                vad_filter=True, beam_size=5, condition_on_previous_text=False)
+                vad_filter=True, beam_size=5, condition_on_previous_text=False,
+                initial_prompt=vocabulario or None)
             palabras, segs = [], []
             for s in segmentos:
                 segs.append({"inicio": round(s.start, 3), "fin": round(s.end, 3), "texto": s.text.strip()})
@@ -88,15 +94,15 @@ def transcribir(audio: Path, modelo: str, dispositivo: str, idioma: str, carpeta
                 # La GPU cargó pero falló al ejecutar (típico: faltan cuDNN/cuBLAS). Reintenta en CPU.
                 log.warning("Fallo en GPU, reintento en CPU: %s", e)
                 _cache.clear()
-                return _transcribir_cpu(audio, modelo, idioma, carpeta_modelos)
+                return _transcribir_cpu(audio, modelo, idioma, carpeta_modelos, vocabulario)
             raise ErrorEtapa(f"Falló la transcripción: {e}", "interno")
-    return {"idioma": info.language, "motor": f"faster-whisper {descripcion}",
+    return {"idioma": info.language, "motor": f"faster-whisper {descripcion}" + (" + contexto" if vocabulario else ""),
             "texto": " ".join(s["texto"] for s in segs).strip(), "segmentos": segs, "palabras": palabras}
 
 
-def _transcribir_cpu(audio: Path, modelo: str, idioma: str, carpeta_modelos: Path) -> dict:
+def _transcribir_cpu(audio: Path, modelo: str, idioma: str, carpeta_modelos: Path, vocabulario: str = "") -> dict:
     _lock.release()
     try:
-        return transcribir(audio, modelo, "cpu", idioma, carpeta_modelos)
+        return transcribir(audio, modelo, "cpu", idioma, carpeta_modelos, vocabulario)
     finally:
         _lock.acquire()

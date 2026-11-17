@@ -25,8 +25,9 @@ def fabrica(tmp_path, monkeypatch):
     """Fábrica con datos temporales y una transcripción fija (no descarga Whisper)."""
     llamadas = {"n": 0}
 
-    def falsa(audio, modelo, dispositivo, idioma, carpeta):
+    def falsa(audio, modelo, dispositivo, idioma, carpeta, vocabulario=""):
         llamadas["n"] += 1
+        llamadas["vocabulario"] = vocabulario
         return {"idioma": "es", "motor": "prueba", "texto": " ".join(p["texto"] for p in PALABRAS),
                 "segmentos": [], "palabras": PALABRAS}
 

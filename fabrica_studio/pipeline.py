@@ -169,7 +169,7 @@ class Fabrica:
             if prop["tiene_audio"]:
                 wav = media.extraer_audio(entrada, carpeta / "audio.wav")
                 tr = transcribe.transcribir(wav, a["whisper_modelo"], a["whisper_dispositivo"], a["idioma"],
-                                            self.rutas.modelos)
+                                            self.rutas.modelos, vocabulario=a["vocabulario"])
                 wav.unlink(missing_ok=True)
             else:
                 tr = {"idioma": a["idioma"], "motor": "sin audio", "texto": "", "segmentos": [], "palabras": []}
@@ -187,7 +187,9 @@ class Fabrica:
         f_ia = carpeta / "textos_generados.json"
         if not f_ia.exists():
             self._etapa(jid, "textos", "Generando banner, título y descripción…")
-            gen = textos.generar(tr["texto"], a["creador"], a["proveedor_textos"],
+            texto_corregido = " ".join(p["texto"] for p in subtitulos.corregir_palabras(
+                tr["palabras"], subtitulos.leer_correcciones(a["correcciones"]))) or tr["texto"]
+            gen = textos.generar(texto_corregido, a["creador"], a["proveedor_textos"],
                                  textos.leer_clave_gemini(self.rutas.secretos), a["gemini_modelo"])
             _escribir(f_ia, gen)
         gen = _leer(f_ia)
@@ -204,8 +206,10 @@ class Fabrica:
         f_sub = carpeta / "subtitulos.json"
         if not f_sub.exists():
             self._etapa(jid, "subtitulos")
+            reglas = subtitulos.leer_correcciones(a["correcciones"])
             _escribir(f_sub, {"editado": False, "bloques": subtitulos.agrupar(
-                tr["palabras"], int(a["sub_palabras_max"]), int(a["sub_caracteres_max"]))})
+                subtitulos.corregir_palabras(tr["palabras"], reglas),
+                int(a["sub_palabras_max"]), int(a["sub_caracteres_max"]))})
         sub = _leer(f_sub)
         self.db.marcar_etapa(jid, "subtitulos", "hecho", f"{len(sub['bloques'])} bloques")
 
@@ -564,6 +568,21 @@ class Fabrica:
         return {"duracion": duracion, "tramos": ed["tramos"] if ed else [[0.0, duracion]], "editado": bool(ed),
                 "picos": _leer(f_picos)["picos"],
                 "palabras": [{k: p[k] for k in ("inicio", "fin", "texto")} for p in tr.get("palabras", [])]}
+
+    def retranscribir(self, jid: str) -> None:
+        """Vuelve a transcribir (p. ej. tras cambiar el modelo o el vocabulario). Rehace subtítulos;
+        conserva los textos editados a mano."""
+        t = self._editable(jid)
+        carpeta = self.rutas.trabajo(jid)
+        if (carpeta / "edicion.json").exists():
+            raise ErrorEtapa("Quita primero la edición de tiempos («Volver al clip completo») y vuelve a transcribir.",
+                             "entrada")
+        if t["origen_tipo"] == "momento":
+            raise ErrorEtapa("Este clip usa la transcripción de su video largo: vuelve a transcribir el video largo.",
+                             "entrada")
+        for nombre in ("transcripcion.json", "subtitulos.json", "picos.json"):
+            (carpeta / nombre).unlink(missing_ok=True)
+        self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
 
     def renderizar_de_nuevo(self, jid: str) -> None:
         self._editable(jid)

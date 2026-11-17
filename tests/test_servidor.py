@@ -82,7 +82,7 @@ def test_diagnostico_y_ruta_con_espacios_y_acentos(tmp_path, clip, monkeypatch):
     from fabrica_studio import transcribe
     from fabrica_studio.config import Rutas
     from fabrica_studio.pipeline import Fabrica
-    monkeypatch.setattr(transcribe, "transcribir", lambda *a: {
+    monkeypatch.setattr(transcribe, "transcribir", lambda *a, **k: {
         "idioma": "es", "motor": "prueba", "texto": "Hola chat.", "segmentos": [],
         "palabras": [{"inicio": 0.2, "fin": 0.9, "texto": "Hola"}, {"inicio": 1.0, "fin": 1.6, "texto": "chat."}]})
     f = Fabrica(Rutas(tmp_path / "Mis vídeos de Cristóbal" / "datos ñ"))

@@ -669,3 +669,15 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   el dedo, dividir, quitar, elegir palabras arrastrando, cortar, deshacer/rehacer, deslizar la onda desplaza sin cambiar
   nada). Capturas en `docs/diseno/capturas-tiempos/`. **No probado** en la MatePad real, con un clip real ni con lector de
   pantalla. Límite: la onda tiene 400 puntos, con mucho zoom se ve gruesa.
+- **2026-11-17 · Claude Code (nube)** — **Chilenismos** (mejora 1 de la lista de mejoras frente a OpusClip):
+  - `vocabulario`: frase de contexto para Whisper (`initial_prompt`) con jerga chilena y el creador. Probado
+    con Whisper real: una *lista* de palabras (hotwords o en el prompt) hacía perder tildes y puntuación; una
+    *frase* escrita como se habla no. La transcripción guardada sigue siendo literal.
+  - `correcciones`: «mal => bien» por línea; corrige la escritura en subtítulos y en el texto para generar
+    títulos, sin cambiar la cantidad de palabras ni los tiempos. `transcripcion.json` no se modifica.
+  - Acción `retranscribir` (`POST /api/trabajos/<id>/retranscribir`) para aplicar un vocabulario nuevo.
+  - 100 pruebas. Sin probar con audio real de Jongottii (aquí solo hay voz sintética).
+  **Falta en el panel:** campos «Contexto de transcripción» y «Correcciones» (Proveedores) y botón
+  «Volver a transcribir» en el detalle del clip. Después de cambiar correcciones basta «Restaurar subtítulos».
+  Próximas mejoras propuestas: quitar silencios automáticamente, audio normalizado, subtítulos animados,
+  render por GPU (NVENC).

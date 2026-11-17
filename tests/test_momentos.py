@@ -75,7 +75,7 @@ def largo(fabrica, tmp_path, monkeypatch):
     segs = [{"inicio": i * 2.0, "fin": i * 2.0 + 1.8, "texto": f"Frase número {i}."} for i in range(12)]
     palabras = [{"inicio": s["inicio"] + k * 0.5, "fin": s["inicio"] + k * 0.5 + 0.4, "texto": w}
                 for s in segs for k, w in enumerate(s["texto"].split())]
-    monkeypatch.setattr(transcribe, "transcribir", lambda *a: (fabrica.transcripciones.__setitem__("n", fabrica.transcripciones["n"] + 1),
+    monkeypatch.setattr(transcribe, "transcribir", lambda *a, **k: (fabrica.transcripciones.__setitem__("n", fabrica.transcripciones["n"] + 1),
                         {"idioma": "es", "motor": "prueba", "texto": " ".join(s["texto"] for s in segs),
                          "segmentos": segs, "palabras": palabras})[1])
     t = fabrica.importar_archivo(ruta, "largo.mp4", modo="largo")

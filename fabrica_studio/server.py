@@ -277,7 +277,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def accion(jid: str, accion: str):
         acciones = {"reintentar": fab.reintentar, "subir": fab.solicitar_subida,
                     "renderizar": fab.renderizar_de_nuevo, "regenerar-textos": fab.regenerar_textos,
-                    "restaurar-subtitulos": fab.restaurar_subtitulos, "proponer-momentos": fab.proponer_de_nuevo}
+                    "restaurar-subtitulos": fab.restaurar_subtitulos, "retranscribir": fab.retranscribir, "proponer-momentos": fab.proponer_de_nuevo}
         if accion not in acciones:
             raise ErrorEtapa("Acción desconocida.", "entrada")
         acciones[accion](jid)

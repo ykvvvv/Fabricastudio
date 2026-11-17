@@ -93,6 +93,12 @@ AJUSTES_POR_DEFECTO: dict = {
     "whisper_modelo": "small",        # tiny, base, small, medium, large-v3...
     "whisper_dispositivo": "cpu",     # cpu (seguro), auto o cuda (GPU NVIDIA, requiere cuDNN)
     "idioma": "es",
+    # Frase de contexto para Whisper: orienta el reconocimiento (jerga, nombres) sin insertar nada.
+    # Debe estar escrita como se habla, con puntuación: una lista de palabras sueltas empeora la transcripción
+    # (comprobado: pierde tildes y puntuación).
+    "vocabulario": "Stream de Jongottii en Kick, en español de Chile. ¿Cachai? Ya po, altiro. ¡Qué fome, weón! Estuvo bacán.",
+    # Correcciones de escritura para subtítulos y textos, una por línea: «como sale => como debe verse».
+    "correcciones": "",
     # --- Textos ---
     "proveedor_textos": "auto",       # auto (Gemini si hay clave, si no local), gemini, local
     "gemini_modelo": "",              # vacío = elegir entre los modelos que la API liste
