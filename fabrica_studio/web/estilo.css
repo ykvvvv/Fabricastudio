@@ -316,8 +316,18 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 .acceso-tarjeta .error { font-size: 13px; }
 .acceso-tarjeta .error:empty { display: none; }
 .acceso-tarjeta code { font-size: 12px; }
-.acceso-tarjeta label, .acceso-tarjeta .primario { transition: opacity var(--t-rapida); }
-.acceso-tarjeta :user-invalid, .acceso-tarjeta.sacude:not(.bloqueado):has(.error:not(:empty)) [name=contrasena] { border-color: var(--mal); }
+#form-login label { transition: opacity var(--t-rapida); }      /* solo donde GSAP no anima a los hijos */
+.acceso-tarjeta :user-invalid, .acceso-tarjeta:not(.bloqueado):has(.error:not(:empty):not(.tenue)) [name=contrasena] { border-color: var(--mal); }
+#form-login .primario { transition: opacity var(--t-rapida), transform .1s; }
+.acceso-tarjeta .primario:active { transform: scale(.98); }
+/* Fase 2: con GSAP cargado, las entradas las dirige app.js (entradaAcceso); estas quedan para cuando falta. */
+.con-gsap > .marca, .con-gsap .acceso-texto, .con-gsap .acceso-tarjeta:not(.sacude) { animation: none; }
+/* Al entrar, el acceso queda encima como velo mientras el panel carga debajo (alPanel en app.js). */
+/* 100vw y no inset: al aparecer la barra de desplazamiento del panel, la tarjeta no se corre de sitio. */
+.acceso.saliendo { position: fixed; top: 0; left: 0; width: 100vw; height: 100%; z-index: 60; background-color: var(--fondo); pointer-events: none; }
+.acceso-tarjeta .primario.hecho { opacity: 1; }
+.acceso-tarjeta .primario.hecho .ic { width: 19px; height: 19px; stroke-width: 2.6; }
+#principal:focus { outline: none; }
 .bloqueado .primario .ic { display: none; }
 /* Error: tres oscilaciones firmes, sin rebote. */
 .sacude { animation: sacude .36s ease-in-out; }

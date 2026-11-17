@@ -86,7 +86,7 @@
       <div class="miga"><span>Estudio</span><span aria-hidden="true">/</span><span id="miga"></span></div>
       <label class="buscar"><i data-icono="buscar"></i><span class="solo-lector">Buscar un clip</span><input id="buscar" type="search" placeholder="Buscar un clip…" autocomplete="off"><kbd>Ctrl K</kbd></label>
     </header>
-    <main id="principal" class="principal"></main>
+    <main id="principal" class="principal" tabindex="-1"></main>
   </div>
 </div>
 
@@ -99,6 +99,7 @@
 </div>
 <div id="avisos" class="avisos" role="status" aria-live="polite"></div>
 <script src="iconos.js"></script>
+<script src="vendor/gsap.min.js"></script>     <!-- local, sin CDN; si falta, el panel funciona sin animar -->
 <script src="app.js"></script>
 </body>
 </html>

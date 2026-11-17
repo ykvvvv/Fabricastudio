@@ -22,7 +22,7 @@ primer Short real renderizado y **primera subida real a YouTube en privado** (ve
 - Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
   El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
-## Login del panel: servidor y pantallas (fase 1) listos (2026-11-17)
+## Login del panel: servidor, pantallas (fase 1) y animaciones con GSAP (fase 2) listos (2026-11-17)
 
 `fabrica_studio/cuentas.py` + rutas en `server.py`. Una cuenta (el propietario), contraseña con scrypt,
 sesiones en cookie HttpOnly (hash en SQLite), bloqueo por IP tras 5 fallos con espera creciente.
@@ -58,7 +58,7 @@ la oculta para siempre); cuenta regresiva con los datos del servidor; Three.js e
 - Menú de usuario al pie de la barra lateral (también plegada): «Cuenta» y «Cerrar sesión». Si el dispositivo
   sigue vinculado por código, se queda en el panel con un aviso.
 - Si la API responde 401 con el panel abierto, se muestra el login con «Tu sesión caducó».
-- Tras crear la cuenta o iniciar sesión la página se recarga (la transición animada es de la fase 2).
+- Tras crear la cuenta o iniciar sesión ya no se recarga la página: se entra con la transición de la fase 2.
 
 Probado con Playwright (Chromium) contra un servidor temporal con datos vacíos, en 1440×900 y, entrando por la IP
 de la red (`192.168.1.116`, que el servidor trata como dispositivo no local), en 1280×800 y 800×1280: crear cuenta,
@@ -66,7 +66,23 @@ login correcto e incorrecto, bloqueo (30 → 25 en 5,0 s; servidor y panel coinc
 cerrar sesión, sesión + vinculación, cambio de contraseña, cierre de otra sesión, «Ahora no» y «reducir movimiento».
 Capturas en `docs/diseno/capturas-login/`. **No probado en la tablet real ni en su navegador.**
 
-Pendiente: fase 2 (GSAP local y transición login → panel) y fase 3 opcional (Three.js). Límite conocido: un
+**Fase 2 implementada: animaciones con GSAP 3.15.1 local** (`web/vendor/gsap.min.js`, 73 KB, sin CDN ni plugins;
+versión, huella SHA-256 y licencia en `web/vendor/LICENCIAS.md`; `.gitattributes` impide que Git altere el archivo).
+
+- Bienvenida: marca → texto → tarjeta → campos escalonados (≈ 1,2 s; se puede escribir desde el principio).
+- Login y vinculación: la tarjeta sube 8 px con opacidad.
+- Login o cuenta creada → panel **sin recargar**: check en el botón, la tarjeta se retira, el acceso se desvanece
+  como velo mientras el panel carga debajo y entran la barra lateral y la superior. Medido: 808 ms a 60 cuadros/s.
+- Cerrar sesión: el panel se desvanece (220 ms) y entra el login.
+- La sacudida de error, el bloqueo y el anillo siguen en CSS (ya cumplían el plan; no se duplicaron en GSAP).
+- Sin `gsap.min.js` o con «reducir movimiento» no se monta ninguna línea de tiempo y todo funciona igual
+  (comprobado bloqueando el archivo). Al terminar cada animación no queda estilo en línea.
+
+Probado con Playwright en 1440×900 y, por la IP de la red, en 1280×800, 800×1280 y 600×900: bienvenida, crear cuenta,
+login mal y bien, dos entradas seguidas en la misma página, bloqueo + recarga, cerrar sesión; ninguna petición
+fuera del PC y ningún error de JavaScript. Capturas `fase2-*.png`. **La fluidez en la tablet real está sin probar.**
+
+Pendiente: fase 3 opcional (Three.js). Límite conocido: un
 dispositivo ya vinculado por código entra directo al panel y no tiene forma de iniciar sesión con contraseña
 desde la interfaz (solo importa para que aparezca en «Sesiones abiertas»).
 
@@ -542,3 +558,7 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   bloqueo con cuenta regresiva, pestaña Cuenta y menú de usuario, solo con CSS y contra la API real. Prueba nueva
   `tests/test_web.py` (sin recursos de internet; acciones e iconos enlazados). 73 pruebas. Playwright en escritorio
   y tamaño tablet; capturas en `docs/diseno/capturas-login/`. Siguiente: Cristóbal lo revisa en el navegador y en la tablet; después, fase 2 (GSAP).
+- **2026-11-17 · Claude Code (PC Windows)** — Login, fase 2: GSAP 3.15.1 local en `web/vendor/` (con huella y licencia) y
+  líneas de tiempo del acceso: bienvenida, entrada del login, transición al panel sin recargar y salida al cerrar sesión.
+  Prueba nueva de la huella del archivo. 74 pruebas. Playwright en escritorio y tamaños de tablet y móvil.
+  Siguiente: Cristóbal valora el movimiento en el PC y en la tablet; después decide si se hace la fase 3 (Three.js).

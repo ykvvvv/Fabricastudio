@@ -1,6 +1,6 @@
 # Plan de diseño: login del panel
 
-Fecha: 2026-11-17 · Estado: **plan, sin código**. Fuentes: `docs/diseno/referencia-panel.html`,
+Fecha: 2026-11-17 · Estado: **fases A (pantallas con CSS) y B (GSAP) implementadas; falta la C (Three.js, opcional)** — ver `ESTADO.md`. Fuentes: `docs/diseno/referencia-panel.html`,
 `fabrica_studio/web/estilo.css` (lo ya implementado), el contrato de `ESTADO.md` → «Login del panel»
 y el código real de `server.py` / `cuentas.py`. Método: skills `design-dna` (tokens, estilo, efectos)
 y `motion-design` (personalidad, duraciones, coreografía).

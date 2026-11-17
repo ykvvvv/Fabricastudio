@@ -1,5 +1,5 @@
 "use strict";
-// Panel de Fábrica Studio. Sin dependencias: un único archivo que consulta la API cada 2 s.
+// Panel de Fábrica Studio: un único archivo que consulta la API cada 2 s. Única biblioteca: GSAP local (opcional, solo anima el acceso).
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -214,6 +214,7 @@ function mostrarAcceso(modo, nota = "") {
   $("#l-codigo").hidden = S.sesion.local; $("#v-login").hidden = !S.sesion.cuenta_creada;
   document.title = `${{ bienvenida: "Bienvenida", login: "Iniciar sesión", vincular: "Vincular" }[modo]} · Fábrica Studio`;
   if (modo === "login" && S.sesion.espera_login > 0) bloquear(S.sesion.espera_login);    // sigue bloqueado tras recargar
+  entradaAcceso(modo);
   $(`#acceso > :not([hidden]) input:not(:disabled)`)?.focus();
 }
 // La API respondió 401 con el panel abierto: la sesión caducó o se cerró desde el PC.
@@ -230,6 +231,45 @@ function errorAcceso(f, texto) {
   const p = $(".error", f);
   p.className = "error"; p.textContent = texto;
   f.classList.remove("sacude"); void f.offsetWidth; f.classList.add("sacude");
+  f.addEventListener("animationend", () => f.classList.remove("sacude"), { once: true });    // no se repite al volver a mostrar la tarjeta
+}
+
+// ---------------------------------------------------------------- movimiento del acceso (GSAP local, fase 2 del plan)
+// Sin GSAP o con «reducir movimiento» no se monta ninguna línea de tiempo: los estados se aplican de golpe.
+const animar = () => !!window.gsap && !calma.matches;
+if (animar()) $("#acceso").classList.add("con-gsap");       // apaga las entradas CSS equivalentes
+let entrada = null;
+function entradaAcceso(modo) {
+  if (!animar()) return;
+  entrada?.progress(1).kill();          // una entrada cortada a medias dejaría valores intermedios como estado final
+  const t = entrada = gsap.timeline({ defaults: { ease: "power3.out", duration: 0.3, clearProps: "all" } });   // al terminar no queda estilo en línea
+  if (modo !== "bienvenida") return void t.from("#acceso > form:not([hidden])", { y: 8, opacity: 0 });
+  // Bienvenida: marca → texto → tarjeta → campos. Se puede escribir desde el primer momento.
+  t.from("#acceso .marca-signo", { y: -14, rotation: 28, opacity: 0, duration: 0.35 })
+    .from("#acceso .marca span", { x: -6, opacity: 0 }, "-=0.15")
+    .from(".acceso-texto > *", { y: 10, opacity: 0, stagger: 0.06 }, "-=0.15")
+    .from("#form-crear", { y: 12, opacity: 0, duration: 0.36 }, "-=0.3")
+    .from("#form-crear > *", { y: 6, opacity: 0, duration: 0.25, stagger: 0.04 }, "-=0.2");
+}
+// Login o cuenta creada → panel: check en el botón, la tarjeta se retira y el acceso se desvanece como un velo
+// mientras el panel ya carga debajo y entran la barra lateral y la superior (≈ 0,9 s).
+async function alPanel(f) {
+  const b = $(".primario", f), antes = b.innerHTML, a = $("#acceso");
+  const limpiar = () => { f.classList.remove("enviando", "sacude"); b.classList.remove("hecho"); b.disabled = false; b.innerHTML = antes; $("#c-regla").classList.remove("cumple"); };
+  f.reset(); $(".error", f).textContent = "";        // ni la contraseña ni un error anterior se quedan en la página
+  await leerSesion();
+  if (!animar()) { limpiar(); return entrar(); }
+  entrada?.progress(1).kill();
+  f.classList.remove("enviando"); b.classList.add("hecho"); b.innerHTML = icono("check");
+  a.classList.add("saliendo");
+  entrar(false);
+  $("#principal").focus({ preventScroll: true });
+  const t = gsap.timeline({ onComplete: () => { a.hidden = true; a.classList.remove("saliendo"); gsap.set([a, f, "#lateral", ".barra"], { clearProps: "all" }); limpiar(); } })
+    .from(b.firstChild, { scale: 0.2, rotation: -25, opacity: 0, duration: 0.2, ease: "back.out(2)" })
+    .to(f, { scale: 0.98, opacity: 0, duration: 0.22, ease: "power2.in" }, "+=0.12")
+    .to(a, { opacity: 0, duration: 0.3, ease: "power2.in" }, "-=0.1")
+    .from(".barra", { y: -8, opacity: 0, duration: 0.3, ease: "power3.out" }, "<0.06");
+  if (!movil.matches) t.from("#lateral", { x: -12, opacity: 0, duration: 0.3, ease: "power3.out" }, "<");     // en móvil es un menú oculto
 }
 
 // Bloqueo por intentos (429). La cuenta regresiva sale de los segundos que da el servidor y se calcula
@@ -267,7 +307,7 @@ $("#form-login").addEventListener("submit", async (e) => {
   f.classList.add("enviando"); $(".primario", f).disabled = true;
   try {
     const [r, d] = await enviar("/api/login", { usuario: f.usuario.value, contrasena: f.contrasena.value, recordar: f.recordar.checked });
-    if (r.ok) return location.reload();
+    if (r.ok) return alPanel(f);
     f.contrasena.value = "";
     errorAcceso(f, r.status === 429 && d.espera ? "" : d.error || `Error ${r.status}`);
     if (r.status === 429 && d.espera) bloquear(d.espera); else f.contrasena.focus();
@@ -282,7 +322,7 @@ $("#form-crear").addEventListener("submit", async (e) => {
   $(".primario", f).disabled = true;
   try {
     const [r, d] = await enviar("/api/cuenta/crear", { nombre: f.nombre.value, contrasena: f.contrasena.value, recordar: f.recordar.checked });
-    if (r.ok) return location.reload();
+    if (r.ok) return alPanel(f);
     if (r.status === 409) { await leerSesion(); mostrarAcceso("login", "Ya existe una cuenta. Inicia sesión."); }
     else errorAcceso(f, d.error || `Error ${r.status}`);
   } catch (err) { errorAcceso(f, "No se pudo conectar con el PC."); }
@@ -375,11 +415,11 @@ async function refrescar() {
 }
 
 let dentro = false;
-async function entrar() {
-  $("#acceso").hidden = true; $("#app").hidden = false;
-  if (dentro) return navegar();
-  dentro = true;
+async function entrar(ocultar = true) {        // ocultar = false: el acceso sigue encima mientras se desvanece (alPanel)
+  $("#acceso").hidden = ocultar; $("#app").hidden = false;
   navegar();                                   // esqueleto mientras llegan los datos
+  if (dentro) return refrescar();              // ya se había entrado antes en esta página (cerrar sesión y volver)
+  dentro = true;
   S.ajustes = await api("/api/ajustes").catch(() => null);
   await refrescar();
   setInterval(refrescar, 2000);
@@ -702,7 +742,11 @@ const acciones = {
   "crear-cuenta": () => mostrarAcceso("bienvenida"),
   "cerrar-sesion": intentar(async () => {
     await api("/api/logout", { method: "POST" });
-    if (!(await leerSesion()).autorizado) return mostrarAcceso("login");
+    if (!(await leerSesion()).autorizado) {
+      if (animar()) await new Promise((hecho) => gsap.to("#app", { opacity: 0, duration: 0.22, ease: "power2.in", onComplete: hecho }));
+      mostrarAcceso("login");
+      return void window.gsap?.set("#app", { clearProps: "opacity" });
+    }
     // Un dispositivo vinculado por código sigue autorizado aunque cierre su sesión.
     avisar("Sesión cerrada. Este dispositivo sigue vinculado por código; para quitarlo, usa Ajustes → Dispositivos en el PC.");
     pintar(true);

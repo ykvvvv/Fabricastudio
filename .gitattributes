@@ -1,2 +1,4 @@
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
+# Bibliotecas de terceros: Git no toca sus finales de linea (las huellas SHA-256 deben coincidir).
+fabrica_studio/web/vendor/*.js -text

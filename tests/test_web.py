@@ -35,3 +35,14 @@ def test_pantallas_de_acceso_servidas_y_enlazadas(fabrica):
     iconos = _texto("iconos.js")
     for nombre in set(re.findall(r'data-icono="([a-z-]+)"', html)) | set(re.findall(r'\bic\("([a-z-]+)"\)', js)):
         assert re.search(rf'^  "?{nombre}"?:', iconos, re.M), nombre
+
+
+def test_gsap_local_referenciado_e_intacto():
+    """La biblioteca se sirve desde el PC y es byte a byte la anotada en vendor/LICENCIAS.md."""
+    import hashlib
+    assert '<script src="vendor/gsap.min.js">' in _texto("index.html")
+    huella = hashlib.sha256((WEB / "vendor" / "gsap.min.js").read_bytes()).hexdigest()
+    assert huella in _texto("vendor/LICENCIAS.md")
+    # Sin la biblioteca el panel debe seguir funcionando: todo uso pasa por animar() o comprueba window.gsap.
+    js = _texto("app.js")
+    assert "const animar = () => !!window.gsap && !calma.matches;" in js
