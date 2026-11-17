@@ -86,16 +86,38 @@ Devuelve un arreglo JSON de objetos con primer_segmento, ultimo_segmento (númer
 motivo (una frase breve y concreta sobre lo que pasa, sin inventar nada que no esté en el texto)."""
 
 
+def _tramos(segmentos: list[dict], limite: int = CARACTERES_MAX_IA) -> list[tuple[int, int]]:
+    """Divide la transcripción en tramos [i, j) que caben en una petición a la IA."""
+    tramos, inicio, largo = [], 0, 0
+    for i, s in enumerate(segmentos):
+        n = len(s["texto"]) + 24
+        if largo + n > limite and i > inicio:
+            tramos.append((inicio, i))
+            inicio, largo = i, 0
+        largo += n
+    tramos.append((inicio, len(segmentos)))
+    return tramos
+
+
 def proponer_gemini(segmentos: list[dict], clave: str, cantidad: int = 6, modelo_preferido: str = "",
                     cliente: httpx.Client | None = None, espera: float = 2.0) -> tuple[list[dict], str]:
-    lineas = "\n".join(f"[{i}] {s['inicio']:.1f}-{s['fin']:.1f}: {s['texto']}" for i, s in enumerate(segmentos))
-    if len(lineas) > CARACTERES_MAX_IA:
-        raise ErrorEtapa("La transcripción es demasiado larga para enviarla de una vez a la IA.", "entrada")
-    datos, modelo = textos.pedir_json(clave, _INSTRUCCIONES.format(cantidad=cantidad),
-                                      f"<transcripcion>\n{lineas}\n</transcripcion>", _ESQUEMA,
-                                      modelo_preferido, cliente, espera, temperatura=0.4)
-    if isinstance(datos, dict):
-        datos = datos.get("momentos") or datos.get("items") or []
+    """Un VOD largo se analiza por tramos (cada uno cabe en una petición). Los índices que devuelve
+    la IA son los de la transcripción completa, así que los momentos no dependen del tramo."""
+    tramos = _tramos(segmentos)
+    total = max(1, sum(j - i for i, j in tramos))
+    todos, modelo = [], ""
+    for i0, i1 in tramos:
+        por_tramo = max(1, round(cantidad * (i1 - i0) / total)) if len(tramos) > 1 else cantidad
+        lineas = "\n".join(f"[{i}] {segmentos[i]['inicio']:.1f}-{segmentos[i]['fin']:.1f}: {segmentos[i]['texto']}"
+                           for i in range(i0, i1))
+        datos, modelo = textos.pedir_json(clave, _INSTRUCCIONES.format(cantidad=por_tramo),
+                                          f"<transcripcion>\n{lineas}\n</transcripcion>", _ESQUEMA,
+                                          modelo_preferido, cliente, espera, temperatura=0.4)
+        if isinstance(datos, dict):
+            datos = datos.get("momentos") or datos.get("items") or []
+        todos.extend(d for d in (datos if isinstance(datos, list) else [])
+                     if isinstance(d, dict) and _en_tramo(d, i0, i1))
+    datos = todos
     validos: list[dict] = []
     for d in datos if isinstance(datos, list) else []:
         try:
@@ -113,7 +135,14 @@ def proponer_gemini(segmentos: list[dict], clave: str, cantidad: int = 6, modelo
                         "motivo": textos._limpio(d.get("motivo"))[:200], "texto": _texto(segmentos, i, j)})
     if not validos:
         raise ErrorEtapa("La IA no devolvió ningún momento utilizable.", "formato")
-    return sorted(validos, key=lambda v: v["inicio"])[:cantidad], modelo
+    return sorted(validos, key=lambda v: v["inicio"])[:max(cantidad, len(tramos))], modelo
+
+
+def _en_tramo(d: dict, i0: int, i1: int) -> bool:
+    try:
+        return i0 <= int(d["primer_segmento"]) <= int(d["ultimo_segmento"]) < i1
+    except (KeyError, TypeError, ValueError):
+        return True          # se descarta luego, en la validación general
 
 
 def proponer(segmentos: list[dict], proveedor: str, clave: str, cantidad: int = 6, modelo_preferido: str = "",

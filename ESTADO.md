@@ -562,3 +562,7 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   líneas de tiempo del acceso: bienvenida, entrada del login, transición al panel sin recargar y salida al cerrar sesión.
   Prueba nueva de la huella del archivo. 74 pruebas. Playwright en escritorio y tamaños de tablet y móvil.
   Siguiente: Cristóbal valora el movimiento en el PC y en la tablet; después decide si se hace la fase 3 (Three.js).
+- **2026-11-17 · Claude Code (nube)** — VOD completo a Shorts sin intervención: ajustes `momentos_auto`
+  (por defecto desactivado) y `momentos_auto_solo_ia` (por defecto activado: con la heurística local solo avisa).
+  Gemini analiza VODs largos por tramos (antes fallaba con más de ~1 h y caía a la heurística). 77 pruebas.
+  **Falta en el panel:** dos interruptores en Ajustes (Claude Code del PC, fase 4). Sin probar con un VOD real.

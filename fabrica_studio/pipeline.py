@@ -260,6 +260,27 @@ class Fabrica:
         self.db.marcar_etapa(jid, "momentos", "hecho", f"{len(res['propuestas'])} propuestas · origen: {res['origen']}")
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="propuestas", etapa="momentos")
+        if a["momentos_auto"]:
+            self._crear_clips_automaticos(jid, res, a)
+
+    def _crear_clips_automaticos(self, jid: str, res: dict, a: dict) -> None:
+        """Convierte las propuestas en Shorts sin intervención. Con la heurística local solo lo hace si
+        el usuario lo permitió (momentos_auto_solo_ia = False), porque no entiende el contenido."""
+        if res["origen"] == "local" and a["momentos_auto_solo_ia"]:
+            if res["propuestas"]:
+                self.db.anadir_aviso(jid, "Creación automática en pausa: las propuestas vienen de la heurística "
+                                          "local, no de Gemini. Revísalas y crea los Shorts a mano, o configura Gemini.")
+            return
+        creados = 0
+        for p in res["propuestas"]:
+            try:
+                self.crear_clip(jid, p["inicio"], p["fin"])
+                creados += 1
+            except ErrorEtapa as e:
+                if e.tipo != "duplicado":
+                    self.db.anadir_aviso(jid, f"No se creó el momento {p.get('id', '?')}: {e}")
+        if creados:
+            self.db.anadir_aviso(jid, f"Se crearon automáticamente {creados} Shorts a partir de las propuestas.")
 
     def crear_clip(self, jid: str, inicio: float, fin: float) -> dict:
         """Crea un trabajo de clip a partir de un tramo de un video largo."""

@@ -120,3 +120,51 @@ def test_clip_de_un_largo_eliminado_falla_con_explicacion(fabrica, largo):
     fabrica._ejecutar(fabrica.db.siguiente())
     hijo = fabrica.db.trabajo(hijo["id"])
     assert hijo["estado"] == "error" and "ya no está disponible" in hijo["error"]
+
+
+def test_creacion_automatica_con_ia(fabrica, largo, monkeypatch):
+    """Con propuestas de Gemini y momentos_auto, los Shorts se crean solos y no se duplican."""
+    fabrica.db.guardar_ajustes({"momentos_auto": True})
+    monkeypatch.setattr(momentos, "proponer", lambda *a, **k: {
+        "origen": "gemini:gemini-9-flash", "aviso": "",
+        "propuestas": [{"id": 1, "inicio": 0.0, "fin": 8.0, "motivo": "a", "texto": "x", "puntaje": None},
+                       {"id": 2, "inicio": 10.0, "fin": 20.0, "motivo": "b", "texto": "y", "puntaje": None}]})
+    fabrica.proponer_de_nuevo(largo["id"])
+    fabrica._ejecutar(fabrica.db.trabajo(largo["id"]))
+    hijos = [t for t in fabrica.db.trabajos() if t["origen_tipo"] == "momento"]
+    assert len(hijos) == 2 and all(h["estado"] == "pendiente" for h in hijos)
+    assert any("automáticamente 2" in x for x in fabrica.db.trabajo(largo["id"])["avisos"])
+    fabrica._crear_clips_automaticos(largo["id"], momentos.proponer(), fabrica.db.ajustes())   # repetir
+    assert len([t for t in fabrica.db.trabajos() if t["origen_tipo"] == "momento"]) == 2
+
+
+def test_con_heuristica_no_se_crea_nada_salvo_que_se_permita(fabrica, largo):
+    fabrica.db.guardar_ajustes({"momentos_auto": True})
+    fabrica.proponer_de_nuevo(largo["id"])
+    fabrica._ejecutar(fabrica.db.trabajo(largo["id"]))
+    t = fabrica.db.trabajo(largo["id"])
+    assert not [x for x in fabrica.db.trabajos() if x["origen_tipo"] == "momento"]
+    assert any("en pausa" in x for x in t["avisos"])
+    fabrica.db.guardar_ajustes({"momentos_auto_solo_ia": False})
+    fabrica.proponer_de_nuevo(largo["id"])
+    fabrica._ejecutar(fabrica.db.trabajo(largo["id"]))
+    assert [x for x in fabrica.db.trabajos() if x["origen_tipo"] == "momento"]
+
+
+def test_vod_largo_se_analiza_por_tramos(monkeypatch):
+    """Un VOD de ~3 h no cabe en una petición: se divide y cada tramo devuelve índices globales."""
+    segs = [{"inicio": i * 5.0, "fin": i * 5.0 + 4.5, "texto": "palabra " * 60} for i in range(2400)]
+    tramos = momentos._tramos(segs)
+    assert len(tramos) > 1 and tramos[0][0] == 0 and tramos[-1][1] == len(segs)
+    assert all(a[1] == b[0] for a, b in zip(tramos, tramos[1:]))
+    llamadas = []
+
+    def falsa(clave, instr, contenido, esquema, *a, **k):
+        primero = int(contenido.split("[", 2)[1].split("]")[0])
+        llamadas.append(primero)
+        return [{"primer_segmento": primero + 10, "ultimo_segmento": primero + 18, "motivo": "pico"}], "gemini-9-flash"
+    monkeypatch.setattr(momentos.textos, "pedir_json", falsa)
+    props, modelo = momentos.proponer_gemini(segs, "clave", cantidad=6)
+    assert len(llamadas) == len(tramos) and modelo == "gemini-9-flash"
+    assert [p["inicio"] for p in props] == [segs[i0 + 10]["inicio"] for i0, _ in tramos][:len(props)]
+    assert len(props) == len(tramos)
