@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS trabajos (
     subida TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS ajustes (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cuenta (
+    id INTEGER PRIMARY KEY CHECK (id = 1), nombre TEXT NOT NULL, hash TEXT NOT NULL,
+    creado REAL NOT NULL, cambiado REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sesiones (
+    id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, agente TEXT NOT NULL DEFAULT '',
+    ip TEXT NOT NULL DEFAULT '', creado REAL NOT NULL, visto REAL NOT NULL, expira REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS dispositivos (
     id TEXT PRIMARY KEY, nombre TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
     creado REAL NOT NULL, visto REAL NOT NULL
@@ -201,3 +209,58 @@ class DB:
     def borrar_dispositivo(self, did: str) -> None:
         with self._lock:
             self._c.execute("DELETE FROM dispositivos WHERE id=?", (did,))
+
+    # ---------- cuenta y sesiones ----------
+    def cuenta(self) -> dict | None:
+        with self._lock:
+            r = self._c.execute("SELECT * FROM cuenta WHERE id=1").fetchone()
+        return dict(r) if r else None
+
+    def crear_cuenta(self, nombre: str, hash_: str) -> bool:
+        """Crea la cuenta solo si no existe (devuelve False si ya había una)."""
+        with self._lock:
+            try:
+                self._c.execute("INSERT INTO cuenta VALUES (1,?,?,?,?)", (nombre, hash_, time.time(), time.time()))
+                return True
+            except sqlite3.IntegrityError:
+                return False
+
+    def cambiar_contrasena(self, hash_: str) -> None:
+        with self._lock:
+            self._c.execute("UPDATE cuenta SET hash=?, cambiado=? WHERE id=1", (hash_, time.time()))
+            self._c.execute("DELETE FROM sesiones")
+
+    def borrar_cuenta(self) -> None:
+        with self._lock:
+            self._c.execute("DELETE FROM cuenta")
+            self._c.execute("DELETE FROM sesiones")
+
+    def crear_sesion(self, token_hash: str, agente: str, ip: str, duracion: float) -> str:
+        sid = uuid.uuid4().hex[:12]
+        ahora = time.time()
+        with self._lock:
+            self._c.execute("DELETE FROM sesiones WHERE expira < ?", (ahora,))
+            self._c.execute("INSERT INTO sesiones VALUES (?,?,?,?,?,?,?)",
+                            (sid, token_hash, agente[:120], ip[:60], ahora, ahora, ahora + duracion))
+        return sid
+
+    def sesion_por_token(self, token_hash: str) -> dict | None:
+        ahora = time.time()
+        with self._lock:
+            r = self._c.execute("SELECT * FROM sesiones WHERE token_hash=? AND expira>=?", (token_hash, ahora)).fetchone()
+            if r and ahora - r["visto"] > 60:
+                self._c.execute("UPDATE sesiones SET visto=? WHERE id=?", (ahora, r["id"]))
+        return dict(r) if r else None
+
+    def sesiones(self) -> list[dict]:
+        with self._lock:
+            return [{k: r[k] for k in ("id", "agente", "ip", "creado", "visto", "expira")} for r in
+                    self._c.execute("SELECT * FROM sesiones WHERE expira>=? ORDER BY visto DESC", (time.time(),)).fetchall()]
+
+    def borrar_sesion(self, sid: str | None = None, token_hash: str | None = None) -> None:
+        with self._lock:
+            if sid:
+                self._c.execute("DELETE FROM sesiones WHERE id=?", (sid,))
+            if token_hash:
+                self._c.execute("DELETE FROM sesiones WHERE token_hash=?", (token_hash,))
+

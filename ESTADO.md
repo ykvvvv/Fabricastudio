@@ -22,6 +22,27 @@ primer Short real renderizado y **primera subida real a YouTube en privado** (ve
 - Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
   El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
+## Login del panel: servidor listo, falta la pantalla (2026-11-17)
+
+`fabrica_studio/cuentas.py` + rutas en `server.py`. Una cuenta (el propietario), contraseña con scrypt,
+sesiones en cookie HttpOnly (hash en SQLite), bloqueo por IP tras 5 fallos con espera creciente.
+**Compatible con el panel actual:** mientras no se cree la cuenta, todo funciona como antes.
+
+Contrato para la interfaz:
+
+| Ruta | Uso |
+| --- | --- |
+| `GET /api/sesion` | `{autorizado, local, cuenta_creada, usuario, sesion_iniciada, version}`. No revela el usuario sin sesión. |
+| `POST /api/cuenta/crear` `{nombre, contrasena, recordar}` | Primera configuración. **Solo desde el PC** y solo si no hay cuenta (409 si ya existe). Deja la sesión iniciada. |
+| `POST /api/login` `{usuario, contrasena, recordar}` | 403 credenciales malas; 429 `{espera}` si está bloqueado. `recordar` = 30 días; si no, sesión del navegador (12 h máx.). |
+| `POST /api/logout` | Cierra la sesión actual. |
+| `PUT /api/cuenta/contrasena` `{actual, nueva}` | Solo PC. Cierra todas las sesiones y deja abierta la actual. |
+| `GET /api/sesiones`, `DELETE /api/sesiones/<id>` | Sesiones abiertas (con `actual`); cerrar una solo desde el PC. |
+
+Flujo de pantallas: `cuenta_creada=false` y `local=true` → ofrecer «Crear cuenta» (opcional, se puede seguir
+sin contraseña). `cuenta_creada=true` y `autorizado=false` → pantalla de login. Los dispositivos vinculados
+con código siguen funcionando. Si se olvida la contraseña: `python -m fabrica_studio.cuentas --restablecer` en el PC.
+
 ## Estilo pantalla completa tipo OpusClip (2026-11-16)
 
 Implementada la **fase 1** de `docs/ESTILO_OPUSCLIP.md`: el video llena el 9:16 y el encuadre
@@ -482,3 +503,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   Siguiente: Cristóbal lo revisa en el navegador y en la tablet; después, fase 3 (Plantilla).
 - **2026-11-17 · Claude Code (nube)** — `Abrir Fabrica Studio.cmd`: abre el panel con doble clic
   (ejecuta `scripts\iniciar.ps1` sin cambiar la política de ejecución global). Sin probar en Windows.
+- **2026-11-17 · Claude Code (nube)** — Login en el servidor (`cuentas.py`, tablas `cuenta` y `sesiones`,
+  rutas de cuenta/login/logout/sesiones) con 8 pruebas nuevas; 71 pasan. Falta la pantalla de login y
+  las animaciones (Claude Code del PC, con las skills GSAP, Three.js, Motion Design y Design DNA).

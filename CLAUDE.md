@@ -29,6 +29,7 @@ Python 3.10+ · FastAPI · SQLite · FFmpeg · faster-whisper · interfaz web si
 | `fabrica_studio/importar.py` | Enlaces (yt-dlp) y comprobación de archivos estables. |
 | `fabrica_studio/pipeline.py` | `Fabrica`: etapas, cola, carpeta vigilada, acciones del panel. |
 | `fabrica_studio/acceso.py` | Vinculación de dispositivos por código. |
+| `fabrica_studio/cuentas.py` | Cuenta del propietario, contraseña (scrypt), sesiones y límite de intentos. |
 | `fabrica_studio/server.py` | API HTTP y archivos estáticos. |
 | `fabrica_studio/web/` | Panel: `index.html`, `estilo.css`, `app.js` (sin dependencias). |
 

@@ -92,6 +92,17 @@ momentos para recortar. Tú revisas cada tramo, ajustas los tiempos si quieres y
 Sin clave de Gemini las propuestas vienen de una heurística que mide ritmo de habla y
 exclamaciones pero no entiende el contenido: tómalas como punto de partida.
 
+## Contraseña del panel (opcional)
+
+Puedes proteger el panel con usuario y contraseña. La cuenta solo se crea desde el PC. Si olvidas
+la contraseña, en PowerShell dentro de la carpeta del proyecto:
+
+```powershell
+.\.venv\Scripts\python.exe -m fabrica_studio.cuentas --restablecer
+```
+
+Borra la contraseña y las sesiones; tus clips y ajustes no se tocan.
+
 ## Carpetas
 
 Dentro de `datos/` (se crea sola, no se sube al repositorio):

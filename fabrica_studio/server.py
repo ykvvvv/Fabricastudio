@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import secrets
 import shutil
 import tempfile
 import time
@@ -15,7 +16,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, acceso, render, textos
+from . import __version__, acceso, cuentas, render, textos
 from .config import AJUSTES_POR_DEFECTO, FUENTES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
 from .errores import ErrorEtapa, sin_secretos
 from .pipeline import Fabrica
@@ -28,6 +29,7 @@ _CODIGOS = {"duplicado": 409, "configuracion": 409, "autenticacion": 502, "cuota
 def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> FastAPI:
     fab = fabrica or Fabrica(Rutas())
     vinc = acceso.Vinculacion()
+    limitador = cuentas.Limitador()
 
     @asynccontextmanager
     async def ciclo(app: FastAPI):
@@ -44,8 +46,16 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def _local(request: Request) -> bool:
         return acceso.es_local(request.client.host if request.client else None)
 
+    def _sesion(request: Request) -> dict | None:
+        token = request.cookies.get(cuentas.COOKIE_SESION, "")
+        return fab.db.sesion_por_token(acceso.hash_token(token)) if token else None
+
     def _autorizado(request: Request) -> bool:
-        if _local(request):
+        """Sin cuenta creada: el PC entra directo y los demás necesitan estar vinculados.
+        Con cuenta: hace falta una sesión iniciada (también en el PC) o un dispositivo vinculado."""
+        if fab.db.cuenta() is None and _local(request):
+            return True
+        if _sesion(request):
             return True
         token = request.cookies.get(acceso.COOKIE, "")
         return bool(token) and fab.db.dispositivo_por_token(acceso.hash_token(token)) is not None
@@ -63,9 +73,9 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         if origen and request.method not in ("GET", "HEAD") and urlparse(origen).netloc != request.headers.get("host"):
             return JSONResponse({"error": "Origen no permitido."}, status_code=403)
         publico = not (ruta.startswith("/api/") or ruta.startswith("/media/")) \
-            or ruta in ("/api/sesion", "/api/vincular", "/api/youtube/callback")
+            or ruta in ("/api/sesion", "/api/vincular", "/api/youtube/callback", "/api/login", "/api/cuenta/crear")
         if not publico and not _autorizado(request):
-            return JSONResponse({"error": "Dispositivo no vinculado."}, status_code=401)
+            return JSONResponse({"error": "Inicia sesión o vincula este dispositivo."}, status_code=401)
         respuesta = await call_next(request)
         if ruta.startswith("/api/"):
             respuesta.headers["Cache-Control"] = "no-store"
@@ -78,7 +88,81 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
     @app.get("/api/sesion")
     def sesion(request: Request):
-        return {"autorizado": _autorizado(request), "local": _local(request), "version": __version__}
+        cuenta = fab.db.cuenta()
+        return {"autorizado": _autorizado(request), "local": _local(request), "version": __version__,
+                "cuenta_creada": cuenta is not None, "usuario": cuenta["nombre"] if cuenta and _autorizado(request) else "",
+                "sesion_iniciada": _sesion(request) is not None}
+
+    def _abrir_sesion(request: Request, recordar: bool) -> JSONResponse:
+        token = secrets.token_urlsafe(32)
+        duracion = cuentas.DURACION_RECORDAR if recordar else cuentas.DURACION_NORMAL
+        fab.db.crear_sesion(acceso.hash_token(token), request.headers.get("user-agent", ""),
+                            request.client.host if request.client else "", duracion)
+        r = JSONResponse({"ok": True, "usuario": fab.db.cuenta()["nombre"]})
+        r.set_cookie(cuentas.COOKIE_SESION, token, max_age=int(duracion) if recordar else None,
+                     httponly=True, samesite="strict")
+        return r
+
+    @app.post("/api/cuenta/crear")
+    async def crear_cuenta(request: Request):
+        """Primera configuración: solo desde el PC y solo si aún no hay cuenta."""
+        _solo_pc(request)
+        c = await request.json()
+        nombre, contrasena = cuentas.validar_nueva(str(c.get("nombre", "")), str(c.get("contrasena", "")))
+        if not fab.db.crear_cuenta(nombre, cuentas.hash_contrasena(contrasena)):
+            raise ErrorEtapa("Ya existe una cuenta. Inicia sesión.", "duplicado")
+        return _abrir_sesion(request, bool(c.get("recordar", True)))
+
+    @app.post("/api/login")
+    async def login(request: Request):
+        ip = request.client.host if request.client else "?"
+        espera = limitador.espera(ip)
+        if espera > 0:
+            return JSONResponse({"error": f"Demasiados intentos. Espera {int(espera) + 1} segundos.",
+                                 "espera": int(espera) + 1}, status_code=429)
+        cuenta = fab.db.cuenta()
+        if cuenta is None:
+            raise ErrorEtapa("Todavía no hay una cuenta: créala desde el panel en el PC.", "configuracion")
+        c = await request.json()
+        nombre_ok = str(c.get("usuario", "")).strip().lower() in ("", cuenta["nombre"].lower())
+        if not (cuentas.verificar_contrasena(str(c.get("contrasena", "")), cuenta["hash"]) and nombre_ok):
+            limitador.fallo(ip)
+            return JSONResponse({"error": "Usuario o contraseña incorrectos."}, status_code=403)
+        limitador.exito(ip)
+        return _abrir_sesion(request, bool(c.get("recordar", False)))
+
+    @app.post("/api/logout")
+    def logout(request: Request):
+        token = request.cookies.get(cuentas.COOKIE_SESION, "")
+        if token:
+            fab.db.borrar_sesion(token_hash=acceso.hash_token(token))
+        r = JSONResponse({"ok": True})
+        r.delete_cookie(cuentas.COOKIE_SESION)
+        return r
+
+    @app.put("/api/cuenta/contrasena")
+    async def cambiar_contrasena(request: Request):
+        _solo_pc(request)
+        cuenta = fab.db.cuenta()
+        if cuenta is None:
+            raise ErrorEtapa("No hay cuenta creada.", "configuracion")
+        c = await request.json()
+        if not cuentas.verificar_contrasena(str(c.get("actual", "")), cuenta["hash"]):
+            raise ErrorEtapa("La contraseña actual no es correcta.", "prohibido")
+        _, nueva = cuentas.validar_nueva(cuenta["nombre"], str(c.get("nueva", "")))
+        fab.db.cambiar_contrasena(cuentas.hash_contrasena(nueva))     # cierra todas las sesiones
+        return _abrir_sesion(request, True)
+
+    @app.get("/api/sesiones")
+    def listar_sesiones(request: Request):
+        actual = _sesion(request)
+        return [{**x, "actual": bool(actual and actual["id"] == x["id"])} for x in fab.db.sesiones()]
+
+    @app.delete("/api/sesiones/{sid}")
+    def cerrar_sesion(sid: str, request: Request):
+        _solo_pc(request)
+        fab.db.borrar_sesion(sid=sid)
+        return {"ok": True}
 
     @app.post("/api/vincular")
     async def vincular(request: Request):
