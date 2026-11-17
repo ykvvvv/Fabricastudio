@@ -573,6 +573,14 @@ document.addEventListener("click", (e) => {
 });
 
 // ---------------------------------------------------------------- detalle del trabajo
+// El servidor deja en el detalle de la etapa Render «… · automático: <motivo> · <encuadre usado> · …».
+function encuadreAuto(t) {
+  const det = t.etapas.render?.estado === "hecho" ? t.etapas.render.detalle || "" : "";
+  const motivo = /automático: ([^·]+)/.exec(det)?.[1].trim();
+  if (!motivo) return "";
+  const usado = ["vista dividida", "pantalla completa con seguimiento", "clásico"].find((x) => det.includes(` · ${x}`));
+  return h`<p class="nota encuadre"><b>Encuadre automático${usado ? `: ${usado}` : ""}.</b> Motivo: ${motivo}.</p>`;
+}
 function pintarTrabajo(m, completo) {
   const t = S.detalle;
   if (t === null) return esqueleto(m);
@@ -604,8 +612,9 @@ function pintarTrabajo(m, completo) {
     if (!t.youtube_id) botones += h`<button data-accion="editar-tiempos" data-foco="b-tiempos">${ic("tijera")}Editar tiempos</button>`;
   }
   if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
-    const general = { completo: "pantalla completa", dividido: "vista dividida" }[S.estado.estilo] || "clásico";
+    const general = { auto: "automático", completo: "pantalla completa", dividido: "vista dividida" }[S.estado.estilo] || "clásico";
     botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo data-foco="b-estilo">
+      <option value="auto" ${t.estilo === "auto" ? "selected" : ""}>Automático (recomendado): elige el mejor encuadre</option>
       <option value="" ${t.estilo === "" ? "selected" : ""}>General de Ajustes (${general})</option>
       <option value="clasico" ${t.estilo === "clasico" ? "selected" : ""}>Clásico: video completo con tarjeta</option>
       <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option>
@@ -623,6 +632,7 @@ function pintarTrabajo(m, completo) {
   const destino = t.youtube_id ? "Subido en privado" : t.subir_solicitado || t.estado === "subiendo" ? "En cola para subir en privado" : t.publicar ? "Sin subir" : "No destinado a YouTube";
   poner($("#t-estado"), h`<div class="fila">${crudo(pastilla(t))}<span class="tenue pequeno">${t.progreso || (t.subir_solicitado ? "En cola para subir…" : "")}</span></div>
     ${t.error ? crudo(h`<p class="nota mal" role="alert">${t.error}</p>`) : ""}
+    ${crudo(encuadreAuto(t))}
     ${t.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}
     ${t.youtube_id ? crudo(h`<p class="nota bien">Subido en privado. ID de YouTube: <code>${t.youtube_id}</code> ·
       <a href="https://studio.youtube.com/video/${t.youtube_id}/edit" target="_blank" rel="noopener">Abrir en YouTube Studio</a></p>`) : ""}
@@ -835,7 +845,7 @@ const acciones = {
 // valores del formulario, guardados o no. Campo: [clave, etiqueta, tipo = "number", opciones].
 const SECCIONES_PLANTILLA = [
   ["Encuadre", [
-    ["estilo", "Estilo de encuadre", "select", [["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"], ["dividido", "Vista dividida: cámara arriba, contenido abajo"]]],
+    ["estilo", "Estilo de encuadre", "select", [["auto", "Automático (recomendado): elige el mejor encuadre"], ["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"], ["dividido", "Vista dividida: cámara arriba, contenido abajo"]]],
     ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
     ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
   ["Pantalla completa", [
@@ -861,11 +871,16 @@ const SECCIONES_PLANTILLA = [
     ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
 ];
 const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, campos]) => campos.map(([k, n]) => [k, n])));
-const NOMBRE_ESTILO = { clasico: "Clásico: video completo con tarjeta", completo: "Pantalla completa con seguimiento",
+const NOMBRE_ESTILO = { auto: "Automático: el mejor encuadre para cada clip", clasico: "Clásico: video completo con tarjeta", completo: "Pantalla completa con seguimiento",
   dividido: "Vista dividida: cámara arriba, contenido abajo" };
 // Secciones que solo se ven con su estilo de encuadre.
 const SECCION_ESTILO = { "Pantalla completa": ["pl-completo", "completo"], "Vista dividida": ["pl-dividido", "dividido"] };
-const seccionesEstilo = (estilo) => Object.values(SECCION_ESTILO).forEach(([id, e]) => { $(`#${id}`).hidden = estilo !== e; });
+// Con «auto» cada clip puede terminar en cualquiera de los encuadres: se ven todas sus secciones.
+const seVeSeccion = (estilo, e) => estilo === e || estilo === "auto";
+const seccionesEstilo = (estilo) => {
+  Object.values(SECCION_ESTILO).forEach(([id, e]) => { $(`#${id}`).hidden = !seVeSeccion(estilo, e); });
+  $("#pl-auto-nota").hidden = estilo !== "auto";
+};
 const campoPlantilla = ([k, n, tipo = "number", ops], v, lim) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
   : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
     : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}" ${crudo(lim?.[k] ? `min="${lim[k][0]}" max="${lim[k][1]}"` : "")}></label>`);
@@ -881,9 +896,9 @@ async function pintarPlantilla(m) {
   const seccion = ([titulo, campos]) => {
     const de = (...tipos) => campos.filter((c) => tipos.includes(c[2] || "number")).map((c) => crudo(campoPlantilla(c, v, a.limites)));
     const [id, e] = SECCION_ESTILO[titulo] || [];
-    return h`<fieldset ${id ? crudo(`id="${id}"${v.estilo === e ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
+    return h`<fieldset ${id ? crudo(`id="${id}"${seVeSeccion(v.estilo, e) ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
       ${titulo === "Banner superior" ? crudo(`<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`) : ""}
-      ${de("select")}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
+      ${de("select")}${titulo === "Encuadre" ? crudo(h`<p class="pequeno tenue" id="pl-auto-nota" ${v.estilo === "auto" ? "" : crudo("hidden")}>Cada clip elige al renderizar entre cámara arriba y contenido abajo, dos personas en pantalla dividida, pantalla completa siguiendo al protagonista o el clásico. La vista previa muestra el clásico; abajo se ajustan también la pantalla completa y la vista dividida.</p>`) : ""}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
       ${titulo === "Marca y nombre" ? crudo(h`<p class="pequeno tenue" id="pl-logo-nota"></p>
         <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">${ic("subir")}Subir logo PNG<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
         <button type="button" data-accion="logo-quitar" id="pl-logo-quitar">Quitar logo</button></div>`) : ""}</fieldset>`;

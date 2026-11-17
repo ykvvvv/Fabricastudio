@@ -706,3 +706,17 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   - Probado con un video simulado (persona a la izquierda + «robot» sin cara moviéndose a la derecha). 107 pruebas.
   **Falta en el panel:** opción «Automático (recomendado)» en los selectores de estilo. **Falta validar con el
   clip real de Westcol** y otros clips reales.
+- **2026-11-17 · Claude Code (PC Windows)** — **Estilo «auto» en el panel** (`app.js`, `estilo.css`). Opción
+  «Automático (recomendado): elige el mejor encuadre» como primera del selector de Plantilla y del de cada clip (la de
+  «General de Ajustes» pasa a segunda y dice «automático» si ese es el general; el Resumen también lo nombra). En Plantilla,
+  con «auto» se ven las secciones Pantalla completa y Vista dividida (cualquiera puede usarse) y una nota: la vista previa
+  muestra el clásico, porque el encuadre se decide al renderizar cada clip. En el detalle del clip, nota destacada en arena
+  «Encuadre automático: <usado>. Motivo: …», leída del detalle de la etapa Render. El valor por defecto sigue siendo
+  `clasico` (no se cambió). **Arreglos:** (1) con «auto» que terminaba en clásico aparecía el aviso del seguimiento de
+  rostros («…o usa el estilo clásico»); ahora ese aviso solo sale si el clip usa seguimiento (`pipeline.py`). (2) El
+  navegador seguía usando el `app.js` viejo tras actualizar el código: los archivos del panel se sirven con
+  `Cache-Control: no-cache` (se revalidan; si no cambiaron, responde 304). 109 pruebas. Playwright con datos temporales
+  (1440×900): opciones del selector del clip, elegir «auto» → renderiza y muestra la nota («clásico: no se detectaron
+  personas…», el video de prueba no tiene personas); Plantilla: secciones y nota según el estilo, guardar, Resumen.
+  Capturas en `docs/diseno/capturas-auto/`. **No probado** con un clip real (Westcol) ni en la tablet; el caso «vista
+  dividida» de la nota está cubierto por la prueba de `test_reencuadre.py`, no visto en el navegador.

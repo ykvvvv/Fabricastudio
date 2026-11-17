@@ -231,8 +231,7 @@ class Fabrica:
                 self._etapa(jid, "render", "Buscando rostros para el encuadre…")
                 _escribir(f_enc, reencuadre.analizar(entrada, prop, recorte))
             encuadre = _leer(f_enc)
-            if encuadre.get("aviso"):
-                self.db.anadir_aviso(jid, encuadre["aviso"])
+            aviso_encuadre = encuadre.get("aviso")
             if estilo in ("dividido", "auto"):
                 arriba = int(round(1920 * int(a["dividido_proporcion"]) / 100)) // 2 * 2
                 decision = reencuadre.decidir(encuadre, arriba, 1920 - arriba)
@@ -247,6 +246,8 @@ class Fabrica:
                     estilo = "completo"
                 else:
                     estilo, encuadre = "clasico", None
+            if aviso_encuadre and estilo != "clasico":   # el aviso habla del seguimiento: no aplica si «auto» eligió el clásico
+                self.db.anadir_aviso(jid, aviso_encuadre)
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
             t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,

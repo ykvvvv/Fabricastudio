@@ -54,7 +54,7 @@ def test_campos_de_la_plantilla_son_ajustes_reales():
     """Un campo con la clave mal escrita se guardaría en vacío: el servidor ignora claves desconocidas."""
     from fabrica_studio.config import AJUSTES_POR_DEFECTO
     bloque = _texto("app.js").split("const SECCIONES_PLANTILLA = [")[1].split("\n];")[0]
-    claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in ("clasico", "completo", "dividido")]   # opciones de «estilo»
+    claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in ("auto", "clasico", "completo", "dividido")]   # opciones de «estilo»
     assert len(claves) > 20 and len(claves) == len(set(claves))
     assert set(claves) <= set(AJUSTES_POR_DEFECTO), set(claves) - set(AJUSTES_POR_DEFECTO)
 
@@ -66,3 +66,10 @@ def test_campos_de_proveedores_son_ajustes_reales():
     nombres = set(re.findall(r'name="([a-z_]+)"', bloque))
     assert {"vocabulario", "correcciones"} <= nombres
     assert nombres <= set(AJUSTES_POR_DEFECTO), nombres - set(AJUSTES_POR_DEFECTO)
+
+
+def test_el_panel_se_revalida_tras_actualizar(fabrica):
+    """Sin esto el navegador seguía usando un app.js viejo después de un git pull."""
+    pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765")
+    for ruta in ("/", "/app.js", "/editor.js", "/estilo.css"):
+        assert pc.get(ruta).headers["cache-control"] == "no-cache", ruta

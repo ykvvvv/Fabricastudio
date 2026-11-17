@@ -79,6 +79,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         respuesta = await call_next(request)
         if ruta.startswith("/api/"):
             respuesta.headers["Cache-Control"] = "no-store"
+        elif not ruta.startswith("/media/"):   # panel: tras actualizar el código, el navegador no debe usar el app.js viejo
+            respuesta.headers["Cache-Control"] = "no-cache"
         return respuesta
 
     @app.exception_handler(ErrorEtapa)

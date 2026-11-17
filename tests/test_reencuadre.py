@@ -215,6 +215,21 @@ def test_modo_automatico_dos_sujetos_de_punta_a_punta(fabrica, clip, monkeypatch
     t = fabrica.db.trabajo(t["id"])
     assert t["estado"] == "renderizado", t["error"]
     assert "automático: dos sujetos" in t["etapas"]["render"]["detalle"]
+    assert " · vista dividida" in t["etapas"]["render"]["detalle"]          # el panel lo muestra como encuadre usado
     assert [p["h"] for p in t["datos"]["disposicion"]["paneles"]] == [960, 960]
     s = media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")
     assert (s["ancho"], s["alto"]) == (1080, 1920)
+
+
+def test_modo_automatico_sin_sujetos_usa_clasico_sin_aviso_de_seguimiento(fabrica, clip, monkeypatch):
+    """El aviso del análisis habla del seguimiento de rostros: si «auto» elige el clásico, no se muestra."""
+    monkeypatch.setattr(reencuadre, "analizar", lambda *a, **k: {
+        "ancho": 1280, "alto": 720, "fps": 5, "muestras": [{"t": i * 0.2, "rostros": []} for i in range(15)],
+        "aviso": "Se detectaron rostros en pocas partes del clip."})
+    fabrica.db.guardar_ajustes({"estilo": "auto"})
+    t = fabrica.importar_archivo(clip, "a.mp4")
+    fabrica._ejecutar(t)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado", t["error"]
+    assert "automático:" in t["etapas"]["render"]["detalle"] and t["etapas"]["render"]["detalle"].endswith("clásico")
+    assert not any("rostros" in a for a in t["avisos"])

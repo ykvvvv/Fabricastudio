@@ -229,6 +229,8 @@ label.linea { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 .nota { border-left: 3px solid var(--alerta); background: #1d1a16; padding: 10px 14px; border-radius: 0 var(--radio-c) var(--radio-c) 0; font-size: 13px; overflow-wrap: anywhere; }
 .nota.mal { border-color: var(--mal); background: #251515; white-space: pre-wrap; }
 .nota.bien { border-color: var(--ok); background: #11211a; }
+.nota.encuadre { border-color: var(--acento); background: #201a17; }
+.nota.encuadre b { font-weight: 600; color: #f0dccf; }
 
 /* ---------------------------------------------------------------- ventanas y avisos */
 .modal-fondo { position: fixed; inset: 0; background: #000a; backdrop-filter: blur(5px); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; animation: aparece .15s ease-out; }
