@@ -597,3 +597,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-17 · Claude Code (PC Windows)** — Panel, fase 3: vista «Plantilla» con vista previa en vivo (sustituye a
   Ajustes → Diseño), con los tokens y el movimiento GSAP del login. 78 pruebas (con las de la nube). Playwright en escritorio, tablet y móvil;
   capturas en `docs/diseno/capturas-plantilla/`. Siguiente: Cristóbal la revisa y prueba un render real; después, fase 4.
+- **2026-11-17 · Claude Code (nube)** — Ajustes validados en el servidor (`LIMITES`, `OPCIONES`, `COLORES`
+  en `config.py`): un valor fuera de rango responde 400 con mensaje en español y no se guarda nada a medias;
+  la maqueta de `/api/diseno/vista` también valida. La Plantilla puede usar `LIMITES` para min/max de los campos.

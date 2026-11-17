@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .config import AJUSTES_POR_DEFECTO
+from .config import AJUSTES_POR_DEFECTO, COLORES, LIMITES, OPCIONES
 
 ETAPAS = ["importar", "comprobar", "transcribir", "textos", "subtitulos", "render", "subir"]
 ESTADOS = ["pendiente", "procesando", "propuestas", "renderizado", "subiendo", "publicado", "error"]
@@ -56,6 +56,33 @@ CREATE TABLE IF NOT EXISTS dispositivos (
 );
 """
 _JSON = {"etapas", "avisos", "textos", "datos", "subida"}
+
+
+NOMBRES_AJUSTES = {
+    "video_desplazamiento_y": "desplazamiento del video", "video_alto_max": "alto máximo del video",
+    "banner_tamano": "tamaño del banner", "banner_ancho": "ancho de la tarjeta", "sub_tamano": "tamaño de subtítulos",
+    "logo_alto": "alto del logo", "nombre_tamano": "tamaño de la firma", "completo_zoom": "zoom",
+}
+
+
+def validar_ajustes(cambios: dict) -> None:
+    import re
+
+    from .errores import ErrorEtapa
+    for k, v in cambios.items():
+        nombre = NOMBRES_AJUSTES.get(k, k.replace("_", " "))
+        if k in LIMITES:
+            try:
+                n = int(float(v))
+            except (TypeError, ValueError):
+                raise ErrorEtapa(f"«{nombre}» debe ser un número.", "entrada")
+            lo, hi = LIMITES[k]
+            if not lo <= n <= hi:
+                raise ErrorEtapa(f"«{nombre}» debe estar entre {lo} y {hi} (recibido: {n}).", "entrada")
+        elif k in OPCIONES and str(v) not in OPCIONES[k]:
+            raise ErrorEtapa(f"Valor no válido para «{nombre}»: {v}.", "entrada")
+        elif k in COLORES and not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(v).strip()):
+            raise ErrorEtapa(f"«{nombre}» debe ser un color como #E3222A.", "entrada")
 
 
 class DB:
@@ -166,7 +193,9 @@ class DB:
         return a
 
     def guardar_ajustes(self, cambios: dict) -> dict:
-        """Guarda solo claves conocidas y convierte al tipo del valor por defecto."""
+        """Guarda solo claves conocidas y convierte al tipo del valor por defecto.
+        Un valor fuera de rango rechaza todo el cambio (no se guarda nada a medias)."""
+        validar_ajustes(cambios)
         with self._lock:
             for k, v in cambios.items():
                 if k not in AJUSTES_POR_DEFECTO:

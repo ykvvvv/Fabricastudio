@@ -350,6 +350,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         """Maqueta rápida del diseño con los ajustes actuales (o los que lleguen por parámetro)."""
         from PIL import Image, ImageDraw
         a = fab.db.ajustes()
+        from .db import validar_ajustes
+        validar_ajustes({k: v for k, v in request.query_params.items() if k in AJUSTES_POR_DEFECTO})
         for k, v in request.query_params.items():
             if k in AJUSTES_POR_DEFECTO and k != "youtube_canal_id":
                 base = AJUSTES_POR_DEFECTO[k]

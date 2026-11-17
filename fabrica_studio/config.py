@@ -101,6 +101,23 @@ AJUSTES_POR_DEFECTO: dict = {
     "segundos_estable": 6,            # un archivo debe llevar este tiempo sin cambiar
 }
 
+# Rangos válidos (mín, máx) de los ajustes numéricos, y valores permitidos de las listas.
+LIMITES: dict = {
+    "video_desplazamiento_y": (-800, 800), "video_alto_max": (300, 1920),
+    "banner_tamano": (30, 200), "banner_ancho": (300, 1080), "banner_separacion": (-200, 300),
+    "banner_radio": (0, 80), "sub_tamano": (24, 160), "sub_desplazamiento": (-600, 600),
+    "sub_palabras_max": (1, 12), "sub_caracteres_max": (8, 60), "logo_alto": (20, 400),
+    "logo_separacion": (-100, 300), "nombre_tamano": (12, 120),
+    "completo_zoom": (100, 300), "completo_banner_y": (0, 1700), "completo_sub_y": (200, 1850),
+    "completo_sub_tamano": (24, 180), "completo_logo_alto": (20, 400), "completo_logo_y": (200, 1900),
+    "momentos_cantidad": (1, 20), "segundos_estable": (0, 600),
+}
+OPCIONES: dict = {
+    "estilo": ("clasico", "completo"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
+    "proveedor_textos": ("auto", "gemini", "local"),
+}
+COLORES = ("banner_color", "sub_color_resalte", "nombre_color")
+
 # Ajustes que, al cambiar, obligan a renderizar de nuevo (pero no a transcribir).
 AJUSTES_DE_DISENO = [k for k in AJUSTES_POR_DEFECTO if k.split("_")[0] in
                      ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo")] + [

@@ -119,3 +119,15 @@ def test_crear_clip_por_api_no_choca_con_las_acciones(fabrica, clip):
     assert pc.post(f"/api/trabajos/{t['id']}/clips", json={"inicio": 0, "fin": 3}).status_code == 409
     assert pc.post(f"/api/trabajos/{t['id']}/proponer-momentos").status_code == 200
     assert pc.post(f"/api/trabajos/{t['id']}/inventada").status_code == 400
+
+
+def test_ajustes_fuera_de_rango_se_rechazan_en_espanol(fabrica):
+    pc, _, _ = _clientes(fabrica)
+    r = pc.put("/api/ajustes", json={"sub_tamano": -5, "creador": "Otro"})
+    assert r.status_code == 400 and "entre 24 y 160" in r.json()["error"]
+    assert pc.get("/api/ajustes").json()["valores"]["creador"] == "Jongottii"     # nada se guardó a medias
+    assert pc.put("/api/ajustes", json={"banner_color": "rojo"}).status_code == 400
+    assert pc.put("/api/ajustes", json={"estilo": "inventado"}).status_code == 400
+    assert pc.put("/api/ajustes", json={"sub_tamano": 70, "banner_color": "#112233"}).status_code == 200
+    r = pc.get("/api/diseno/vista", params={"banner_tamano": "-3"})
+    assert r.status_code == 400 and "tamaño del banner" in r.json()["error"]
