@@ -17,7 +17,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
+from . import edicion, importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
 from .config import AJUSTES_DE_DISENO, Rutas
 from .db import DB
 from .errores import ErrorEtapa, sin_secretos
@@ -136,6 +136,18 @@ class Fabrica:
             self.db.actualizar(jid, sha256=sha)
         self.db.marcar_etapa(jid, "importar", "hecho")
 
+        # 1b. Edición de tiempos (no destructiva): se trabaja sobre editado.mp4.
+        f_ed = carpeta / "edicion.json"
+        if f_ed.exists():
+            ed = _leer(f_ed)
+            editado = carpeta / "editado.mp4"
+            if ed.get("aplicado") != ed["huella"] or not editado.exists():
+                self._etapa(jid, "importar", "Aplicando tu edición de tiempos…")
+                edicion.cortar(entrada, ed["tramos"], carpeta, bool(ed.get("tiene_audio", True)))
+                ed["aplicado"] = ed["huella"]
+                _escribir(f_ed, ed)
+            entrada = editado
+
         # 2. Comprobar.
         f_prop = carpeta / "propiedades.json"
         if not f_prop.exists():
@@ -227,6 +239,7 @@ class Fabrica:
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
             t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,
+            _leer(carpeta / "edicion.json")["huella"] if (carpeta / "edicion.json").exists() else "",
             logo.stat().st_mtime_ns if logo.exists() else 0], sort_keys=True).encode()).hexdigest()
         datos = t["datos"]
         if datos.get("huella_render") != huella or not (carpeta / "short.mp4").exists():
@@ -503,6 +516,54 @@ class Fabrica:
         datos["estilo"] = estilo            # "" = usar el estilo general de Ajustes
         self.db.actualizar(jid, datos=datos, estado="pendiente", error="", error_tipo="")
         return self.db.trabajo(jid)
+
+    def editar_tiempos(self, jid: str, tramos) -> dict:
+        """Guarda qué tramos del original conservar. Lista vacía o el clip completo = quitar la edición."""
+        t = self._editable(jid)
+        carpeta = self.rutas.trabajo(jid)
+        original = self._entrada(carpeta)
+        if not original or not (carpeta / "transcripcion.json").exists():
+            raise ErrorEtapa("Espera a que el clip termine de procesarse antes de editarlo.", "entrada")
+        prop_original = media.sondear(original)
+        tramos = edicion.validar_tramos(tramos, prop_original["duracion"])
+        subs_editados = (carpeta / "subtitulos.json").exists() and _leer(carpeta / "subtitulos.json").get("editado")
+        f_tr, f_tr_orig = carpeta / "transcripcion.json", carpeta / "transcripcion_original.json"
+        if not f_tr_orig.exists():
+            os.replace(f_tr, f_tr_orig)                       # primera edición: guardar la transcripción original
+        # Lo que dependía del video anterior se recalcula (la transcripción no: se remapea).
+        for nombre in ("propiedades.json", "bordes.json", "encuadre.json", "subtitulos.json", "editado.mp4"):
+            (carpeta / nombre).unlink(missing_ok=True)
+        if not tramos or edicion.es_completo(tramos, prop_original["duracion"]):
+            (carpeta / "edicion.json").unlink(missing_ok=True)
+            os.replace(f_tr_orig, f_tr)
+            tramos = []
+        else:
+            _escribir(carpeta / "edicion.json", {"tramos": tramos, "huella": edicion.huella(tramos),
+                                                 "tiene_audio": prop_original["tiene_audio"],
+                                                 "duracion_original": prop_original["duracion"]})
+            _escribir(f_tr, edicion.remapear_transcripcion(_leer(f_tr_orig), tramos))
+        if subs_editados:
+            self.db.anadir_aviso(jid, "Al cambiar los tiempos se regeneraron los subtítulos a partir de la transcripción.")
+        self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
+        return self.db.trabajo(jid)
+
+    def linea_de_tiempo(self, jid: str) -> dict:
+        """Datos para el editor: duración del original, tramos actuales, forma de onda y palabras con tiempos."""
+        carpeta = self.rutas.trabajo(jid)
+        original = self._entrada(carpeta) if carpeta.exists() else None
+        if not original:
+            raise ErrorEtapa("Este clip no tiene archivo original.", "entrada")
+        f_picos = carpeta / "picos.json"
+        if not f_picos.exists():
+            _escribir(f_picos, {"picos": edicion.picos_audio(original)})
+        tr_f = carpeta / ("transcripcion_original.json" if (carpeta / "transcripcion_original.json").exists()
+                          else "transcripcion.json")
+        tr = _leer(tr_f) if tr_f.exists() else {"palabras": []}
+        ed = _leer(carpeta / "edicion.json") if (carpeta / "edicion.json").exists() else None
+        duracion = ed["duracion_original"] if ed else media.sondear(original)["duracion"]
+        return {"duracion": duracion, "tramos": ed["tramos"] if ed else [[0.0, duracion]], "editado": bool(ed),
+                "picos": _leer(f_picos)["picos"],
+                "palabras": [{k: p[k] for k in ("inicio", "fin", "texto")} for p in tr.get("palabras", [])]}
 
     def renderizar_de_nuevo(self, jid: str) -> None:
         self._editable(jid)

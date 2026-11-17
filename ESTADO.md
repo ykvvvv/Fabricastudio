@@ -641,3 +641,11 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   sigue funcionando durante la pausa. `/api/estado` expone `subidas_pausadas_hasta`; `POST /api/youtube/reanudar`
   quita la pausa. Al iniciar, los clips antiguos en error por cuota vuelven a la cola. 88 pruebas.
   **Falta en el panel:** aviso visible de la pausa con la hora y botón «Reanudar ahora» (Claude Code del PC).
+- **2026-11-17 · Claude Code (nube)** — **Editor de tiempos** (parte servidor), `fabrica_studio/edicion.py`.
+  No destructivo: `entrada.*` nunca cambia; los tramos se guardan en `edicion.json` y se renderizan en
+  `editado.mp4`; la transcripción original pasa a `transcripcion_original.json` y la del clip editado se
+  remapea (no se vuelve a transcribir). Bordes, encuadre y subtítulos se recalculan.
+  API: `GET /api/trabajos/<id>/linea` → `{duracion, tramos, editado, picos[400], palabras[{inicio,fin,texto}]}`
+  (tiempos del original). `PUT /api/trabajos/<id>/edicion` `{tramos: [[ini, fin], ...]}`: se ordenan y unen;
+  total entre 3 y 180 s; `[]` o el clip completo quitan la edición. El original se reproduce en `/media/<id>/entrada`.
+  92 pruebas. **Falta la interfaz** (Claude Code del PC).

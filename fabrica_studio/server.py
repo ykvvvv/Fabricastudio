@@ -287,6 +287,14 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     async def estilo_trabajo(jid: str, request: Request):
         return _publico(fab.cambiar_estilo(jid, str((await request.json()).get("estilo", ""))))
 
+    @app.get("/api/trabajos/{jid}/linea")
+    def linea_tiempo(jid: str):
+        return fab.linea_de_tiempo(jid)
+
+    @app.put("/api/trabajos/{jid}/edicion")
+    async def editar_tiempos(jid: str, request: Request):
+        return _publico(fab.editar_tiempos(jid, (await request.json()).get("tramos", [])))
+
     @app.put("/api/trabajos/{jid}/textos")
     async def editar_textos(jid: str, request: Request):
         return _publico(fab.editar_textos(jid, await request.json()))
