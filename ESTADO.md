@@ -620,3 +620,10 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   920×1400 táctil (toques reales vía CDP): seleccionar, arrastrar, agrandar, ancho, teclado, deshacer, rehacer,
   guardar y recargar, sin errores de consola. Capturas en `docs/diseno/capturas-editor/`.
   **No probado** en la MatePad real ni con lector de pantalla real (solo nombres accesibles revisados).
+- **2026-11-17 · Claude Code (nube)** — **Vista dividida** (fase 2 de `docs/ESTILO_OPUSCLIP.md`): estilo `dividido`.
+  Detecta la cámara del streamer (rostro fijo, pequeño y fuera del centro durante ≥50 % del clip), la amplía
+  arriba (`dividido_proporcion`, 45 %) y abajo muestra el contenido siguiendo a las personas que haya, sin
+  invadir la cámara. Sin banner ni firma por defecto; logo pequeño abajo. Si no hay cámara fija, usa pantalla
+  completa y avisa. Ajustes `dividido_*` validados y editables en el editor visual. Probado con un stream
+  simulado (facecam + persona en movimiento). 86 pruebas. **Falta en el panel:** opción «Vista dividida»
+  en los selectores de estilo y su sección en Plantilla (Claude Code del PC). Sin probar con un clip real.

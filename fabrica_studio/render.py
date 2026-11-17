@@ -144,6 +144,38 @@ def calcular_disposicion_completo(a: dict, banner: dict | None = None) -> dict:
     return d
 
 
+def calcular_disposicion_dividido(a: dict, banner: dict | None = None) -> dict:
+    """Vista dividida: cámara arriba, contenido abajo; subtítulos, logo y (opcional) banner encima."""
+    arriba = int(round(LIENZO_ALTO * int(a["dividido_proporcion"]) / 100)) // 2 * 2
+    d: dict = {"estilo": "dividido", "video": {"x": 0, "y": 0, "w": LIENZO_ANCHO, "h": LIENZO_ALTO},
+               "paneles": [{"id": "camara", "x": 0, "y": 0, "w": LIENZO_ANCHO, "h": arriba},
+                           {"id": "contenido", "x": 0, "y": arriba, "w": LIENZO_ANCHO, "h": LIENZO_ALTO - arriba}]}
+    if banner:
+        d["tarjeta"] = {"x": (LIENZO_ANCHO - banner["ancho"]) // 2, "y": int(a["completo_banner_y"]),
+                        "w": banner["ancho"], "h": banner["alto"]}
+    tamano = int(a["dividido_sub_tamano"])
+    sub_y = int(a["dividido_sub_y"])
+    sub_alto = round(tamano * 1.22 * 2)
+    d["subtitulos"] = {"x": 60, "y": sub_y, "w": LIENZO_ANCHO - 120, "h": sub_alto, "tamano": tamano}
+    y = int(a["dividido_logo_y"])
+    if a["mostrar_logo"]:
+        d["logo"] = {"y": y, "h": int(a["dividido_logo_alto"])}
+        y += int(a["dividido_logo_alto"])
+    if a["mostrar_nombre"] and a["dividido_firma"]:
+        y += 6
+        alto_nombre = round(int(a["nombre_tamano"]) * 1.2)
+        d["nombre"] = {"y": y, "h": alto_nombre, "tamano": int(a["nombre_tamano"])}
+        y += alto_nombre
+    d["fin_contenido"] = y
+    avisos = []
+    if y > LIENZO_ALTO - 10:
+        avisos.append("El logo se sale por abajo: súbelo o reduce su tamaño.")
+    if "logo" in d and sub_y + sub_alto > d["logo"]["y"]:
+        avisos.append("Los subtítulos chocan con el logo.")
+    d["avisos"] = avisos
+    return d
+
+
 def cargar_logo(recursos: Path, alto: int) -> Image.Image:
     """Logo del usuario (recortando sus márgenes transparentes) o un rótulo de texto por defecto."""
     ruta = recursos / "logo.png"
@@ -180,7 +212,7 @@ def dibujar_capa(d: dict, banner: dict, a: dict, recursos: Path) -> Image.Image:
         capa.alpha_composite(logo, ((LIENZO_ANCHO - logo.width) // 2, d["logo"]["y"]))
     firma = (a.get("firma") or a["creador"]).strip()
     if "nombre" in d and firma:
-        sobre_video = d.get("estilo") == "completo"       # sobre la imagen hace falta contorno
+        sobre_video = d.get("estilo") in ("completo", "dividido")   # sobre la imagen hace falta contorno
         dib.text((LIENZO_ANCHO // 2, d["nombre"]["y"] + d["nombre"]["h"] // 2), firma,
                  font=_fuente(FUENTE_BOLD, d["nombre"]["tamano"]), fill=a.get("nombre_color", "#D9D9D9"), anchor="mm",
                  stroke_width=3 if sobre_video else 0, stroke_fill="black")
@@ -224,7 +256,13 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     from . import reencuadre
     ancho, alto = (recorte["w"], recorte["h"]) if recorte else (propiedades["ancho"], propiedades["alto"])
     completo = encuadre is not None
-    if completo:
+    dividido = completo and bool(encuadre.get("dividido"))
+    if dividido:
+        banner = componer_banner(banner_texto, a) if a["dividido_banner"] else None
+        d = calcular_disposicion_dividido(a, banner)
+        sub_kw = {"mayusculas": bool(a["completo_mayusculas"]), "borde": max(5, round(d["subtitulos"]["tamano"] * 0.1)),
+                  "fuente": "Inter Black"}
+    elif completo:
         banner = componer_banner(banner_texto, a) if a["completo_banner"] else None
         d = calcular_disposicion_completo(a, banner)
         sub_kw = {"mayusculas": bool(a["completo_mayusculas"]), "borde": max(4, round(d["subtitulos"]["tamano"] * 0.09)),
@@ -243,7 +281,19 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     filtros = "[0:v]"
     if recorte:
         filtros += f"crop={recorte['w']}:{recorte['h']}:{recorte['x']}:{recorte['y']},"
-    if completo:
+    if dividido:
+        plan = encuadre["dividido"]
+        arriba, abajo = d["paneles"][0]["h"], d["paneles"][1]["h"]
+        c, b = plan["arriba"], plan["abajo"]
+        (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(plan["puntos"], "crop@contenido"),
+                                              encoding="utf-8")
+        filtros += (f"split=2[fa][fb];[fa]crop={c['w']}:{c['h']}:{c['x']}:{c['y']},"
+                    f"scale={LIENZO_ANCHO}:{arriba}:flags=lanczos,setsar=1[sup];"
+                    f"[fb]sendcmd=f=encuadre.cmd,crop@contenido=w={b['w']}:h={b['h']}:"
+                    f"x={int(plan['puntos'][0][1]) // 2 * 2}:y={b['y']},"
+                    f"scale={LIENZO_ANCHO}:{abajo}:flags=lanczos,setsar=1[inf];[sup][inf]vstack=inputs=2")
+        d["encuadre"] = {"camara": c, "contenido": [b["w"], b["h"]], "movimientos": len(plan["puntos"])}
+    elif completo:
         vw, vh = reencuadre.ventana(ancho, alto, int(a["completo_zoom"]) / 100)
         puntos = reencuadre.trayectoria(encuadre, vw)
         (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(puntos), encoding="utf-8")
@@ -280,7 +330,8 @@ def elementos_editables(d: dict, a: dict, recursos: Path) -> list[dict]:
     `signo × dy`; al agrandar, el de `tamano` cambia proporcionalmente al alto de la caja. El panel debe
     volver a pedir la disposición tras cada cambio, porque el motor puede limitar posiciones."""
     from .config import LIMITES
-    completo = d.get("estilo") == "completo"
+    completo = d.get("estilo") in ("completo", "dividido")
+    pre = "dividido" if d.get("estilo") == "dividido" else "completo"
 
     def regla(ajuste: str | None, signo: int = 1) -> dict | None:
         if not ajuste:
@@ -300,14 +351,14 @@ def elementos_editables(d: dict, a: dict, recursos: Path) -> list[dict]:
                           "tamano": regla("banner_tamano"), "ancho": regla("banner_ancho")})
     sb = d["subtitulos"]
     elementos.append({"id": "subtitulos", "nombre": "Subtítulos", "caja": {k: sb[k] for k in ("x", "y", "w", "h")},
-                      "mover": regla("completo_sub_y" if completo else "sub_desplazamiento"),
-                      "tamano": regla("completo_sub_tamano" if completo else "sub_tamano"), "ancho": None})
-    mover_marca = regla("completo_logo_y" if completo else "logo_separacion")
+                      "mover": regla(f"{pre}_sub_y" if completo else "sub_desplazamiento"),
+                      "tamano": regla(f"{pre}_sub_tamano" if completo else "sub_tamano"), "ancho": None})
+    mover_marca = regla(f"{pre}_logo_y" if completo else "logo_separacion")
     if "logo" in d:
         logo = cargar_logo(recursos, d["logo"]["h"])
         elementos.append({"id": "logo", "nombre": "Logo",
                           "caja": {"x": (LIENZO_ANCHO - logo.width) // 2, "y": d["logo"]["y"], "w": logo.width, "h": logo.height},
-                          "mover": mover_marca, "tamano": regla("completo_logo_alto" if completo else "logo_alto"),
+                          "mover": mover_marca, "tamano": regla(f"{pre}_logo_alto" if completo else "logo_alto"),
                           "ancho": None})
     firma = (a.get("firma") or a["creador"]).strip()
     if "nombre" in d and firma:

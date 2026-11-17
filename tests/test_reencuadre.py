@@ -92,3 +92,67 @@ def test_estilo_completo_de_punta_a_punta(fabrica, clip):
     assert "clásico" in t["etapas"]["render"]["detalle"] and fabrica.transcripciones["n"] == 1
     with pytest.raises(Exception):
         fabrica.cambiar_estilo(t["id"], "inventado")
+
+
+def _stream(n=30, camara=True, contenido=True):
+    """Muestras de un stream 1920×1080: facecam fija arriba a la izquierda y una persona que se mueve."""
+    muestras = []
+    for i in range(n):
+        rostros = []
+        if camara:
+            rostros.append([150 + (i % 3), 160, 110, 120, 0.95])          # casi inmóvil, pequeña, en la esquina
+        if contenido and i % 4:
+            rostros.append([900 + i * 15, 600, 200, 220, 0.9])            # se desplaza por el contenido
+        muestras.append({"t": round(i * 0.2, 3), "rostros": rostros})
+    return {"ancho": 1920, "alto": 1080, "fps": 5, "muestras": muestras}
+
+
+def test_detecta_la_camara_del_streamer():
+    c = reencuadre.detectar_camara(_stream())
+    assert c and abs(c["cx"] - 151) < 5 and c["presencia"] == 1.0
+
+
+def test_irl_de_una_camara_no_es_vista_dividida():
+    irl = {"ancho": 1920, "alto": 1080, "fps": 5,
+           "muestras": [{"t": i * 0.2, "rostros": [[960 + (i % 5) * 4, 520, 380, 420, 0.95]]} for i in range(30)]}
+    assert reencuadre.detectar_camara(irl) is None                        # rostro grande y centrado
+    assert reencuadre.detectar_camara(_stream(camara=False)) is None      # el que se mueve no es cámara
+
+
+def test_plan_dividido_separa_camara_y_contenido():
+    plan = reencuadre.plan_dividido(_stream(), 864, 1056)
+    c, b = plan["arriba"], plan["abajo"]
+    assert c["x"] <= 150 - 55 and c["x"] + c["w"] >= 150 + 55                  # la cara de la cámara cabe arriba
+    assert abs(c["w"] / c["h"] - 1080 / 864) < 0.02                            # proporción del panel superior
+    x0, x1 = b["zona"]
+    assert x0 >= c["x"] + c["w"] and x1 == 1920                                # el contenido excluye la cámara
+    assert abs(b["w"] / b["h"] - 1080 / 1056) < 0.02
+    xs = [x for _, x in plan["puntos"]]
+    assert all(x0 <= x <= x1 - b["w"] for x in xs) and xs[-1] > xs[0]          # sigue a la persona y no invade la cámara
+    assert reencuadre.plan_dividido(_stream(camara=False), 864, 1056) is None
+
+
+def test_vista_dividida_de_punta_a_punta(fabrica, clip, monkeypatch):
+    monkeypatch.setattr(reencuadre, "analizar", lambda *a, **k: {**_stream(15), "ancho": 1280, "alto": 720,
+                        "muestras": [{"t": m["t"], "rostros": [[r[0] * 2 / 3, r[1] * 2 / 3, r[2] * 2 / 3, r[3] * 2 / 3, r[4]]
+                                                                for r in m["rostros"]]} for m in _stream(15)["muestras"]]})
+    fabrica.db.guardar_ajustes({"estilo": "dividido"})
+    t = fabrica.importar_archivo(clip, "a.mp4")
+    fabrica._ejecutar(t)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado", t["error"]
+    assert "vista dividida" in t["etapas"]["render"]["detalle"]
+    s = media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")
+    assert (s["ancho"], s["alto"]) == (1080, 1920)
+    d = t["datos"]["disposicion"]
+    assert [p["h"] for p in d["paneles"]] == [864, 1056] and "tarjeta" not in d and "nombre" not in d
+
+
+def test_sin_camara_vuelve_a_pantalla_completa_y_avisa(fabrica, clip, monkeypatch):
+    monkeypatch.setattr(reencuadre, "analizar", lambda *a, **k: {**_stream(15, camara=False), "ancho": 1280, "alto": 720})
+    fabrica.db.guardar_ajustes({"estilo": "dividido"})
+    t = fabrica.importar_archivo(clip, "a.mp4")
+    fabrica._ejecutar(t)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado" and "pantalla completa" in t["etapas"]["render"]["detalle"]
+    assert any("no se encontró la cámara" in a for a in t["avisos"])

@@ -358,10 +358,15 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 except ValueError:
                     pass
         try:
-            completo = a["estilo"] == "completo"
-            b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a) \
-                if (not completo or a["completo_banner"]) else None
-            d = render.calcular_disposicion_completo(a, b) if completo else render.calcular_disposicion(1920, 1080, a, b)
+            completo = a["estilo"] in ("completo", "dividido")
+            con_banner = {"completo": a["completo_banner"], "dividido": a["dividido_banner"]}.get(a["estilo"], True)
+            b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a) if con_banner else None
+            if a["estilo"] == "dividido":
+                d = render.calcular_disposicion_dividido(a, b)
+            elif completo:
+                d = render.calcular_disposicion_completo(a, b)
+            else:
+                d = render.calcular_disposicion(1920, 1080, a, b)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
         return a, b, d, completo
@@ -370,7 +375,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def disposicion_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
         """Cajas de cada elemento (lienzo 1080×1920) para el editor visual de la Plantilla."""
         a, _, d, completo = _maqueta(request, banner)
-        return {"lienzo": {"w": LIENZO_ANCHO, "h": LIENZO_ALTO}, "estilo": "completo" if completo else "clasico",
+        return {"lienzo": {"w": LIENZO_ANCHO, "h": LIENZO_ALTO}, "estilo": a["estilo"] if a["estilo"] in ("completo", "dividido") else "clasico",
                 "elementos": render.elementos_editables(d, a, fab.rutas.recursos), "avisos": d["avisos"]}
 
     @app.get("/api/diseno/vista")
@@ -385,14 +390,17 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         lienzo = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), "black")
         dib = ImageDraw.Draw(lienzo)
         v, s = d["video"], d["subtitulos"]
-        dib.rectangle((v["x"], v["y"], v["x"] + v["w"], v["y"] + v["h"]), fill="#2a2d33")
-        dib.text((LIENZO_ANCHO // 2, v["y"] + v["h"] // 2), "VIDEO", font=render._fuente(render.FUENTE_BOLD, 60),
-                 fill="#4a4e57", anchor="mm")
+        paneles = d.get("paneles") or [{"id": "video", **v}]
+        etiquetas = {"video": "VIDEO", "camara": "CÁMARA DEL STREAMER", "contenido": "CONTENIDO"}
+        for i, pn in enumerate(paneles):
+            dib.rectangle((pn["x"], pn["y"], pn["x"] + pn["w"], pn["y"] + pn["h"]), fill=("#2a2d33", "#23262c")[i % 2])
+            dib.text((LIENZO_ANCHO // 2, pn["y"] + pn["h"] // 2), etiquetas[pn["id"]],
+                     font=render._fuente(render.FUENTE_BOLD, 54), fill="#4a4e57", anchor="mm")
         lienzo.alpha_composite(capa)
         fuente = render._fuente(render.FUENTE_BLACK if completo else render.FUENTE_BOLD, s["tamano"])
         dib = ImageDraw.Draw(lienzo)
         partes = [("Mi gente ", "white"), ("linda", a["sub_color_resalte"] if a["sub_resaltar"] else "white")]
-        if completo and a["completo_mayusculas"]:
+        if completo and a["completo_mayusculas"]:  # también en dividido
             partes = [(t.upper(), c) for t, c in partes]
         ancho_total = sum(dib.textlength(t, font=fuente) for t, _ in partes)
         x = (LIENZO_ANCHO - ancho_total) / 2

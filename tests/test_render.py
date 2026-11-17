@@ -101,3 +101,13 @@ def test_disposicion_para_el_editor_visual(fabrica):
     assert "video" not in c and c["subtitulos"]["mover"]["ajuste"] == "completo_sub_y"
     assert c["logo"]["mover"] == c["firma"]["mover"]                      # logo y firma se mueven juntos
     assert pc.get("/api/diseno/disposicion", params={"sub_tamano": 999}).status_code == 400
+
+
+def test_editor_visual_en_vista_dividida(fabrica):
+    from fastapi.testclient import TestClient
+    from fabrica_studio.server import crear_app
+    pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765", client=("127.0.0.1", 1))
+    e = _disp(pc, estilo="dividido")
+    assert set(e) == {"subtitulos", "logo"}                       # sin banner, firma ni video arrastrable
+    assert e["subtitulos"]["mover"]["ajuste"] == "dividido_sub_y" and e["logo"]["tamano"]["ajuste"] == "dividido_logo_alto"
+    assert pc.get("/api/diseno/vista", params={"estilo": "dividido"}).headers["content-type"] == "image/jpeg"

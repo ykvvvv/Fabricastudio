@@ -81,6 +81,14 @@ AJUSTES_POR_DEFECTO: dict = {
     "completo_mayusculas": True,
     "completo_logo_alto": 80,
     "completo_logo_y": 1610,
+    # dividido: cámara del streamer arriba (zoom) y contenido abajo; sin banner ni firma por defecto.
+    "dividido_proporcion": 45,        # % del alto para la cámara
+    "dividido_sub_y": 1430,
+    "dividido_sub_tamano": 96,
+    "dividido_logo_alto": 52,
+    "dividido_logo_y": 1810,
+    "dividido_banner": False,
+    "dividido_firma": False,
     # --- Transcripción ---
     "whisper_modelo": "small",        # tiny, base, small, medium, large-v3...
     "whisper_dispositivo": "cpu",     # cpu (seguro), auto o cuda (GPU NVIDIA, requiere cuDNN)
@@ -110,17 +118,19 @@ LIMITES: dict = {
     "logo_separacion": (-100, 300), "nombre_tamano": (12, 120),
     "completo_zoom": (100, 300), "completo_banner_y": (0, 1700), "completo_sub_y": (200, 1850),
     "completo_sub_tamano": (24, 180), "completo_logo_alto": (20, 400), "completo_logo_y": (200, 1900),
+    "dividido_proporcion": (30, 60), "dividido_sub_y": (200, 1850), "dividido_sub_tamano": (24, 180),
+    "dividido_logo_alto": (20, 300), "dividido_logo_y": (200, 1900),
     "momentos_cantidad": (1, 20), "segundos_estable": (0, 600),
 }
 OPCIONES: dict = {
-    "estilo": ("clasico", "completo"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
+    "estilo": ("clasico", "completo", "dividido"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
     "proveedor_textos": ("auto", "gemini", "local"),
 }
 COLORES = ("banner_color", "sub_color_resalte", "nombre_color")
 
 # Ajustes que, al cambiar, obligan a renderizar de nuevo (pero no a transcribir).
 AJUSTES_DE_DISENO = [k for k in AJUSTES_POR_DEFECTO if k.split("_")[0] in
-                     ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo")] + [
+                     ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo", "dividido")] + [
                          "creador", "firma", "recortar_bordes", "estilo"]
 
 LIENZO_ANCHO = 1080

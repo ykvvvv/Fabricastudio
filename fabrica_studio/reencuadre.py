@@ -188,3 +188,98 @@ def comandos_sendcmd(puntos: list[tuple[float, float]], filtro: str = "crop@encu
                 x = x0 + (x1 - x0) * j / n
                 lineas.append(f"{t:.3f} {filtro} x {int(x) // 2 * 2};")
     return "\n".join(lineas) + "\n"
+
+
+# ----------------------------------------------------------------------------- vista dividida
+
+def _grupos_de_rostros(analisis: dict) -> list[dict]:
+    """Agrupa los rostros de todas las muestras por posición y tamaño parecidos.
+    Cada grupo: {cx, cy, w, h (medianas), presencia (fracción de muestras), dispersion (px), indices}."""
+    ancho = analisis["ancho"]
+    grupos: list[dict] = []
+    for i, m in enumerate(analisis["muestras"]):
+        for r in m["rostros"]:
+            cx, cy, w, h = r[0], r[1], r[2], r[3]
+            destino = None
+            for g in grupos:
+                gx, gy, gh = g["_cx"] / g["_n"], g["_cy"] / g["_n"], g["_h"] / g["_n"]
+                if abs(cx - gx) < ancho * 0.07 and abs(cy - gy) < ancho * 0.07 and 0.6 < h / gh < 1.6:
+                    destino = g
+                    break
+            if destino is None:
+                destino = {"_cx": 0.0, "_cy": 0.0, "_h": 0.0, "_n": 0, "puntos": [], "muestras": set()}
+                grupos.append(destino)
+            destino["_cx"] += cx; destino["_cy"] += cy; destino["_h"] += h; destino["_n"] += 1
+            destino["puntos"].append((cx, cy, w, h))
+            destino["muestras"].add(i)
+    total = max(1, len(analisis["muestras"]))
+    resultado = []
+    for g in grupos:
+        pts = g["puntos"]
+        med = lambda k: sorted(p[k] for p in pts)[len(pts) // 2]
+        cx, cy = med(0), med(1)
+        dispersion = (sum((p[0] - cx) ** 2 + (p[1] - cy) ** 2 for p in pts) / len(pts)) ** 0.5
+        resultado.append({"cx": cx, "cy": cy, "w": med(2), "h": med(3), "presencia": len(g["muestras"]) / total,
+                          "dispersion": dispersion, "muestras": g["muestras"]})
+    return sorted(resultado, key=lambda g: g["presencia"], reverse=True)
+
+
+def detectar_camara(analisis: dict) -> dict | None:
+    """Busca la cámara del streamer: un rostro que aparece en casi todo el clip, casi inmóvil,
+    pequeño respecto al cuadro y fuera del centro (el recuadro de facecam de un stream).
+    Devuelve el grupo o None si no hay ninguno convincente (p. ej. un IRL de una sola cámara)."""
+    ancho, alto = analisis["ancho"], analisis["alto"]
+    for g in _grupos_de_rostros(analisis):
+        if g["presencia"] < 0.5:
+            break
+        quieto = g["dispersion"] < ancho * 0.03
+        pequeno = g["h"] < alto * 0.3
+        borde = (g["cx"] < ancho * 0.36 or g["cx"] > ancho * 0.64 or g["cy"] < alto * 0.36 or g["cy"] > alto * 0.64)
+        if quieto and pequeno and borde:
+            return g
+    return None
+
+
+def caja_camara(camara: dict, ancho: int, alto: int, aspecto: float, factor: float = 3.2) -> dict:
+    """Recuadro alrededor del rostro de la cámara con la proporción del panel (ancho/alto)."""
+    h = min(alto, camara["h"] * factor)
+    w = h * aspecto
+    if w > ancho:
+        w, h = ancho, ancho / aspecto
+    x = min(max(camara["cx"] - w / 2, 0), ancho - w)
+    y = min(max(camara["cy"] - h * 0.45, 0), alto - h)        # la cara algo por encima del centro
+    return {"x": int(x) // 2 * 2, "y": int(y) // 2 * 2, "w": int(w) // 2 * 2, "h": int(h) // 2 * 2}
+
+
+def zona_contenido(camara_caja: dict, ancho: int) -> tuple[int, int]:
+    """Franja horizontal [x0, x1) del contenido: el lado del cuadro que no ocupa la cámara."""
+    izq = camara_caja["x"]
+    der = ancho - (camara_caja["x"] + camara_caja["w"])
+    if camara_caja["x"] + camara_caja["w"] / 2 < ancho / 2:      # cámara a la izquierda
+        return (camara_caja["x"] + camara_caja["w"], ancho) if der > ancho * 0.4 else (0, ancho)
+    return (0, camara_caja["x"]) if izq > ancho * 0.4 else (0, ancho)
+
+
+def plan_dividido(analisis: dict, alto_arriba: int, alto_abajo: int, ancho_lienzo: int = 1080) -> dict | None:
+    """Calcula el panel de arriba (cámara, fijo) y la trayectoria del panel de abajo (contenido).
+    None si no se encontró una cámara fija."""
+    ancho, alto = analisis["ancho"], analisis["alto"]
+    camara = detectar_camara(analisis)
+    if not camara:
+        return None
+    arriba = caja_camara(camara, ancho, alto, ancho_lienzo / alto_arriba)
+    x0, x1 = zona_contenido(arriba, ancho)
+    aspecto_abajo = ancho_lienzo / alto_abajo
+    vh = alto
+    vw = int(min(vh * aspecto_abajo, x1 - x0)) // 2 * 2
+    vh = int(min(alto, vw / aspecto_abajo)) // 2 * 2
+    # Rostros del contenido: los que no son la cámara y caen dentro de la franja.
+    sub = {"ancho": x1 - x0, "alto": alto, "fps": analisis.get("fps", FPS_ANALISIS), "muestras": []}
+    for m in analisis["muestras"]:
+        otros = [[r[0] - x0, *r[1:]] for r in m["rostros"]
+                 if not (abs(r[0] - camara["cx"]) < ancho * 0.07 and abs(r[1] - camara["cy"]) < ancho * 0.07)
+                 and x0 <= r[0] < x1]
+        sub["muestras"].append({"t": m["t"], "rostros": otros})
+    puntos = [(t, x + x0) for t, x in trayectoria(sub, vw)]
+    return {"arriba": arriba, "abajo": {"w": vw, "h": vh, "y": (alto - vh) // 2 // 2 * 2, "zona": [x0, x1]},
+            "puntos": puntos, "camara": {k: round(camara[k], 1) for k in ("cx", "cy", "h", "presencia")}}

@@ -207,7 +207,7 @@ class Fabrica:
             recorte = _leer(f_bordes)["recorte"]
         estilo = t["datos"].get("estilo") or a["estilo"]
         encuadre = None
-        if estilo == "completo":
+        if estilo in ("completo", "dividido"):
             f_enc = carpeta / "encuadre.json"
             if not f_enc.exists():
                 self._etapa(jid, "render", "Buscando rostros para el encuadre…")
@@ -215,6 +215,15 @@ class Fabrica:
             encuadre = _leer(f_enc)
             if encuadre.get("aviso"):
                 self.db.anadir_aviso(jid, encuadre["aviso"])
+            if estilo == "dividido":
+                arriba = int(round(1920 * int(a["dividido_proporcion"]) / 100)) // 2 * 2
+                plan = reencuadre.plan_dividido(encuadre, arriba, 1920 - arriba)
+                if plan:
+                    encuadre = {**encuadre, "dividido": plan}
+                else:
+                    estilo = "completo"
+                    self.db.anadir_aviso(jid, "Vista dividida: no se encontró la cámara del streamer (un rostro fijo "
+                                              "en una esquina). Se usó pantalla completa con seguimiento.")
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
             t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,
@@ -239,7 +248,8 @@ class Fabrica:
         datos.setdefault("copia", "")
         r = recorte
         self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s"
-                             + (" · pantalla completa con seguimiento" if estilo == "completo" else " · clásico")
+                             + {"completo": " · pantalla completa con seguimiento",
+                                "dividido": " · vista dividida (cámara arriba, contenido abajo)"}.get(estilo, " · clásico")
                              + (f" · bordes negros recortados ({r['w']}×{r['h']})" if r else ""))
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="renderizado", etapa="render",
@@ -464,7 +474,7 @@ class Fabrica:
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
 
     def cambiar_estilo(self, jid: str, estilo: str) -> dict:
-        if estilo not in ("clasico", "completo", ""):
+        if estilo not in ("clasico", "completo", "dividido", ""):
             raise ErrorEtapa("Estilo desconocido.", "entrada")
         t = self._editable(jid)
         datos = t["datos"]

@@ -38,7 +38,7 @@ El estilo **clásico** (video completo centrado con tarjeta) se mantiene siempre
 **Pendiente de validar con clips reales (Cristóbal, PC):** IRL caminando, dos personas, poca luz,
 streamer con facecam pequeña. Medir tiempo de análisis en la GTX 1650/CPU.
 
-## Fase 2 — Vista dividida (arriba y abajo)
+## Fase 2 — Vista dividida (arriba y abajo) ✅ 2a implementada con detección automática (2026-11-17)
 
 Dos variantes, porque resuelven casos distintos:
 
