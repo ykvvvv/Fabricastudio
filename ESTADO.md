@@ -635,3 +635,9 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   86 pruebas. Playwright con datos temporales (1440×900): mostrar/ocultar sección, cambiar proporción, guardar y
   recargar, selector de un clip simulado en `error` guarda `dividido`. Capturas
   `docs/diseno/capturas-editor/dividido-*.png`. **No probado** en la MatePad ni con un clip real.
+- **2026-11-17 · Claude Code (nube)** — Límite diario de YouTube: un error de cuota durante la subida ya no deja
+  el clip en `error`. El clip queda en cola para subir, las subidas se pausan hasta las 09:00 UTC (después del
+  reinicio de medianoche del Pacífico; ajuste interno `subidas_pausadas_hasta`) y se reanudan solas. El render
+  sigue funcionando durante la pausa. `/api/estado` expone `subidas_pausadas_hasta`; `POST /api/youtube/reanudar`
+  quita la pausa. Al iniciar, los clips antiguos en error por cuota vuelven a la cola. 88 pruebas.
+  **Falta en el panel:** aviso visible de la pausa con la hora y botón «Reanudar ahora» (Claude Code del PC).

@@ -128,11 +128,11 @@ def test_subida_guarda_id_mueve_original_y_no_se_repite(fabrica, clip):
     t = _procesar(fabrica, t)
     assert t["estado"] == "renderizado" and crudo.exists()
 
-    # Un fallo de subida deja el original en su sitio y el render intacto.
-    fabrica.youtube.fallar = ErrorEtapa("sin cuota", "cuota")
+    # Un fallo temporal de subida deja el original en su sitio y el render intacto.
+    fabrica.youtube.fallar = ErrorEtapa("sin red", "temporal")
     fabrica.solicitar_subida(t["id"])
     t = _procesar(fabrica, t)
-    assert t["estado"] == "error" and t["error_tipo"] == "cuota" and crudo.exists()
+    assert t["estado"] == "error" and t["error_tipo"] == "temporal" and crudo.exists()
 
     fabrica.youtube.fallar = None
     fabrica.reintentar(t["id"])
@@ -187,3 +187,42 @@ def test_solo_se_aceptan_enlaces_a_un_clip_o_video_de_kick(fabrica):
             fabrica.importar_enlace(url)
         assert "no es de un clip" in str(e.value)
     assert fabrica.db.trabajos() == []                     # no se crea ningún trabajo
+
+
+def test_limite_diario_pausa_las_subidas_y_se_reanudan_solas(fabrica, clip, tmp_path, monkeypatch):
+    import time as _t
+    fabrica.youtube = YouTubeFalso()
+    fabrica.db.guardar_ajustes({"youtube_canal_id": "UC_ok"})
+    t = _procesar(fabrica, fabrica.importar_archivo(clip, "a.mp4"))
+    fabrica.solicitar_subida(t["id"])
+    fabrica.youtube.fallar = ErrorEtapa("YouTube: límite de subidas (400, uploadLimitExceeded)", "cuota")
+    fabrica._ejecutar(fabrica.db.siguiente())
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado" and t["subir_solicitado"] and not t["error"]   # no queda en error
+    assert any("se reintentará sola" in a for a in t["avisos"])
+    hasta = fabrica.db.ajustes()["subidas_pausadas_hasta"]
+    assert hasta > _t.time() + 500
+    # Mientras dura la pausa, los demás clips se procesan pero nadie intenta subir.
+    otro = tmp_path / "b.mp4"
+    shutil.copyfile(clip, otro)
+    with open(otro, "ab") as fh:
+        fh.write(b"\0")
+    b = fabrica.importar_archivo(otro, "b.mp4")
+    assert fabrica.db.siguiente()["id"] == b["id"]
+    fabrica._ejecutar(fabrica.db.siguiente())
+    assert fabrica.db.siguiente() is None
+    # Pasada la hora, la subida pendiente se retoma sin intervención.
+    monkeypatch.setattr("fabrica_studio.db.time.time", lambda: hasta + 1)
+    fabrica.youtube.fallar = None
+    sig = fabrica.db.siguiente()
+    assert sig["id"] == t["id"]
+    fabrica._ejecutar(sig)
+    assert fabrica.db.trabajo(t["id"])["estado"] == "publicado"
+
+
+def test_clips_viejos_en_error_por_cuota_vuelven_a_la_cola(fabrica, clip):
+    t = _procesar(fabrica, fabrica.importar_archivo(clip, "a.mp4"))
+    fabrica.db.actualizar(t["id"], estado="error", error_tipo="cuota", etapa="subir", error="límite")
+    assert fabrica._recuperar_por_cuota() == 1
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado" and t["subir_solicitado"] and not t["error"]

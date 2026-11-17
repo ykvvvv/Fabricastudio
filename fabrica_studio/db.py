@@ -164,11 +164,14 @@ class DB:
                 "SELECT * FROM trabajos WHERE sha256=? ORDER BY creado LIMIT 1", (sha,)).fetchone())
 
     def siguiente(self) -> dict | None:
-        """Siguiente trabajo que necesita al trabajador (el más antiguo primero)."""
+        """Siguiente trabajo que necesita al trabajador (el más antiguo primero).
+        Mientras las subidas estén en pausa por el límite diario de YouTube, solo se procesa y renderiza."""
+        subir = time.time() >= self.ajustes()["subidas_pausadas_hasta"]
         with self._lock:
             return self._fila(self._c.execute(
                 "SELECT * FROM trabajos WHERE estado='pendiente'"
-                " OR (estado='renderizado' AND subir_solicitado=1) ORDER BY creado LIMIT 1").fetchone())
+                + (" OR (estado='renderizado' AND subir_solicitado=1)" if subir else "")
+                + " ORDER BY creado LIMIT 1").fetchone())
 
     def recuperar_interrumpidos(self) -> int:
         """Tras un reinicio: lo que estaba a medias vuelve a la cola.

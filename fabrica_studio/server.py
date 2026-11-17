@@ -242,7 +242,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                             "pendientes": [{"archivo": k, "motivo": v} for k, v in fab.carpeta_estado.items()]},
                 "youtube": {**fab.youtube.estado(), "canal_id": a["youtube_canal_id"],
                             "canal_nombre": a["youtube_canal_nombre"]},
-                "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"]}
+                "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"],
+                "subidas_pausadas_hasta": a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0}
 
     # ------------------------------------------------------------ importación
     @app.post("/api/importar/archivo")
@@ -325,7 +326,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     async def guardar_ajustes(request: Request):
         cambios = await request.json()
         # El canal de destino solo se cambia con la confirmación explícita de /api/youtube/canal.
-        for k in ("youtube_canal_id", "youtube_canal_nombre"):
+        for k in ("youtube_canal_id", "youtube_canal_nombre", "subidas_pausadas_hasta"):
             cambios.pop(k, None)
         return {"valores": fab.db.guardar_ajustes(cambios)}
 
@@ -488,6 +489,12 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         if not canal:
             raise ErrorEtapa("Ese canal no pertenece a la cuenta conectada.", "configuracion")
         fab.db.guardar_ajustes({"youtube_canal_id": canal["id"], "youtube_canal_nombre": canal["titulo"]})
+        return {"ok": True}
+
+    @app.post("/api/youtube/reanudar")
+    def yt_reanudar():
+        """Quitar la pausa por límite diario (por si YouTube ya lo restableció antes)."""
+        fab.reanudar_subidas()
         return {"ok": True}
 
     @app.post("/api/youtube/desconectar")

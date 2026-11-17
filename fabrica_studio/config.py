@@ -104,6 +104,7 @@ AJUSTES_POR_DEFECTO: dict = {
     "youtube_canal_id": "",           # canal confirmado por el usuario
     "youtube_canal_nombre": "",
     "contenido_para_ninos": False,
+    "subidas_pausadas_hasta": 0,      # estado interno: hora (epoch) en que se reanudan las subidas tras el límite diario
     # --- Carpeta vigilada ---
     "vigilar_carpeta": True,
     "segundos_estable": 6,            # un archivo debe llevar este tiempo sin cambiar

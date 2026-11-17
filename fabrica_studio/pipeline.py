@@ -385,10 +385,32 @@ class Fabrica:
         try:
             self.subir(jid) if subiendo else self.procesar(jid)
         except ErrorEtapa as e:
-            self._fallo(jid, str(e), e.tipo)
+            if subiendo and e.tipo == "cuota":
+                self._pausar_subidas(jid, str(e))
+            else:
+                self._fallo(jid, str(e), e.tipo)
         except Exception as e:   # un fallo inesperado no debe tumbar al trabajador ni a los demás clips
             log.error("Fallo inesperado en %s:\n%s", jid, sin_secretos(traceback.format_exc()))
             self._fallo(jid, f"Error interno ({type(e).__name__}): {e}", "interno")
+
+    def _pausar_subidas(self, jid: str, mensaje: str) -> None:
+        """Límite diario de YouTube: el trabajo queda en cola para subir y todas las subidas se pausan
+        hasta después del reinicio (medianoche del Pacífico = 07:00 u 08:00 UTC; se usa 09:00 UTC)."""
+        ahora = time.time()
+        hasta = (int(ahora // 86400) * 86400) + 9 * 3600
+        if hasta <= ahora + 600:
+            hasta += 86400
+        self.db.guardar_ajustes({"subidas_pausadas_hasta": int(hasta)})
+        hora = time.strftime("%d-%m %H:%M", time.localtime(hasta))
+        self.db.actualizar(jid, estado="renderizado", subir_solicitado=True, error="", error_tipo="")
+        self.db.marcar_etapa(jid, "subir", "pendiente", f"en espera hasta {hora}")
+        self.db.anadir_aviso(jid, f"YouTube alcanzó su límite diario ({sin_secretos(mensaje)[:160]}). "
+                                  f"La subida se reintentará sola después de las {hora}.")
+        self.progreso.pop(jid, None)
+
+    def reanudar_subidas(self) -> None:
+        """Quitar la pausa manualmente (botón del panel)."""
+        self.db.guardar_ajustes({"subidas_pausadas_hasta": 0})
 
     def _fallo(self, jid: str, mensaje: str, tipo: str) -> None:
         t = self.db.trabajo(jid)
@@ -561,7 +583,20 @@ class Fabrica:
         return nuevos
 
     # ------------------------------------------------------------ hilos
+    def _recuperar_por_cuota(self) -> int:
+        """Clips que quedaron en error por el límite de YouTube (versiones anteriores): vuelven a la cola de
+        subida. Si el límite sigue activo, el primer intento vuelve a pausar las subidas."""
+        n = 0
+        for t in self.db.trabajos():
+            if t["estado"] == "error" and t["error_tipo"] == "cuota" and t["etapa"] == "subir" and not t["youtube_id"] \
+                    and (self.rutas.trabajo(t["id"]) / "short.mp4").exists():
+                self.db.actualizar(t["id"], estado="renderizado", subir_solicitado=True, error="", error_tipo="")
+                n += 1
+        return n
+
     def iniciar(self) -> None:
+        if self._recuperar_por_cuota():
+            log.info("Clips con límite de YouTube devueltos a la cola de subida.")
         n = self.db.recuperar_interrumpidos()
         if n:
             log.info("Se retomaron %d trabajos interrumpidos.", n)
