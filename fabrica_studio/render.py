@@ -271,3 +271,50 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{min(1.0, resultado['duracion'] / 2):.2f}",
               "-i", salida, "-frames:v", "1", "-vf", "scale=360:-2", "miniatura.jpg"], cwd=carpeta)
     return {"propiedades": resultado, "disposicion": d, "recorte": recorte}
+
+
+def elementos_editables(d: dict, a: dict, recursos: Path) -> list[dict]:
+    """Cajas de cada elemento en el lienzo de 1080×1920 y qué ajuste cambia al moverlo o agrandarlo.
+
+    Para el editor visual del panel: al arrastrar `dy` píxeles del lienzo, el ajuste de `mover` cambia en
+    `signo × dy`; al agrandar, el de `tamano` cambia proporcionalmente al alto de la caja. El panel debe
+    volver a pedir la disposición tras cada cambio, porque el motor puede limitar posiciones."""
+    from .config import LIMITES
+    completo = d.get("estilo") == "completo"
+
+    def regla(ajuste: str | None, signo: int = 1) -> dict | None:
+        if not ajuste:
+            return None
+        lo, hi = LIMITES.get(ajuste, (None, None))
+        return {"ajuste": ajuste, "signo": signo, "valor": a[ajuste], "min": lo, "max": hi}
+
+    elementos = []
+    if not completo:
+        v = d["video"]
+        elementos.append({"id": "video", "nombre": "Video", "caja": dict(v),
+                          "mover": regla("video_desplazamiento_y"), "tamano": regla("video_alto_max"), "ancho": None})
+    if "tarjeta" in d:
+        t = d["tarjeta"]
+        elementos.append({"id": "banner", "nombre": "Banner", "caja": {k: t[k] for k in ("x", "y", "w", "h")},
+                          "mover": regla("completo_banner_y") if completo else regla("banner_separacion", -1),
+                          "tamano": regla("banner_tamano"), "ancho": regla("banner_ancho")})
+    sb = d["subtitulos"]
+    elementos.append({"id": "subtitulos", "nombre": "Subtítulos", "caja": {k: sb[k] for k in ("x", "y", "w", "h")},
+                      "mover": regla("completo_sub_y" if completo else "sub_desplazamiento"),
+                      "tamano": regla("completo_sub_tamano" if completo else "sub_tamano"), "ancho": None})
+    mover_marca = regla("completo_logo_y" if completo else "logo_separacion")
+    if "logo" in d:
+        logo = cargar_logo(recursos, d["logo"]["h"])
+        elementos.append({"id": "logo", "nombre": "Logo",
+                          "caja": {"x": (LIENZO_ANCHO - logo.width) // 2, "y": d["logo"]["y"], "w": logo.width, "h": logo.height},
+                          "mover": mover_marca, "tamano": regla("completo_logo_alto" if completo else "logo_alto"),
+                          "ancho": None})
+    firma = (a.get("firma") or a["creador"]).strip()
+    if "nombre" in d and firma:
+        n = d["nombre"]
+        dib = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+        ancho = int(dib.textlength(firma, font=_fuente(FUENTE_BOLD, n["tamano"]))) + 8
+        elementos.append({"id": "firma", "nombre": "Firma", "grupo": "logo",
+                          "caja": {"x": (LIENZO_ANCHO - ancho) // 2, "y": n["y"], "w": ancho, "h": n["h"]},
+                          "mover": mover_marca, "tamano": regla("nombre_tamano"), "ancho": None})
+    return elementos

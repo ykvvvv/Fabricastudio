@@ -71,3 +71,33 @@ def test_detecta_y_recorta_franjas_negras(tmp_path):
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=15:d=2",
                     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(sin)], check=True)
     assert media.detectar_bordes(sin, media.sondear(sin)) is None
+
+
+def _disp(pc, **params):
+    r = pc.get("/api/diseno/disposicion", params=params)
+    assert r.status_code == 200, r.text
+    return {e["id"]: e for e in r.json()["elementos"]}
+
+
+def test_disposicion_para_el_editor_visual(fabrica):
+    from fastapi.testclient import TestClient
+    from fabrica_studio.server import crear_app
+    pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765", client=("127.0.0.1", 1))
+    e = _disp(pc)
+    assert set(e) == {"video", "banner", "subtitulos", "logo", "firma"}
+    for x in e.values():
+        c = x["caja"]
+        assert 0 <= c["x"] and c["x"] + c["w"] <= 1080 and 0 <= c["y"] and c["y"] + c["h"] <= 1920
+    # Mover según la regla devuelta desplaza la caja lo mismo en el lienzo.
+    for id_, dy in (("subtitulos", 40), ("logo", 30), ("banner", -20), ("video", 50)):
+        m = e[id_]["mover"]
+        nuevo = _disp(pc, **{m["ajuste"]: m["valor"] + m["signo"] * dy})
+        assert nuevo[id_]["caja"]["y"] - e[id_]["caja"]["y"] == dy, id_
+    # Agrandar los subtítulos cambia su tamaño.
+    t = e["subtitulos"]["tamano"]
+    assert _disp(pc, **{t["ajuste"]: t["valor"] + 20})["subtitulos"]["caja"]["h"] > e["subtitulos"]["caja"]["h"]
+    # Pantalla completa: sin caja de video y con posiciones absolutas.
+    c = _disp(pc, estilo="completo")
+    assert "video" not in c and c["subtitulos"]["mover"]["ajuste"] == "completo_sub_y"
+    assert c["logo"]["mover"] == c["firma"]["mover"]                      # logo y firma se mueven juntos
+    assert pc.get("/api/diseno/disposicion", params={"sub_tamano": 999}).status_code == 400

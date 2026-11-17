@@ -345,10 +345,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         (fab.rutas.recursos / "logo.png").unlink(missing_ok=True)
         return {"ok": True}
 
-    @app.get("/api/diseno/vista")
-    def vista_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
-        """Maqueta rápida del diseño con los ajustes actuales (o los que lleguen por parámetro)."""
-        from PIL import Image, ImageDraw
+    def _maqueta(request: Request, banner: str):
+        """Ajustes guardados + los que lleguen por parámetro (sin guardarlos) y su disposición."""
         a = fab.db.ajustes()
         from .db import validar_ajustes
         validar_ajustes({k: v for k, v in request.query_params.items() if k in AJUSTES_POR_DEFECTO})
@@ -364,6 +362,23 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
             b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a) \
                 if (not completo or a["completo_banner"]) else None
             d = render.calcular_disposicion_completo(a, b) if completo else render.calcular_disposicion(1920, 1080, a, b)
+        except Exception as e:
+            raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
+        return a, b, d, completo
+
+    @app.get("/api/diseno/disposicion")
+    def disposicion_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
+        """Cajas de cada elemento (lienzo 1080×1920) para el editor visual de la Plantilla."""
+        a, _, d, completo = _maqueta(request, banner)
+        return {"lienzo": {"w": LIENZO_ANCHO, "h": LIENZO_ALTO}, "estilo": "completo" if completo else "clasico",
+                "elementos": render.elementos_editables(d, a, fab.rutas.recursos), "avisos": d["avisos"]}
+
+    @app.get("/api/diseno/vista")
+    def vista_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
+        """Maqueta rápida del diseño con los ajustes actuales (o los que lleguen por parámetro)."""
+        from PIL import Image, ImageDraw
+        a, b, d, completo = _maqueta(request, banner)
+        try:
             capa = render.dibujar_capa(d, b, a, fab.rutas.recursos)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")

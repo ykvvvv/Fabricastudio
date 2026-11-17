@@ -600,3 +600,10 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-17 · Claude Code (nube)** — Ajustes validados en el servidor (`LIMITES`, `OPCIONES`, `COLORES`
   en `config.py`): un valor fuera de rango responde 400 con mensaje en español y no se guarda nada a medias;
   la maqueta de `/api/diseno/vista` también valida. La Plantilla puede usar `LIMITES` para min/max de los campos.
+- **2026-11-17 · Claude Code (nube)** — Editor visual estilo Canva, parte servidor: `GET /api/diseno/disposicion`
+  (mismos parámetros que `/api/diseno/vista`) devuelve `{lienzo, estilo, elementos[], avisos}`. Cada elemento:
+  `id` (video, banner, subtitulos, logo, firma), `caja {x,y,w,h}` en el lienzo 1080×1920, y reglas `mover`,
+  `tamano`, `ancho` = `{ajuste, signo, valor, min, max}` (o null). Arrastrar `dy` px del lienzo ⇒
+  `ajuste = valor + signo·dy` (limitado a min/max). Logo y firma comparten `mover` (se mueven juntos).
+  Tras cada cambio hay que volver a pedir la disposición: el motor puede limitar posiciones. 80 pruebas.
+  **Falta la interfaz** (Claude Code del PC).
