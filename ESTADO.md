@@ -43,6 +43,15 @@ Flujo de pantallas: `cuenta_creada=false` y `local=true` → ofrecer «Crear cue
 sin contraseña). `cuenta_creada=true` y `autorizado=false` → pantalla de login. Los dispositivos vinculados
 con código siguen funcionando. Si se olvida la contraseña: `python -m fabrica_studio.cuentas --restablecer` en el PC.
 
+**Plan de la pantalla (2026-11-17): `docs/diseno/plan-login.md`.** Solo diseño, sin código: tokens de la
+referencia, sistema de movimiento, bocetos (bienvenida/crear cuenta, login con error y bloqueo 429,
+transición al panel, Ajustes → Cuenta) y cómo incluir GSAP 3.15.1 y Three.js 0.187.0 en `web/vendor/` sin CDN.
+Todavía **no se descargó ninguna biblioteca** ni se tocó el panel. Pendiente de Cristóbal: las cuatro
+decisiones del §6 del plan (bienvenida una sola vez, ampliar el servidor para la cuenta regresiva,
+si entra Three.js, licencia de GSAP). Hallazgos del servidor a tener en cuenta: el quinto fallo responde 403
+y el 429 con `espera` llega en el intento siguiente; cerrar sesión en un dispositivo vinculado por código
+lo deja autorizado.
+
 ## Estilo pantalla completa tipo OpusClip (2026-11-16)
 
 Implementada la **fase 1** de `docs/ESTILO_OPUSCLIP.md`: el video llena el 9:16 y el encuadre
@@ -506,3 +515,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-17 · Claude Code (nube)** — Login en el servidor (`cuentas.py`, tablas `cuenta` y `sesiones`,
   rutas de cuenta/login/logout/sesiones) con 8 pruebas nuevas; 71 pasan. Falta la pantalla de login y
   las animaciones (Claude Code del PC, con las skills GSAP, Three.js, Motion Design y Design DNA).
+- **2026-11-17 · Claude Code (PC Windows)** — Plan de diseño del login en `docs/diseno/plan-login.md` (sin código):
+  tokens, movimiento, bocetos y GSAP/Three.js locales. Instaladas skills de diseño en `.claude/skills/` (sin versionar).
+  Siguiente: Cristóbal responde las decisiones del §6 y se implementa la fase A (pantallas solo con CSS).
