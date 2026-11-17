@@ -611,6 +611,12 @@ function pintarTrabajo(m, completo) {
       <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option>
       <option value="dividido" ${t.estilo === "dividido" ? "selected" : ""}>Vista dividida: cámara arriba, contenido abajo</option></select></label>`;
   }
+  let motivo = "";
+  if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
+    motivo = t.editado ? "Para volver a transcribir, primero quita la edición de tiempos («Editar tiempos» → «Volver al clip completo»)."
+      : t.origen_tipo === "momento" ? "Este clip usa la transcripción de su video largo; no se transcribe por separado." : "";
+    botones += h`<button data-accion="retranscribir" data-foco="b-retranscribir" ${crudo(motivo ? 'disabled aria-describedby="t-motivo"' : "")}>Volver a transcribir</button>`;
+  }
   if (t.tiene_video) botones += h`<a class="boton" href="/media/${t.id}/short.mp4" download="${t.nombre}.mp4">Descargar MP4</a>`;
   if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`;
   const sal = t.salida;
@@ -626,7 +632,7 @@ function pintarTrabajo(m, completo) {
       ${sal && t.copia ? crudo(h`<dt>Copia</dt><dd>2_shorts_renderizados/${t.copia}</dd>`) : ""}
       <dt>YouTube</dt><dd>${destino}</dd></dl>
     <ul class="pasos">${crudo(pasos)}</ul>
-    <div class="fila">${crudo(botones)}</div>`);
+    <div class="fila">${crudo(botones)}</div>${motivo ? crudo(h`<p class="pequeno tenue" id="t-motivo">${motivo}</p>`) : ""}`);
 
   // Formularios: se repintan solo si el trabajo cambió y no hay cambios sin guardar.
   const version = `${t.actualizado}|${ocupado}`;
@@ -785,6 +791,10 @@ const acciones = {
     try { await abrirEditorTiempos(S.detalle); } finally { b.disabled = false; b.lastChild.textContent = "Editar tiempos"; }
   }),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
+  retranscribir: intentar(async () => {
+    if (!await confirmar("Volver a transcribir", "Whisper transcribirá de nuevo el audio con el contexto de Ajustes → Proveedores. Los subtítulos se rehacen (se pierden los cambios hechos a mano); el banner, el título y la descripción se conservan. Puede tardar unos minutos.", "Volver a transcribir")) return;
+    await accionTrabajo("retranscribir", "En cola para transcribir de nuevo.")();
+  }),
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),
   subir: intentar(async () => {
     const yt = S.estado.youtube;
@@ -1136,6 +1146,10 @@ async function pintarAjustes(m) {
       <label>Modelo de Gemini (vacío = automático)<input name="gemini_modelo" value="${v.gemini_modelo}"></label>
       <label>Momentos a proponer por video largo<input name="momentos_cantidad" type="number" min="1" max="20" value="${v.momentos_cantidad}"></label></div>
       <p class="pequeno tenue">Modelos más grandes transcriben mejor pero tardan más. «small» es un punto de partida razonable en CPU.</p>
+      <label>Contexto de transcripción<textarea name="vocabulario" rows="3" maxlength="600" aria-describedby="ayuda-vocabulario">${v.vocabulario}</textarea></label>
+      <p class="pequeno tenue" id="ayuda-vocabulario">Escríbelo como se habla, con puntuación: «Stream de Jongottii en Kick. ¿Cachai? Ya po, altiro.» No pongas una lista de palabras sueltas: Whisper pierde tildes y puntuación. Solo orienta el reconocimiento; no agrega nada al texto.</p>
+      <label>Correcciones de escritura<textarea name="correcciones" rows="4" placeholder="cachay => cachai&#10;jongoti => Jongottii" aria-describedby="ayuda-correcciones">${v.correcciones}</textarea></label>
+      <p class="pequeno tenue" id="ayuda-correcciones">Una por línea: como sale => como debe verse. Corrigen subtítulos y títulos; la transcripción literal no cambia. Se aplican a los clips que se procesen desde ahora.</p>
       <div><button class="primario">Guardar</button></div></form>
     <div class="tarjeta pila"><h3>Clave de Gemini</h3>${crudo(soloPc)}
       <form class="fila" id="form-gemini"><input type="password" id="gemini-clave" placeholder="${p.gemini.clave ? "Hay una clave guardada" : "Pega aquí la clave de API"}" autocomplete="off" style="flex:1;min-width:200px" ${local ? "" : "disabled"}>

@@ -681,3 +681,16 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   «Volver a transcribir» en el detalle del clip. Después de cambiar correcciones basta «Restaurar subtítulos».
   Próximas mejoras propuestas: quitar silencios automáticamente, audio normalizado, subtítulos animados,
   render por GPU (NVENC).
+- **2026-11-17 · Claude Code (PC Windows)** — **Chilenismos en el panel** (`app.js`, `pipeline.py`). Ajustes → Proveedores:
+  «Contexto de transcripción» (`vocabulario`, máx. 600 caracteres) con la nota de escribirlo como se habla y con puntuación,
+  no como lista de palabras; «Correcciones de escritura» (`correcciones`), una por línea «como sale => como debe verse».
+  Detalle del clip: botón «Volver a transcribir» (clips `renderizado` o `error` sin subir) con confirmación que explica qué
+  se conserva (banner, título, descripción) y qué se rehace (subtítulos). Deshabilitado, con el motivo visible y enlazado
+  por `aria-describedby`, si el clip tiene edición de tiempos o es un momento de video largo. `detalle()` expone `editado`.
+  **Arreglado:** tras aplicar una edición de tiempos la etapa «Importar» se quedaba «en curso». 101 pruebas (nueva:
+  los campos de Proveedores son ajustes reales). Playwright con datos temporales (1440×900): guardar y recargar los dos
+  campos; cancelar y confirmar «Volver a transcribir» (Whisper simulado recibió el contexto nuevo; los subtítulos salieron
+  con la corrección «Paltita» y el título se conservó); botón deshabilitado con su motivo en un clip editado y en un
+  momento; el servidor también responde 400. Capturas en `docs/diseno/capturas-chilenismos/`. **No probado** con
+  Whisper real ni en la tablet. Ojo: un momento no se puede volver a transcribir desde el panel, porque un video largo
+  tampoco admite `retranscribir` (`_editable` lo rechaza); el mensaje del servidor sugiere hacerlo en el video largo.

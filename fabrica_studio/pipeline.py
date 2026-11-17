@@ -146,6 +146,7 @@ class Fabrica:
                 edicion.cortar(entrada, ed["tramos"], carpeta, bool(ed.get("tiene_audio", True)))
                 ed["aplicado"] = ed["huella"]
                 _escribir(f_ed, ed)
+                self.db.marcar_etapa(jid, "importar", "hecho", "con edición de tiempos")
             entrada = editado
 
         # 2. Comprobar.
@@ -604,7 +605,7 @@ class Fabrica:
     def detalle(self, jid: str) -> dict:
         carpeta = self.rutas.trabajo(jid)
         d = {"transcripcion": "", "bloques": [], "subtitulos_editados": False, "propiedades": None,
-             "momentos": None, "clips": [], "entrada": ""}
+             "momentos": None, "clips": [], "entrada": "", "editado": (carpeta / "edicion.json").exists()}
         entrada = self._entrada(carpeta) if carpeta.exists() else None
         if entrada and entrada.suffix.lower() in (".mp4", ".m4v", ".webm", ".mov"):
             d["entrada"] = entrada.name

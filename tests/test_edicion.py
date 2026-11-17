@@ -56,6 +56,7 @@ def test_editar_tiempos_de_punta_a_punta(fabrica, clip8):
     fabrica._ejecutar(t)
     t = fabrica.db.trabajo(t["id"])
     assert t["estado"] == "renderizado", t["error"]
+    assert t["etapas"]["importar"]["estado"] == "hecho"              # no queda «en curso» tras aplicar la edición
     assert abs(media.sondear(carpeta / "editado.mp4")["duracion"] - 5.0) < 0.2
     assert abs(media.sondear(carpeta / "short.mp4")["duracion"] - 5.0) < 0.2
     assert (carpeta / "entrada.mp4").exists() and (carpeta / "transcripcion_original.json").exists()
@@ -77,8 +78,10 @@ def test_api_de_edicion(fabrica, clip8):
     linea = pc.get(f"/api/trabajos/{t['id']}/linea").json()
     assert linea["tramos"] == [[0.0, linea["duracion"]]] and not linea["editado"]
     assert abs(pc.get(f"/api/trabajos/{t['id']}").json()["duracion"] - 8) < 0.2
+    assert pc.get(f"/api/trabajos/{t['id']}").json()["editado"] is False
     assert pc.put(f"/api/trabajos/{t['id']}/edicion", json={"tramos": [[0, 1]]}).status_code == 400
     r = pc.put(f"/api/trabajos/{t['id']}/edicion", json={"tramos": [[1, 6]]})
     assert r.status_code == 200 and r.json()["estado"] == "pendiente"
+    assert pc.get(f"/api/trabajos/{t['id']}").json()["editado"]          # el panel deshabilita «Volver a transcribir»
     fabrica._ejecutar(fabrica.db.trabajo(t["id"]))
     assert abs(pc.get(f"/api/trabajos/{t['id']}").json()["duracion"] - 5) < 0.2     # la ficha no muestra la del original

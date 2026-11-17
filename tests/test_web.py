@@ -57,3 +57,12 @@ def test_campos_de_la_plantilla_son_ajustes_reales():
     claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in ("clasico", "completo", "dividido")]   # opciones de «estilo»
     assert len(claves) > 20 and len(claves) == len(set(claves))
     assert set(claves) <= set(AJUSTES_POR_DEFECTO), set(claves) - set(AJUSTES_POR_DEFECTO)
+
+
+def test_campos_de_proveedores_son_ajustes_reales():
+    """Incluye «Contexto de transcripción» (vocabulario) y «Correcciones de escritura» (correcciones)."""
+    from fabrica_studio.config import AJUSTES_POR_DEFECTO
+    bloque = _texto("app.js").split('id="form-prov"')[1].split("</form>")[0]
+    nombres = set(re.findall(r'name="([a-z_]+)"', bloque))
+    assert {"vocabulario", "correcciones"} <= nombres
+    assert nombres <= set(AJUSTES_POR_DEFECTO), nombres - set(AJUSTES_POR_DEFECTO)
