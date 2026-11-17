@@ -23,7 +23,7 @@ async function api(ruta, opciones = {}) {
     opciones.headers = { "Content-Type": "application/json" };
   }
   const r = await fetch(ruta, opciones);
-  if (r.status === 401) { mostrarVinculacion(); throw new Error("Dispositivo no vinculado."); }
+  if (r.status === 401) { sinAcceso(); throw new Error("Inicia sesión o vincula este dispositivo."); }
   const datos = r.headers.get("content-type")?.includes("json") ? await r.json() : null;
   if (!r.ok) throw new Error(datos?.error || `Error ${r.status}`);
   return datos;
@@ -204,15 +204,101 @@ function nuevoClip(pestana = "enlace") {
 }
 
 // ---------------------------------------------------------------- arranque y navegación
-function mostrarVinculacion() { $("#app").hidden = true; $("#vincular").hidden = false; }
+// Pantallas de acceso: "bienvenida" (crear cuenta, solo en el PC), "login" o "vincular" (código de 6 dígitos).
+const leerSesion = async () => { S.sesion = await (await fetch("/api/sesion")).json(); return S.sesion; };
+function mostrarAcceso(modo, nota = "") {
+  cerrarModal();
+  $("#app").hidden = true; $("#acceso").hidden = false;
+  for (const m of ["bienvenida", "form-login", "vincular"]) $(`#${m}`).hidden = !m.endsWith(modo);
+  $("#l-nota").textContent = nota || "Tu estudio te espera.";
+  $("#l-codigo").hidden = S.sesion.local; $("#v-login").hidden = !S.sesion.cuenta_creada;
+  document.title = `${{ bienvenida: "Bienvenida", login: "Iniciar sesión", vincular: "Vincular" }[modo]} · Fábrica Studio`;
+  if (modo === "login" && S.sesion.espera_login > 0) bloquear(S.sesion.espera_login);    // sigue bloqueado tras recargar
+  $(`#acceso > :not([hidden]) input:not(:disabled)`)?.focus();
+}
+// La API respondió 401 con el panel abierto: la sesión caducó o se cerró desde el PC.
+async function sinAcceso() {
+  if (!$("#acceso").hidden || (await leerSesion()).autorizado) return;
+  mostrarAcceso(S.sesion.cuenta_creada ? "login" : "vincular", S.sesion.cuenta_creada ? "Tu sesión caducó. Vuelve a entrar." : "");
+}
+const enviar = async (ruta, json) => {
+  const r = await fetch(ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) });
+  return [r, await r.json().catch(() => ({}))];
+};
+// Error visible en la tarjeta: mensaje del servidor tal cual y una sacudida (sin movimiento si está reducido).
+function errorAcceso(f, texto) {
+  const p = $(".error", f);
+  p.className = "error"; p.textContent = texto;
+  f.classList.remove("sacude"); void f.offsetWidth; f.classList.add("sacude");
+}
 
-$("#form-vincular").addEventListener("submit", async (e) => {
+// Bloqueo por intentos (429). La cuenta regresiva sale de los segundos que da el servidor y se calcula
+// contra la hora de fin con el reloj monótono: no se atrasa aunque la pestaña quede en segundo plano.
+let finBloqueo = 0, relojBloqueo = 0;
+const faltaTexto = (s) => (s < 60 ? `${s} s` : reloj(s));
+function bloquear(segundos) {
+  finBloqueo = performance.now() + segundos * 1000;
+  $("#l-bloqueo").style.setProperty("--espera", `${segundos}s`);
+  const p = $("#form-login .error");
+  p.className = "error solo-lector"; p.textContent = `Demasiados intentos. Espera ${segundos} segundos.`;   // se anuncia una sola vez
+  clearInterval(relojBloqueo); relojBloqueo = setInterval(pintarBloqueo, 250);
+  pintarBloqueo();
+}
+function pintarBloqueo() {
+  const f = $("#form-login"), falta = Math.ceil((finBloqueo - performance.now()) / 1000), activo = falta > 0;
+  f.classList.toggle("bloqueado", activo); $("#l-bloqueo").hidden = !activo;
+  f.querySelectorAll("label input, .primario").forEach((x) => { x.disabled = activo; });
+  $(".primario span", f).textContent = activo ? `Espera ${faltaTexto(falta)}…` : "Entrar";
+  if (activo) {
+    $("#l-falta").textContent = falta < 60 ? falta : reloj(falta);
+    $("#l-falta-texto").textContent = `Podrás volver a intentarlo en ${faltaTexto(falta)}.`;
+    return;
+  }
+  clearInterval(relojBloqueo);
+  const p = $(".error", f);
+  p.className = "error tenue"; p.textContent = "Ya puedes volver a intentarlo.";
+  if (!f.hidden) f.contrasena.focus();
+}
+
+$("#form-login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  if (finBloqueo > performance.now()) return;
+  f.classList.add("enviando"); $(".primario", f).disabled = true;
+  try {
+    const [r, d] = await enviar("/api/login", { usuario: f.usuario.value, contrasena: f.contrasena.value, recordar: f.recordar.checked });
+    if (r.ok) return location.reload();
+    f.contrasena.value = "";
+    errorAcceso(f, r.status === 429 && d.espera ? "" : d.error || `Error ${r.status}`);
+    if (r.status === 429 && d.espera) bloquear(d.espera); else f.contrasena.focus();
+  } catch (err) { errorAcceso(f, "No se pudo conectar con el PC."); }
+  f.classList.remove("enviando"); $(".primario", f).disabled = finBloqueo > performance.now();
+});
+
+$("#form-crear").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.contrasena.value !== f.repetir.value) { errorAcceso(f, "Las dos contraseñas no coinciden."); return f.repetir.focus(); }
+  $(".primario", f).disabled = true;
+  try {
+    const [r, d] = await enviar("/api/cuenta/crear", { nombre: f.nombre.value, contrasena: f.contrasena.value, recordar: f.recordar.checked });
+    if (r.ok) return location.reload();
+    if (r.status === 409) { await leerSesion(); mostrarAcceso("login", "Ya existe una cuenta. Inicia sesión."); }
+    else errorAcceso(f, d.error || `Error ${r.status}`);
+  } catch (err) { errorAcceso(f, "No se pudo conectar con el PC."); }
+  $(".primario", f).disabled = false;
+});
+$("#form-crear").contrasena.addEventListener("input", (e) => $("#c-regla").classList.toggle("cumple", e.target.value.length >= 8));
+
+$("#vincular").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     await api("/api/vincular", { method: "POST", json: { codigo: $("#v-codigo").value, nombre: $("#v-nombre").value } });
     location.reload();
   } catch (err) { $("#v-error").textContent = err.message; }
 });
+// El menú de usuario se cierra al pulsar fuera de él o al elegir una opción.
+document.addEventListener("click", (e) => { if (!e.target.closest("#perfil")) $("#menu-usuario").open = false; });
 
 // Barra lateral: plegada (72 px, solo iconos) o desplegada (224 px). Bajo 680 px es un menú que se desliza.
 const movil = matchMedia("(max-width: 680px)");
@@ -276,6 +362,7 @@ function anunciar(antes) {
 }
 
 async function refrescar() {
+  if ($("#app").hidden) return;           // en una pantalla de acceso no se consulta el estado
   const primera = !S.estado;
   try {
     const nuevo = await api("/api/estado"), antes = S.estado;
@@ -287,15 +374,25 @@ async function refrescar() {
   pintar(primera);
 }
 
-(async function iniciar() {
-  hidratar();
-  S.sesion = await (await fetch("/api/sesion")).json();
-  if (!S.sesion.autorizado) return mostrarVinculacion();
-  $("#app").hidden = false;
+let dentro = false;
+async function entrar() {
+  $("#acceso").hidden = true; $("#app").hidden = false;
+  if (dentro) return navegar();
+  dentro = true;
   navegar();                                   // esqueleto mientras llegan los datos
   S.ajustes = await api("/api/ajustes").catch(() => null);
   await refrescar();
   setInterval(refrescar, 2000);
+}
+const BIENVENIDA = "fabrica.bienvenida";       // «Ahora no» la oculta para siempre en este navegador
+const bienvenidaVista = () => { try { return !!localStorage.getItem(BIENVENIDA); } catch (e) { return false; } };
+
+(async function iniciar() {
+  hidratar();
+  await leerSesion();
+  if (!S.sesion.autorizado) return mostrarAcceso(S.sesion.cuenta_creada ? "login" : "vincular");
+  if (S.sesion.local && !S.sesion.cuenta_creada && !bienvenidaVista()) return mostrarAcceso("bienvenida");
+  entrar();
 })();
 
 // ---------------------------------------------------------------- vistas
@@ -319,7 +416,9 @@ function pintarLateral() {
   poner($("#espacio"), h`<div class="avatar" aria-hidden="true">${creador.slice(0, 2).toUpperCase()}</div><div><strong>${creador}</strong><small>${yt.canal_id ? `Canal: ${yt.canal_nombre}` : "Sin canal de YouTube confirmado"}</small></div>`);
   poner($("#tarjeta-pc"), h`<b>${ic("monitor")}PC anfitrión<span class="punto ${S.conectado ? "bien" : "mal"}"></span></b>
     ${S.conectado ? crudo(h`${p.ffmpeg && p.ffprobe ? "FFmpeg disponible" : "FFmpeg no encontrado"}<br>Whisper ${p.whisper.modelo}<br>Carpeta vigilada ${e.carpeta.activa ? "activa" : "desactivada"}`) : "Sin conexión con el PC. Se reintenta cada 2 s."}`);
-  poner($("#perfil"), h`<div class="avatar" aria-hidden="true">${ic(S.sesion.local ? "monitor" : "dispositivos")}</div><div><strong>${S.sesion.local ? "Este PC" : "Dispositivo vinculado"}</strong><small>Versión ${S.sesion.version}</small></div>`);
+  const s = S.sesion, donde = s.local ? "Este PC" : s.sesion_iniciada ? "Sesión iniciada" : "Dispositivo vinculado";
+  poner($("#perfil"), h`<div class="avatar" aria-hidden="true">${ic(s.local ? "monitor" : "dispositivos")}</div><div><strong>${s.usuario || donde}</strong><small>${s.usuario ? `${donde} · v` : "Versión "}${s.version}</small></div>`);
+  poner($("#menu-lista"), h`<a href="#ajustes" data-accion="ir-ajustes" data-p="cuenta">${ic("ajustes")}Cuenta</a>${s.sesion_iniciada ? crudo(h`<button data-accion="cerrar-sesion">${ic("salir")}Cerrar sesión</button>`) : ""}`);
 }
 
 function pintarResumen(m, completo) {
@@ -593,7 +692,25 @@ const accionTrabajo = (nombre, mensaje) => intentar(async () => {
 const acciones = {
   nuevo: (b) => nuevoClip(b.dataset.p),
   "cerrar-modal": () => cerrarModal(false),
-  "ir-ajustes": (b) => { S.pestana = b.dataset.p; },
+  "ir-ajustes": (b) => { S.pestana = b.dataset.p; if (S.vista === "ajustes") pintarAjustes($("#principal")); },
+  acceso: (b) => mostrarAcceso(b.dataset.modo),
+  "ver-clave": (b) => {
+    const i = b.previousElementSibling, ver = i.type === "password";
+    i.type = ver ? "text" : "password"; b.setAttribute("aria-pressed", ver); i.focus();
+  },
+  "ahora-no": () => { try { localStorage.setItem(BIENVENIDA, "omitida"); } catch (e) { /* volverá a mostrarse */ } entrar(); },
+  "crear-cuenta": () => mostrarAcceso("bienvenida"),
+  "cerrar-sesion": intentar(async () => {
+    await api("/api/logout", { method: "POST" });
+    if (!(await leerSesion()).autorizado) return mostrarAcceso("login");
+    // Un dispositivo vinculado por código sigue autorizado aunque cierre su sesión.
+    avisar("Sesión cerrada. Este dispositivo sigue vinculado por código; para quitarlo, usa Ajustes → Dispositivos en el PC.");
+    pintar(true);
+  }),
+  "cerrar-otra": intentar(async (b) => {
+    await api(`/api/sesiones/${b.dataset.id}`, { method: "DELETE" });
+    salir(b.closest(".sesion"), () => pintarAjustes($("#principal")));
+  }),
   filtro: (b) => { S.filtro = b.dataset.f; pintar(false); },
   quitar: intentar(async (b) => {
     if (!await confirmar("Eliminar el clip", `Se eliminará «${b.dataset.nombre}» y sus archivos intermedios de este PC. No borra nada de YouTube.`, "Eliminar", true)) return;
@@ -652,6 +769,11 @@ const acciones = {
 };
 
 // ---------------------------------------------------------------- ajustes
+// Nombre legible a partir del agente de usuario; si no se reconoce, no se inventa.
+const primero = (lista, ag) => lista.find(([r]) => r.test(ag))?.[1];
+const dispositivoDe = (ag) => [primero([[/Windows/, "Windows"], [/HarmonyOS|OpenHarmony/, "HarmonyOS"], [/Android/, "Android"], [/iPad|iPhone/, "iOS"], [/Mac OS X/, "macOS"], [/Linux|X11/, "Linux"]], ag),
+  primero([[/Edg\//, "Edge"], [/HuaweiBrowser/, "Navegador Huawei"], [/Firefox\//, "Firefox"], [/Chrome\//, "Chrome"], [/Safari\//, "Safari"]], ag)].filter(Boolean).join(" · ") || `Navegador desconocido${ag ? ` (${ag.slice(0, 40)})` : ""}`;
+const lapso = (s) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} días`);
 const CAMPOS_COMPLETO = [
   ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"], ["completo_banner_y", "Banner: posición vertical"],
   ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
@@ -678,7 +800,7 @@ async function pintarAjustes(m) {
   if (S.vista !== "ajustes") return;     // se cambió de vista mientras llegaban los datos
   const v = a.valores, local = S.sesion.local, yt = S.estado.youtube, p = S.estado.proveedores;
   const soloPc = local ? "" : `<p class="nota">Por seguridad, esta sección solo se puede modificar desde el panel abierto en el PC.</p>`;
-  const pestanas = [["diseno", "Diseño"], ["youtube", "YouTube"], ["proveedores", "Proveedores"], ["dispositivos", "Dispositivos"]];
+  const pestanas = [["diseno", "Diseño"], ["youtube", "YouTube"], ["proveedores", "Proveedores"], ["dispositivos", "Dispositivos"], ["cuenta", "Cuenta"]];
   let cuerpo = "";
   if (S.pestana === "diseno") {
     cuerpo = h`<div class="diseno"><form class="pila" id="form-diseno">
@@ -741,6 +863,30 @@ async function pintarAjustes(m) {
       <button type="button" data-accion="gemini-probar">Probar</button>
       ${p.gemini.clave && local ? crudo(`<button type="button" class="texto peligro" data-accion="gemini-borrar">Borrar</button>`) : ""}</form>
       <p class="pequeno tenue" id="gemini-info">La clave se guarda solo en este PC y nunca se muestra en el panel.</p></div>`;
+  } else if (S.pestana === "cuenta") {
+    const s = await leerSesion();
+    if (!s.cuenta_creada) {
+      cuerpo = h`<div class="tarjeta pila"><h3>Protege tu panel</h3>
+        <p class="pequeno tenue">Ahora el panel se abre sin contraseña desde este PC. Con una cuenta, también el PC pedirá iniciar sesión.</p>
+        ${local ? crudo(`<div><button class="primario" data-accion="crear-cuenta">Crear cuenta</button></div>`) : crudo(`<p class="nota">La cuenta se crea desde el panel abierto en el PC.</p>`)}</div>`;
+    } else {
+      const ss = await api("/api/sesiones").catch(() => []), ahora = Date.now() / 1000;
+      cuerpo = h`<form class="tarjeta pila" id="form-clave"><h3>Contraseña</h3>${crudo(soloPc)}
+        <p class="pequeno tenue">Al cambiarla se cierran las demás sesiones abiertas.</p>
+        <div class="campos">${[["actual", "Contraseña actual", "current-password", 1], ["nueva", "Nueva (8 caracteres o más)", "new-password", 8], ["repetir", "Repite la nueva", "new-password", 8]].map(([k, n, ac, min]) =>
+          crudo(h`<label>${n}<input name="${k}" type="password" autocomplete="${ac}" minlength="${min}" required ${local ? "" : "disabled"}></label>`))}</div>
+        <p class="error" role="alert"></p>
+        <div><button class="primario" ${local ? "" : "disabled"}>Cambiar contraseña</button></div></form>
+      <div class="tarjeta pila"><h3>Sesiones abiertas</h3>
+        <div>${ss.length ? ss.map((x) => crudo(h`<div class="sesion"><div class="avatar" aria-hidden="true">${ic(/Windows|Mac OS X|X11/.test(x.agente) ? "monitor" : "dispositivos")}</div>
+          <div><b>${dispositivoDe(x.agente)}</b> ${x.actual ? crudo(`<span class="pastilla subido">Esta sesión</span>`) : ""}
+            <small>${x.ip} · ${ahora - x.visto < 90 ? "activa ahora" : `vista hace ${lapso(ahora - x.visto)}`} · caduca en ${lapso(x.expira - ahora)}</small></div>
+          ${local && !x.actual ? crudo(h`<button class="texto peligro" data-accion="cerrar-otra" data-id="${x.id}">Cerrar</button>`) : ""}</div>`))
+          : crudo(`<p class="tenue pequeno">No hay sesiones abiertas.</p>`)}</div>
+        ${local ? "" : crudo(`<p class="pequeno tenue">Las sesiones de otros dispositivos se cierran desde el panel abierto en el PC.</p>`)}</div>
+      <div class="tarjeta fila separado"><div><h3>Salir</h3><p class="pequeno tenue">${s.sesion_iniciada ? "Cierra la sesión en este dispositivo." : "Este dispositivo entra por vinculación con código, sin sesión iniciada."}</p></div>
+        ${s.sesion_iniciada ? crudo(h`<button data-accion="cerrar-sesion">${ic("salir")}Cerrar sesión</button>`) : ""}</div>`;
+    }
   } else {
     const ds = await api("/api/dispositivos").catch(() => []);
     cuerpo = h`${crudo(soloPc)}<div class="tarjeta pila"><h3>Vincular un dispositivo</h3>
@@ -759,6 +905,16 @@ async function pintarAjustes(m) {
     await api("/api/ajustes", { method: "PUT", json: cambios }); avisar(mensaje); refrescar();
   }));
   guardarForm("#form-diseno", "Diseño guardado."); guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
+
+  $("#form-clave")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, error = $(".error", f);
+    if (f.nueva.value !== f.repetir.value) { error.textContent = "Las dos contraseñas nuevas no coinciden."; return f.repetir.focus(); }
+    try {
+      await api("/api/cuenta/contrasena", { method: "PUT", json: { actual: f.actual.value, nueva: f.nueva.value } });
+      avisar("Contraseña cambiada. Se cerraron las demás sesiones."); pintarAjustes(m);
+    } catch (err) { error.textContent = err.message; }
+  });
 
   const fd = $("#form-diseno");
   if (fd) {

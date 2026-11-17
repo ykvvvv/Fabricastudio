@@ -22,7 +22,7 @@ primer Short real renderizado y **primera subida real a YouTube en privado** (ve
 - Todo el desarrollo hasta ahora se hizo en una sesión de Claude Code **en la nube (Linux)**.
   El PC de Cristóbal todavía no tiene una copia: hay que clonarla (ver «Pasos para continuar en Windows»).
 
-## Login del panel: servidor listo, falta la pantalla (2026-11-17)
+## Login del panel: servidor y pantallas (fase 1) listos (2026-11-17)
 
 `fabrica_studio/cuentas.py` + rutas en `server.py`. Una cuenta (el propietario), contraseña con scrypt,
 sesiones en cookie HttpOnly (hash en SQLite), bloqueo por IP tras 5 fallos con espera creciente.
@@ -43,14 +43,32 @@ Flujo de pantallas: `cuenta_creada=false` y `local=true` → ofrecer «Crear cue
 sin contraseña). `cuenta_creada=true` y `autorizado=false` → pantalla de login. Los dispositivos vinculados
 con código siguen funcionando. Si se olvida la contraseña: `python -m fabrica_studio.cuentas --restablecer` en el PC.
 
-**Plan de la pantalla (2026-11-17): `docs/diseno/plan-login.md`.** Solo diseño, sin código: tokens de la
-referencia, sistema de movimiento, bocetos (bienvenida/crear cuenta, login con error y bloqueo 429,
-transición al panel, Ajustes → Cuenta) y cómo incluir GSAP 3.15.1 y Three.js 0.187.0 en `web/vendor/` sin CDN.
-Todavía **no se descargó ninguna biblioteca** ni se tocó el panel. Pendiente de Cristóbal: las cuatro
-decisiones del §6 del plan (bienvenida una sola vez, ampliar el servidor para la cuenta regresiva,
-si entra Three.js, licencia de GSAP). Hallazgos del servidor a tener en cuenta: el quinto fallo responde 403
-y el 429 con `espera` llega en el intento siguiente; cerrar sesión en un dispositivo vinculado por código
-lo deja autorizado.
+**Plan: `docs/diseno/plan-login.md`.** Decisiones de Cristóbal (2026-11-17): bienvenida una sola vez («Ahora no»
+la oculta para siempre); cuenta regresiva con los datos del servidor; Three.js en la última fase y opcional
+(el fondo es la cuadrícula CSS); licencia de GSAP aceptada (se incluirá en `web/vendor/` con su archivo de licencia).
+
+**Fase 1 implementada (solo CSS, sin bibliotecas)** en `web/index.html`, `estilo.css`, `app.js`, `iconos.js`:
+
+- Pantallas de acceso en `#acceso`: bienvenida + crear cuenta (PC, primera vez), login y vinculación por código
+  (la de antes, ahora dentro del mismo contenedor, con paso de ida y vuelta al login).
+- Login: error con el mensaje del servidor y sacudida; bloqueo 429 con cuenta regresiva calculada contra la hora
+  de fin (`performance.now()`), que sigue al recargar gracias a `espera_login`. No se reenvía solo al terminar.
+- Ajustes → pestaña **Cuenta**: cambiar contraseña (solo PC), sesiones abiertas (cerrar otras, solo PC), salir.
+  Sin cuenta: tarjeta «Protege tu panel».
+- Menú de usuario al pie de la barra lateral (también plegada): «Cuenta» y «Cerrar sesión». Si el dispositivo
+  sigue vinculado por código, se queda en el panel con un aviso.
+- Si la API responde 401 con el panel abierto, se muestra el login con «Tu sesión caducó».
+- Tras crear la cuenta o iniciar sesión la página se recarga (la transición animada es de la fase 2).
+
+Probado con Playwright (Chromium) contra un servidor temporal con datos vacíos, en 1440×900 y, entrando por la IP
+de la red (`192.168.1.116`, que el servidor trata como dispositivo no local), en 1280×800 y 800×1280: crear cuenta,
+login correcto e incorrecto, bloqueo (30 → 25 en 5,0 s; servidor y panel coinciden tras recargar), fin del bloqueo,
+cerrar sesión, sesión + vinculación, cambio de contraseña, cierre de otra sesión, «Ahora no» y «reducir movimiento».
+Capturas en `docs/diseno/capturas-login/`. **No probado en la tablet real ni en su navegador.**
+
+Pendiente: fase 2 (GSAP local y transición login → panel) y fase 3 opcional (Three.js). Límite conocido: un
+dispositivo ya vinculado por código entra directo al panel y no tiene forma de iniciar sesión con contraseña
+desde la interfaz (solo importa para que aparezca en «Sesiones abiertas»).
 
 ## Estilo pantalla completa tipo OpusClip (2026-11-16)
 
@@ -520,3 +538,7 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   Siguiente: Cristóbal responde las decisiones del §6 y se implementa la fase A (pantallas solo con CSS).
 - **2026-11-17 · Claude Code (nube)** — Login: el 429 llega en el 5.º fallo y `GET /api/sesion` expone
   `espera_login` (decisión 2 del plan de login). Prueba ampliada.
+- **2026-11-17 · Claude Code (PC Windows)** — Login, fase 1: pantallas de bienvenida/crear cuenta, login con error y
+  bloqueo con cuenta regresiva, pestaña Cuenta y menú de usuario, solo con CSS y contra la API real. Prueba nueva
+  `tests/test_web.py` (sin recursos de internet; acciones e iconos enlazados). 73 pruebas. Playwright en escritorio
+  y tamaño tablet; capturas en `docs/diseno/capturas-login/`. Siguiente: Cristóbal lo revisa en el navegador y en la tablet; después, fase 2 (GSAP).

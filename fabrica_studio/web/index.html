@@ -10,16 +10,59 @@
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
-<div id="vincular" class="vincular" hidden>
-  <form class="tarjeta" id="form-vincular">
-    <h1>Fábrica Studio</h1>
+<!-- Pantallas de acceso (docs/diseno/plan-login.md): app.js muestra una sola de las tres secciones. -->
+<main id="acceso" class="acceso" hidden>
+  <div class="marca"><i class="marca-signo" aria-hidden="true"></i><span>Fábrica <small>Studio</small></span></div>
+
+  <section id="bienvenida" class="acceso-doble" hidden>
+    <div class="acceso-texto">
+      <div class="antetitulo">Tu espacio creativo</div>
+      <h1>Bienvenido a tu estudio.</h1>
+      <p class="tenue">De un buen momento a tu próximo Short. Todo ocurre en este PC.</p>
+      <ul>
+        <li><span class="punto bien"></span>Este PC procesa los clips</li>
+        <li><span class="punto bien"></span>La tablet se conecta por la red de tu casa</li>
+        <li><span class="punto bien"></span>YouTube, siempre en privado</li>
+      </ul>
+    </div>
+    <form class="tarjeta acceso-tarjeta" id="form-crear">
+      <div><h2>Protege tu panel</h2><p class="tenue pequeno">Crea una cuenta para que solo tú puedas abrirlo.</p></div>
+      <label>Nombre de usuario<input name="nombre" autocomplete="username" maxlength="40" required></label>
+      <label>Contraseña<span class="clave"><input name="contrasena" type="password" autocomplete="new-password" minlength="8" required aria-describedby="c-regla"><button type="button" class="icono-boton" data-accion="ver-clave" aria-label="Mostrar la contraseña" aria-pressed="false"><i data-icono="ojo"></i></button></span></label>
+      <p class="regla" id="c-regla"><i data-icono="check"></i>8 caracteres o más</p>
+      <label>Repite la contraseña<input name="repetir" type="password" autocomplete="new-password" required></label>
+      <label class="linea"><input type="checkbox" name="recordar" checked> Mantener la sesión iniciada en este PC</label>
+      <p class="error" role="alert"></p>
+      <button class="primario">Crear cuenta</button>
+      <button type="button" class="enlace-fino" data-accion="ahora-no">Ahora no, seguir sin contraseña</button>
+    </form>
+  </section>
+
+  <form class="tarjeta acceso-tarjeta" id="form-login" hidden>
+    <div><h2>Inicia sesión</h2><p class="tenue pequeno" id="l-nota">Tu estudio te espera.</p></div>
+    <div class="bloqueo" id="l-bloqueo" hidden>
+      <span class="anillo"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20"/><circle cx="24" cy="24" r="20"/></svg><b id="l-falta" role="timer"></b></span>
+      <p><b>Demasiados intentos</b><br><span id="l-falta-texto"></span></p>
+    </div>
+    <label>Usuario<input name="usuario" autocomplete="username" maxlength="40"></label>
+    <label>Contraseña<span class="clave"><input name="contrasena" type="password" autocomplete="current-password" required><button type="button" class="icono-boton" data-accion="ver-clave" aria-label="Mostrar la contraseña" aria-pressed="false"><i data-icono="ojo"></i></button></span></label>
+    <label class="linea"><input type="checkbox" name="recordar"> Mantener la sesión iniciada (30 días)</label>
+    <p class="error" role="alert"></p>
+    <button class="primario"><span>Entrar</span><i data-icono="flecha"></i></button>
+    <button type="button" class="enlace-fino" id="l-codigo" data-accion="acceso" data-modo="vincular">Usar un código de vinculación</button>
+    <p class="pequeno tenue">¿Olvidaste la contraseña? Se restablece desde el PC: <code>python -m fabrica_studio.cuentas --restablecer</code></p>
+  </form>
+
+  <form class="tarjeta acceso-tarjeta" id="vincular" hidden>
+    <h2>Vincular este dispositivo</h2>
     <p class="tenue">Este dispositivo aún no está vinculado. En el PC abre <b>Ajustes → Dispositivos</b>, pulsa «Generar código» y escríbelo aquí.</p>
     <label>Código de 6 dígitos<input id="v-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
     <label>Nombre de este dispositivo<input id="v-nombre" value="Tablet" maxlength="40"></label>
     <button class="primario">Vincular</button>
     <p class="error" id="v-error" role="alert"></p>
+    <button type="button" class="enlace-fino" id="v-login" data-accion="acceso" data-modo="login">Iniciar sesión con contraseña</button>
   </form>
-</div>
+</main>
 
 <div id="app" class="app" hidden>
   <aside class="lateral" id="lateral" aria-label="Navegación principal">
@@ -33,7 +76,7 @@
     </nav>
     <div class="lateral-pie">
       <div class="tarjeta-pc" id="tarjeta-pc"></div>
-      <div class="perfil" id="perfil"></div>
+      <details class="menu-usuario" id="menu-usuario"><summary class="perfil" id="perfil" aria-label="Menú de usuario"></summary><div class="menu" id="menu-lista"></div></details>
     </div>
   </aside>
   <div class="velo" id="velo"></div>

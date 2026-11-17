@@ -9,6 +9,7 @@
   --acento: #d8aa91; --acento-tinta: #222224; --claro: #e5e4e2;
   --ok: #a3c9ad; --alerta: #d8bfa2; --mal: #df9690;
   --radio: 12px; --radio-c: 7px; --curva: cubic-bezier(.3, .7, .2, 1);
+  --t-rapida: .2s; --t-entrada: .3s; --sombra-flota: 0 30px 100px #0007;      /* movimiento y profundidad del acceso */
   --letra: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "HarmonyOS Sans", Roboto, sans-serif;
   --titulos: var(--letra);
   color-scheme: dark;
@@ -76,6 +77,9 @@ svg.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-wid
   .app.plegada { grid-template-columns: 72px minmax(0, 1fr); }
   .plegada .lateral { overflow: visible; }
   .plegada .lateral > :not(.nav) { pointer-events: none; }
+  /* El avatar sigue abriendo el menú; el resto del pie (195 px, invisible) no intercepta clics sobre el contenido. */
+  .plegada .menu-usuario .perfil { pointer-events: auto; width: 44px; height: 44px; overflow: hidden; }
+  .plegada .menu-usuario .menu { pointer-events: auto; }
   .plegada .marca-texto, .plegada .espacio > div:last-child, .plegada .tarjeta-pc, .plegada .perfil > div:last-child { visibility: hidden; animation: none; }
   .plegada .espacio { border-color: transparent; }
   .plegada .espacio .avatar { transform: translateX(-7px); }
@@ -293,8 +297,65 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 .momento .fila { align-items: flex-end; }
 .estilo-trabajo { flex-direction: row; align-items: center; gap: 8px; }
 .estilo-trabajo select { width: auto; }
-.vincular { min-height: 100%; display: grid; place-items: center; padding: 20px; }
-.vincular .tarjeta { max-width: 400px; display: flex; flex-direction: column; gap: 14px; padding: 28px; border-radius: 15px; }
+
+/* ---------------------------------------------------------------- acceso: bienvenida, login y vinculación
+   Plan en docs/diseno/plan-login.md. Fase 1: solo CSS; el fondo es la cuadrícula de la referencia. */
+.acceso { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 36px 20px;
+  background: radial-gradient(ellipse at 50% 40%, transparent, var(--fondo) 75%), repeating-linear-gradient(0deg, transparent 0 23px, #ffffff05 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #ffffff05 23px 24px); }
+.acceso > .marca { padding: 0; animation: aparece var(--t-entrada) ease-out; }
+.acceso-doble { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 56px; align-items: center; width: 100%; max-width: 880px; }
+.acceso-texto { animation: entra var(--t-entrada) var(--curva) backwards; }
+.acceso-texto .tenue { margin-top: 12px; max-width: 34ch; }
+.acceso-texto ul { list-style: none; padding: 0; margin: 28px 0 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--tenue); }
+.acceso-texto li { display: flex; align-items: center; gap: 10px; }
+.acceso-texto .punto { margin: 0; }
+.acceso-tarjeta { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; padding: 28px; border-radius: 15px; border-color: #39393d; box-shadow: var(--sombra-flota); animation: entra var(--t-entrada) var(--curva) 60ms backwards; }
+.acceso-tarjeta h2 { font-size: 16px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 4px; }
+.acceso-tarjeta .primario { min-height: 42px; margin-top: 2px; }
+.acceso-tarjeta .enlace-fino { align-self: center; min-height: 32px; }
+.acceso-tarjeta .error { font-size: 13px; }
+.acceso-tarjeta .error:empty { display: none; }
+.acceso-tarjeta code { font-size: 12px; }
+.acceso-tarjeta label, .acceso-tarjeta .primario { transition: opacity var(--t-rapida); }
+.acceso-tarjeta :user-invalid, .acceso-tarjeta.sacude:not(.bloqueado):has(.error:not(:empty)) [name=contrasena] { border-color: var(--mal); }
+.bloqueado .primario .ic { display: none; }
+/* Error: tres oscilaciones firmes, sin rebote. */
+.sacude { animation: sacude .36s ease-in-out; }
+@keyframes sacude { 20%, 60% { transform: translateX(-8px); } 40% { transform: translateX(8px); } 80% { transform: translateX(4px); } }
+.clave { position: relative; display: block; }
+.clave input { padding-right: 46px; }
+.clave .icono-boton { position: absolute; right: 1px; top: 1px; bottom: 1px; min-height: 0; width: 42px; }
+.clave .icono-boton[aria-pressed=true] { color: var(--acento); }
+.regla { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--apagado); margin-top: -6px; transition: color var(--t-rapida); }
+.regla .ic { width: 12px; height: 12px; stroke-width: 2.6; opacity: .35; transition: opacity var(--t-rapida); }
+.regla.cumple { color: var(--ok); } .regla.cumple .ic { opacity: 1; }
+/* Bloqueo por intentos: es una espera, no un error (color de aviso). El anillo se vacía en el tiempo que dio el servidor. */
+.bloqueo { display: flex; align-items: center; gap: 14px; border: 1px solid #413729; background: #1d1a16; border-radius: 9px; padding: 12px 14px; font-size: 13px; color: var(--tenue); animation: crece var(--t-entrada) var(--curva); }
+.bloqueo p b { color: var(--alerta); font-weight: 600; }
+.anillo { position: relative; width: 52px; height: 52px; flex: none; display: grid; place-items: center; }
+.anillo svg { position: absolute; inset: 0; transform: rotate(-90deg); fill: none; stroke-width: 3; stroke: #3a3128; }
+.anillo circle:last-child { stroke: var(--acento); stroke-linecap: round; stroke-dasharray: 126; animation: vaciar var(--espera, 30s) linear forwards; }
+.anillo b { font-size: 15px; font-weight: 600; color: var(--texto); }
+@keyframes vaciar { to { stroke-dashoffset: 126; } }
+.bloqueado label { opacity: .45; }
+.enviando .primario .ic { display: none; }
+.enviando .primario::before { content: ""; width: 14px; height: 14px; border: 2px solid #0002; border-top-color: var(--acento-tinta); border-radius: 50%; animation: gira .7s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+
+/* Menú de usuario (pie de la barra lateral) y lista de sesiones (Ajustes → Cuenta). */
+.menu-usuario { position: relative; }
+.menu-usuario summary { list-style: none; cursor: pointer; padding: 6px; border-radius: 8px; }
+.menu-usuario summary::-webkit-details-marker { display: none; }
+.menu-usuario summary:hover, .menu-usuario[open] summary { background: #151516; }
+.menu { position: absolute; left: 0; bottom: calc(100% + 8px); min-width: 195px; display: flex; flex-direction: column; gap: 2px; padding: 5px; background: #1c1c1e; border: 1px solid #39393d; border-radius: 9px; box-shadow: 0 8px 30px #0007; z-index: 30; animation: crece .14s ease-out; transform-origin: bottom left; }
+.menu a, .menu button { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 8px 10px; min-height: 36px; background: none; border: 0; border-radius: 6px; color: var(--texto); font-size: 13px; font-weight: 400; text-decoration: none; }
+.menu a:hover, .menu button:hover { background: #28282c; }
+.menu .ic { width: 15px; height: 15px; color: var(--tenue); }
+.sesion { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--borde-suave); font-size: 13px; }
+.sesion:last-child { border-bottom: 0; padding-bottom: 0; } .sesion:first-child { padding-top: 0; }
+.sesion > div:nth-child(2) { flex: 1; min-width: 0; }
+.sesion b { font-weight: 500; margin-right: 6px; }
+.sesion small { display: block; color: var(--apagado); font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 
 /* ---------------------------------------------------------------- tamaños de pantalla */
 @media (max-width: 1150px) {
@@ -306,6 +367,7 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .dos-columnas { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
   .app:not(.plegada) .dos-columnas { grid-template-columns: 1fr; }     /* con la barra desplegada queda poco ancho */
   .rejilla2, .detalle, .diseno { grid-template-columns: 1fr; }
+  .acceso-doble { grid-template-columns: minmax(0, 400px); justify-content: center; gap: 28px; }
   .detalle video, .detalle .hueco { max-width: 300px; margin: 0 auto; }
   .diseno img { max-width: 260px; margin: 0 auto; display: block; position: static; }
   .dato { grid-template-columns: 1fr; gap: 2px; }

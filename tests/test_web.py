@@ -1,0 +1,37 @@
+"""Comprobaciones estáticas del panel: sin recursos externos y con las piezas del acceso enlazadas."""
+import re
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from fabrica_studio.server import crear_app
+
+WEB = Path(__file__).resolve().parent.parent / "fabrica_studio" / "web"
+
+
+def _texto(nombre: str) -> str:
+    return (WEB / nombre).read_text(encoding="utf-8")
+
+
+def test_el_panel_no_carga_nada_de_internet():
+    """Regla 11 y plan del login: ni CDN ni fuentes remotas; todo se sirve desde el PC."""
+    for archivo in WEB.rglob("*"):
+        if archivo.suffix in (".html", ".css"):
+            assert not re.search(r"""(src|href)\s*=\s*["']?(https?:)?//|url\(\s*["']?(https?:)?//|@import""",
+                                 archivo.read_text(encoding="utf-8")), archivo.name
+    assert not re.search(r"""import\s*\(\s*["']https?:|<script[^>]+https?:""", _texto("app.js"))
+
+
+def test_pantallas_de_acceso_servidas_y_enlazadas(fabrica):
+    html = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765").get("/").text
+    for pieza in ('id="form-crear"', 'id="form-login"', 'id="vincular"', 'id="l-bloqueo"', 'id="menu-usuario"',
+                  'autocomplete="current-password"', 'autocomplete="new-password"'):
+        assert pieza in html, pieza
+    js = _texto("app.js")
+    # Cada data-accion del HTML y del propio app.js tiene su función en `acciones`.
+    definidas = set(re.findall(r'^  "?([a-z-]+)"?: ', js.split("const acciones = {")[1].split("\n};")[0], re.M))
+    usadas = set(re.findall(r'data-accion="([a-z-]+)"', html + js))
+    assert usadas <= definidas, usadas - definidas
+    iconos = _texto("iconos.js")
+    for nombre in set(re.findall(r'data-icono="([a-z-]+)"', html)) | set(re.findall(r'\bic\("([a-z-]+)"\)', js)):
+        assert re.search(rf'^  "?{nombre}"?:', iconos, re.M), nombre
