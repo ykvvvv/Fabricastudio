@@ -224,7 +224,8 @@ class Fabrica:
             recorte = _leer(f_bordes)["recorte"]
         estilo = t["datos"].get("estilo") or a["estilo"]
         encuadre = None
-        if estilo in ("completo", "dividido"):
+        decision = None
+        if estilo in ("completo", "dividido", "auto"):
             f_enc = carpeta / "encuadre.json"
             if not f_enc.exists():
                 self._etapa(jid, "render", "Buscando rostros para el encuadre…")
@@ -232,19 +233,25 @@ class Fabrica:
             encuadre = _leer(f_enc)
             if encuadre.get("aviso"):
                 self.db.anadir_aviso(jid, encuadre["aviso"])
-            if estilo == "dividido":
+            if estilo in ("dividido", "auto"):
                 arriba = int(round(1920 * int(a["dividido_proporcion"]) / 100)) // 2 * 2
-                plan = reencuadre.plan_dividido(encuadre, arriba, 1920 - arriba)
-                if plan:
-                    encuadre = {**encuadre, "dividido": plan}
-                else:
+                decision = reencuadre.decidir(encuadre, arriba, 1920 - arriba)
+                if decision["tipo"] in ("camara", "dos"):
+                    encuadre = {**encuadre, "dividido": decision["plan"]}
+                    estilo = "dividido"
+                elif estilo == "dividido":
                     estilo = "completo"
-                    self.db.anadir_aviso(jid, "Vista dividida: no se encontró la cámara del streamer (un rostro fijo "
-                                              "en una esquina). Se usó pantalla completa con seguimiento.")
+                    self.db.anadir_aviso(jid, "Vista dividida: no se encontró la cámara del streamer ni dos sujetos "
+                                              "separados. Se usó pantalla completa con seguimiento.")
+                elif decision["tipo"] == "seguir":
+                    estilo = "completo"
+                else:
+                    estilo, encuadre = "clasico", None
         logo = self.rutas.recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
             t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,
             _leer(carpeta / "edicion.json")["huella"] if (carpeta / "edicion.json").exists() else "",
+            (encuadre or {}).get("dividido"), (decision or {}).get("tipo"),
             logo.stat().st_mtime_ns if logo.exists() else 0], sort_keys=True).encode()).hexdigest()
         datos = t["datos"]
         if datos.get("huella_render") != huella or not (carpeta / "short.mp4").exists():
@@ -266,8 +273,10 @@ class Fabrica:
         datos.setdefault("copia", "")
         r = recorte
         self.db.marcar_etapa(jid, "render", "hecho", f"{s['ancho']}×{s['alto']}, {s['duracion']:.1f} s"
+                             + (" · automático: " + decision["motivo"] if decision and
+                                (t["datos"].get("estilo") or a["estilo"]) == "auto" else "")
                              + {"completo": " · pantalla completa con seguimiento",
-                                "dividido": " · vista dividida (cámara arriba, contenido abajo)"}.get(estilo, " · clásico")
+                                "dividido": " · vista dividida"}.get(estilo, " · clásico")
                              + (f" · bordes negros recortados ({r['w']}×{r['h']})" if r else ""))
         self.progreso.pop(jid, None)
         self.db.actualizar(jid, estado="renderizado", etapa="render",
@@ -514,7 +523,7 @@ class Fabrica:
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
 
     def cambiar_estilo(self, jid: str, estilo: str) -> dict:
-        if estilo not in ("clasico", "completo", "dividido", ""):
+        if estilo not in ("clasico", "completo", "dividido", "auto", ""):
             raise ErrorEtapa("Estilo desconocido.", "entrada")
         t = self._editable(jid)
         datos = t["datos"]

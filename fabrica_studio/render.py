@@ -144,9 +144,10 @@ def calcular_disposicion_completo(a: dict, banner: dict | None = None) -> dict:
     return d
 
 
-def calcular_disposicion_dividido(a: dict, banner: dict | None = None) -> dict:
-    """Vista dividida: cámara arriba, contenido abajo; subtítulos, logo y (opcional) banner encima."""
-    arriba = int(round(LIENZO_ALTO * int(a["dividido_proporcion"]) / 100)) // 2 * 2
+def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcion: int | None = None) -> dict:
+    """Vista dividida: dos paneles apilados; subtítulos, logo y (opcional) banner encima.
+    `proporcion` (% del panel de arriba) sustituye al ajuste, p. ej. 50 % para dos sujetos."""
+    arriba = int(round(LIENZO_ALTO * int(proporcion or a["dividido_proporcion"]) / 100)) // 2 * 2
     d: dict = {"estilo": "dividido", "video": {"x": 0, "y": 0, "w": LIENZO_ANCHO, "h": LIENZO_ALTO},
                "paneles": [{"id": "camara", "x": 0, "y": 0, "w": LIENZO_ANCHO, "h": arriba},
                            {"id": "contenido", "x": 0, "y": arriba, "w": LIENZO_ANCHO, "h": LIENZO_ALTO - arriba}]}
@@ -246,6 +247,14 @@ def _preparar_fuentes(carpeta: Path) -> None:
                 shutil.copyfile(fuente, archivo)
 
 
+def _nitidez(factor: float) -> str:
+    """Enfoque suave cuando el recorte se amplía mucho, para que el zoom no se vea borroso."""
+    if factor <= 1.25:
+        return ""
+    fuerza = min(1.0, 0.35 + (factor - 1.25) * 0.4)
+    return f",unsharp=5:5:{fuerza:.2f}:5:5:0.0"
+
+
 def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str, bloques: list[dict],
                a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None,
                encuadre: dict | None = None) -> dict:
@@ -259,7 +268,9 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     dividido = completo and bool(encuadre.get("dividido"))
     if dividido:
         banner = componer_banner(banner_texto, a) if a["dividido_banner"] else None
-        d = calcular_disposicion_dividido(a, banner)
+        d = calcular_disposicion_dividido(a, banner, encuadre["dividido"].get("proporcion"))
+        if encuadre["dividido"].get("tipo") == "dos":
+            d["paneles"][0]["id"], d["paneles"][1]["id"] = "sujeto1", "sujeto2"
         sub_kw = {"mayusculas": bool(a["completo_mayusculas"]), "borde": max(5, round(d["subtitulos"]["tamano"] * 0.1)),
                   "fuente": "Inter Black"}
     elif completo:
@@ -283,23 +294,31 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
         filtros += f"crop={recorte['w']}:{recorte['h']}:{recorte['x']}:{recorte['y']},"
     if dividido:
         plan = encuadre["dividido"]
-        arriba, abajo = d["paneles"][0]["h"], d["paneles"][1]["h"]
-        c, b = plan["arriba"], plan["abajo"]
-        (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(plan["puntos"], "crop@contenido"),
-                                              encoding="utf-8")
-        filtros += (f"split=2[fa][fb];[fa]crop={c['w']}:{c['h']}:{c['x']}:{c['y']},"
-                    f"scale={LIENZO_ANCHO}:{arriba}:flags=lanczos,setsar=1[sup];"
-                    f"[fb]sendcmd=f=encuadre.cmd,crop@contenido=w={b['w']}:h={b['h']}:"
-                    f"x={int(plan['puntos'][0][1]) // 2 * 2}:y={b['y']},"
-                    f"scale={LIENZO_ANCHO}:{abajo}:flags=lanczos,setsar=1[inf];[sup][inf]vstack=inputs=2")
-        d["encuadre"] = {"camara": c, "contenido": [b["w"], b["h"]], "movimientos": len(plan["puntos"])}
+        paneles = plan["paneles"]
+        ordenes = []
+        for pn in paneles:
+            if len(pn["puntos"]) > 1:
+                ordenes.append(reencuadre.comandos_sendcmd(pn["puntos"], pn["filtro"]))
+        cmd_txt = "".join(ordenes)
+        (carpeta / "encuadre.cmd").write_text(cmd_txt or "0.000 crop@arriba x 0;\n", encoding="utf-8")
+        filtros += "sendcmd=f=encuadre.cmd,split=2[fa][fb];"
+        salidas = []
+        for k, (pn, etiqueta, lienzo_p) in enumerate(zip(paneles, ("fa", "fb"), d["paneles"])):
+            x0 = int(pn["puntos"][0][1]) // 2 * 2
+            nitidez = _nitidez(lienzo_p["h"] / pn["h"])
+            filtros += (f"[{etiqueta}]{pn['filtro']}=w={pn['w']}:h={pn['h']}:x={x0}:y={pn['y']},"
+                        f"scale={LIENZO_ANCHO}:{lienzo_p['h']}:flags=lanczos,setsar=1{nitidez}[p{k}];")
+            salidas.append(f"[p{k}]")
+        filtros += "".join(salidas) + "vstack=inputs=2"
+        d["encuadre"] = {"tipo": plan.get("tipo", "camara"),
+                         "paneles": [{"w": pn["w"], "h": pn["h"], "movimientos": len(pn["puntos"])} for pn in paneles]}
     elif completo:
         vw, vh = reencuadre.ventana(ancho, alto, int(a["completo_zoom"]) / 100)
         puntos = reencuadre.trayectoria(encuadre, vw)
         (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(puntos), encoding="utf-8")
         y0 = (alto - vh) // 2 // 2 * 2
         filtros += (f"sendcmd=f=encuadre.cmd,crop@encuadre=w={vw}:h={vh}:x={int(puntos[0][1]) // 2 * 2}:y={y0},"
-                    f"scale={LIENZO_ANCHO}:{LIENZO_ALTO}:flags=lanczos,setsar=1")
+                    f"scale={LIENZO_ANCHO}:{LIENZO_ALTO}:flags=lanczos,setsar=1{_nitidez(LIENZO_ALTO / vh)}")
         d["encuadre"] = {"ventana": [vw, vh], "movimientos": len(puntos)}
     else:
         filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"

@@ -694,3 +694,15 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   momento; el servidor también responde 400. Capturas en `docs/diseno/capturas-chilenismos/`. **No probado** con
   Whisper real ni en la tablet. Ojo: un momento no se puede volver a transcribir desde el panel, porque un video largo
   tampoco admite `retranscribir` (`_editable` lo rechaza); el mensaje del servidor sugiere hacerlo en el video largo.
+- **2026-11-17 · Claude Code (nube)** — **Seguimiento automático** (estilo `auto`), mejora frente a OpusClip:
+  - El análisis registra, además de rostros, **regiones en movimiento** (para sujetos sin cara, p. ej. un robot;
+    se ignora cuando se mueve todo el cuadro, típico del IRL) y **cortes de escena** (la cámara salta, sin paneo).
+  - `sujetos()` sigue cada persona u objeto de cuadro a cuadro; `decidir()` elige por clip: `camara`
+    (persona fija a un lado → arriba; el panel de abajo se acerca y sigue al protagonista del contenido),
+    `dos` (dos sujetos que no caben juntos en 9:16 → 50/50, cada mitad sigue al suyo), `seguir`
+    (pantalla completa) o `clasico` (nada claro). El motivo aparece en el detalle de la etapa Render.
+  - Render genérico de dos paneles con `sendcmd` y **enfoque suave** (`unsharp`) cuando el zoom amplía >1,25×.
+  - Corregido: la huella del render no incluía el plan del encuadre (no se rerenderizaba al cambiar).
+  - Probado con un video simulado (persona a la izquierda + «robot» sin cara moviéndose a la derecha). 107 pruebas.
+  **Falta en el panel:** opción «Automático (recomendado)» en los selectores de estilo. **Falta validar con el
+  clip real de Westcol** y otros clips reales.

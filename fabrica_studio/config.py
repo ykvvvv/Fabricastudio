@@ -130,7 +130,7 @@ LIMITES: dict = {
     "momentos_cantidad": (1, 20), "segundos_estable": (0, 600),
 }
 OPCIONES: dict = {
-    "estilo": ("clasico", "completo", "dividido"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
+    "estilo": ("clasico", "completo", "dividido", "auto"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
     "proveedor_textos": ("auto", "gemini", "local"),
 }
 COLORES = ("banner_color", "sub_color_resalte", "nombre_color")

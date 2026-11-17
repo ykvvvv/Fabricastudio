@@ -49,7 +49,7 @@ Dos variantes, porque resuelven casos distintos:
 - Archivos: `config.py` (preset por creador), `render.py` (dos `crop` + `vstack`), panel (selector de zona).
 - Detección automática de la facecam: opcional después (rostro que se mantiene fijo en una esquina).
 
-**2b. Dos personas (IRL, conversación)**
+**2b. Dos sujetos (IRL, conversación, persona + objeto)** ✅ implementado en el modo automático (2026-11-17)
 - Si hay dos rostros que no caben juntos en 9:16 durante más de ~2 s, apilar un recorte por persona.
 - Reutiliza `encuadre.json` (ya contiene todos los rostros por muestra).
 - Archivos: `reencuadre.py` (seguimiento de dos pistas), `render.py` (`vstack` con dos `sendcmd`).

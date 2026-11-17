@@ -156,3 +156,65 @@ def test_sin_camara_vuelve_a_pantalla_completa_y_avisa(fabrica, clip, monkeypatc
     t = fabrica.db.trabajo(t["id"])
     assert t["estado"] == "renderizado" and "pantalla completa" in t["etapas"]["render"]["detalle"]
     assert any("no se encontró la cámara" in a for a in t["avisos"])
+
+
+def _escena(caras=(), movs=(), n=30, cortes=()):
+    """Muestras sintéticas: `caras`/`movs` son funciones i -> [cx, cy, w, h] (o None si no aparece)."""
+    muestras = []
+    for i in range(n):
+        rs = [[*f(i), 0.9] for f in caras if f(i)]
+        ms = [[*f(i), 0.05] for f in movs if f(i)]
+        muestras.append({"t": round(i * 0.2, 3), "rostros": rs, "movimiento": ms, "corte": i in cortes})
+    return {"ancho": 1920, "alto": 1080, "fps": 5, "muestras": muestras}
+
+
+def test_detecta_un_objeto_sin_cara_que_se_mueve():
+    e = _escena(caras=[lambda i: [960, 500, 300, 340]], movs=[lambda i: [1650 + (i % 5) * 10, 600, 200, 300]])
+    ss = reencuadre.sujetos(e)
+    assert [s["tipo"] for s in ss] == ["rostro", "movimiento"]
+    e2 = _escena(caras=[lambda i: [960, 500, 300, 340]], movs=[lambda i: [990, 650, 300, 400]])
+    assert [s["tipo"] for s in reencuadre.sujetos(e2)] == ["rostro"]      # el movimiento de la persona es suyo
+
+
+def test_decidir_dos_sujetos_separados():
+    e = _escena(caras=[lambda i: [500 + i, 500, 330, 360], lambda i: [1450 - i, 520, 320, 350]])
+    d = reencuadre.decidir(e, 864, 1056)
+    assert d["tipo"] == "dos" and len(d["plan"]["paneles"]) == 2 and d["plan"]["proporcion"] == 50
+    arriba, abajo = d["plan"]["paneles"]
+    assert arriba["puntos"][0][1] < 500 < arriba["puntos"][0][1] + arriba["w"]          # izquierda arriba
+    assert abajo["puntos"][0][1] < 1450 < abajo["puntos"][0][1] + abajo["w"]           # derecha abajo
+
+
+def test_decidir_un_sujeto_y_nada():
+    assert reencuadre.decidir(_escena(caras=[lambda i: [960 + i * 5, 500, 330, 360]]), 864, 1056)["tipo"] == "seguir"
+    juntos = _escena(caras=[lambda i: [880, 500, 200, 220], lambda i: [1060, 500, 200, 220]])
+    assert reencuadre.decidir(juntos, 864, 1056)["tipo"] == "seguir"                    # caben juntos en 9:16
+    assert reencuadre.decidir(_escena(), 864, 1056)["tipo"] == "clasico"
+
+
+def test_corte_de_escena_salta_sin_paneo():
+    e = _escena(caras=[lambda i: [700, 500, 300, 340] if i < 15 else [960, 500, 300, 340]], cortes=(15,))
+    xs = [x for _, x in reencuadre.trayectoria(e, 606)]
+    assert len(set(xs)) == 2                       # sin pasos intermedios: corte limpio (sin corte habría paneo)
+
+
+def test_nitidez_solo_al_ampliar_mucho():
+    from fabrica_studio import render
+    assert render._nitidez(1.1) == "" and render._nitidez(1.8).startswith(",unsharp=")
+
+
+def test_modo_automatico_dos_sujetos_de_punta_a_punta(fabrica, clip, monkeypatch):
+    escala = 1280 / 1920
+    base = _escena(caras=[lambda i: [500 + i, 500, 330, 360], lambda i: [1450 - i, 520, 320, 350]], n=15)
+    monkeypatch.setattr(reencuadre, "analizar", lambda *a, **k: {
+        **base, "ancho": 1280, "alto": 720,
+        "muestras": [{**m, "rostros": [[v * escala for v in r[:4]] + [r[4]] for r in m["rostros"]]} for m in base["muestras"]]})
+    fabrica.db.guardar_ajustes({"estilo": "auto"})
+    t = fabrica.importar_archivo(clip, "a.mp4")
+    fabrica._ejecutar(t)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado", t["error"]
+    assert "automático: dos sujetos" in t["etapas"]["render"]["detalle"]
+    assert [p["h"] for p in t["datos"]["disposicion"]["paneles"]] == [960, 960]
+    s = media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")
+    assert (s["ancho"], s["alto"]) == (1080, 1920)
