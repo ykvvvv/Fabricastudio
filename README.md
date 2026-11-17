@@ -54,6 +54,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 .\scripts\iniciar.ps1
 ```
 
+También puedes hacer doble clic en **`Abrir Fabrica Studio.cmd`**, en la carpeta del proyecto
+(no en los `.ps1`: esos se abren en el Bloc de notas).
+
 Aparecerán dos direcciones. Abre en el navegador del PC `http://127.0.0.1:8765`.
 Deja la ventana de PowerShell abierta mientras trabajas.
 

@@ -480,3 +480,5 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   plegable (botón y Ctrl+B), contadores, progreso en vivo con check y aviso, entrada escalonada solo de elementos nuevos,
   esqueletos de carga, zona de soltar, salida de ventanas y avisos; todo respeta «reducir movimiento». 63 pruebas (con la del enlace de Kick que llegó de la nube).
   Siguiente: Cristóbal lo revisa en el navegador y en la tablet; después, fase 3 (Plantilla).
+- **2026-11-17 · Claude Code (nube)** — `Abrir Fabrica Studio.cmd`: abre el panel con doble clic
+  (ejecuta `scripts\iniciar.ps1` sin cambiar la política de ejecución global). Sin probar en Windows.
