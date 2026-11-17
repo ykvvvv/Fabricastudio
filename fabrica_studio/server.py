@@ -91,7 +91,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         cuenta = fab.db.cuenta()
         return {"autorizado": _autorizado(request), "local": _local(request), "version": __version__,
                 "cuenta_creada": cuenta is not None, "usuario": cuenta["nombre"] if cuenta and _autorizado(request) else "",
-                "sesion_iniciada": _sesion(request) is not None}
+                "sesion_iniciada": _sesion(request) is not None,
+                "espera_login": int(limitador.espera(request.client.host if request.client else "?") + 0.999)}
 
     def _abrir_sesion(request: Request, recordar: bool) -> JSONResponse:
         token = secrets.token_urlsafe(32)
@@ -127,6 +128,10 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         nombre_ok = str(c.get("usuario", "")).strip().lower() in ("", cuenta["nombre"].lower())
         if not (cuentas.verificar_contrasena(str(c.get("contrasena", "")), cuenta["hash"]) and nombre_ok):
             limitador.fallo(ip)
+            espera = limitador.espera(ip)
+            if espera > 0:      # este fallo activó el bloqueo: se informa ya, no en el intento siguiente
+                return JSONResponse({"error": f"Usuario o contraseña incorrectos. Demasiados intentos: espera "
+                                              f"{int(espera) + 1} segundos.", "espera": int(espera) + 1}, status_code=429)
             return JSONResponse({"error": "Usuario o contraseña incorrectos."}, status_code=403)
         limitador.exito(ip)
         return _abrir_sesion(request, bool(c.get("recordar", False)))

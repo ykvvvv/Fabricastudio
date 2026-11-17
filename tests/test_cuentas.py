@@ -62,8 +62,12 @@ def test_con_cuenta_todos_necesitan_iniciar_sesion(fabrica):
 def test_bloqueo_por_intentos_fallidos(fabrica, monkeypatch):
     pc, tablet = _clientes(fabrica)
     pc.post("/api/cuenta/crear", json={"nombre": "cristobal", "contrasena": "unaclave-segura"})
-    for _ in range(5):
+    for _ in range(4):
         assert tablet.post("/api/login", json={"contrasena": "mala-mala"}).status_code == 403
+    quinto = tablet.post("/api/login", json={"contrasena": "mala-mala"})
+    assert quinto.status_code == 429 and quinto.json()["espera"] > 0      # el bloqueo se informa en el 5.º fallo
+    assert tablet.get("/api/sesion").json()["espera_login"] > 0          # y sigue visible al recargar
+    assert pc.get("/api/sesion").json()["espera_login"] == 0
     r = tablet.post("/api/login", json={"contrasena": "unaclave-segura"})
     assert r.status_code == 429 and r.json()["espera"] > 0               # bloqueada aunque ahora acierte
     assert pc.post("/api/login", json={"contrasena": "unaclave-segura"}).status_code == 200   # otra IP no afectada

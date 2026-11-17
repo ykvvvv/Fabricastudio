@@ -34,7 +34,7 @@ Contrato para la interfaz:
 | --- | --- |
 | `GET /api/sesion` | `{autorizado, local, cuenta_creada, usuario, sesion_iniciada, version}`. No revela el usuario sin sesión. |
 | `POST /api/cuenta/crear` `{nombre, contrasena, recordar}` | Primera configuración. **Solo desde el PC** y solo si no hay cuenta (409 si ya existe). Deja la sesión iniciada. |
-| `POST /api/login` `{usuario, contrasena, recordar}` | 403 credenciales malas; 429 `{espera}` si está bloqueado. `recordar` = 30 días; si no, sesión del navegador (12 h máx.). |
+| `POST /api/login` `{usuario, contrasena, recordar}` | 403 credenciales malas; 429 `{espera}` si está bloqueado, **ya en el fallo que activa el bloqueo** (el 5.º). `GET /api/sesion` incluye `espera_login` (segundos, 0 si no hay bloqueo) para mostrarlo al recargar. `recordar` = 30 días; si no, sesión del navegador (12 h máx.). |
 | `POST /api/logout` | Cierra la sesión actual. |
 | `PUT /api/cuenta/contrasena` `{actual, nueva}` | Solo PC. Cierra todas las sesiones y deja abierta la actual. |
 | `GET /api/sesiones`, `DELETE /api/sesiones/<id>` | Sesiones abiertas (con `actual`); cerrar una solo desde el PC. |
@@ -518,3 +518,5 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-17 · Claude Code (PC Windows)** — Plan de diseño del login en `docs/diseno/plan-login.md` (sin código):
   tokens, movimiento, bocetos y GSAP/Three.js locales. Instaladas skills de diseño en `.claude/skills/` (sin versionar).
   Siguiente: Cristóbal responde las decisiones del §6 y se implementa la fase A (pantallas solo con CSS).
+- **2026-11-17 · Claude Code (nube)** — Login: el 429 llega en el 5.º fallo y `GET /api/sesion` expone
+  `espera_login` (decisión 2 del plan de login). Prueba ampliada.
