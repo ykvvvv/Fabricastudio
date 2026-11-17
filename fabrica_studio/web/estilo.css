@@ -288,7 +288,7 @@ details > summary:hover { color: var(--texto); }
 .pestanas button:hover { background: none; color: var(--texto); }
 .pestanas button.activa { color: var(--texto); border-bottom-color: #ddd; }
 /* Plantilla: formulario por secciones y vista previa en vivo que acompaña al desplazarse. */
-.plantilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 22px; align-items: start; }
+.plantilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); gap: 22px; align-items: start; }
 .pl-form { padding: 4px 22px; }
 .pl-form fieldset { border: 0; border-bottom: 1px solid var(--borde); margin: 0; padding: 20px 0 22px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .pl-form fieldset:last-child { border-bottom: 0; }
@@ -296,9 +296,35 @@ details > summary:hover { color: var(--texto); }
 .pl-form legend + * { clear: both; }
 .pl-form .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
 .pl-vista { position: sticky; top: 20px; display: flex; flex-direction: column; }
-.pl-vista .formato-escena { padding: 6px 20px 20px; }
-.pl-vista .formato-escena img { width: min(100%, 250px); height: auto; box-shadow: var(--sombra-flota); transition: opacity var(--t-rapida); }
+.pl-vista .formato-escena { padding: 6px 20px 22px; }
+.pl-vista .panel-titulo .icono-boton:disabled { opacity: .3; }
+.pl-vista .panel-pie { font-size: 12px; line-height: 1.5; }
+.pl-avisos { font-size: 12px; color: var(--alerta); padding: 0 20px 12px; }
+.pl-avisos:empty { display: none; }
+/* Editor visual: la maqueta (imagen que dibuja el PC) y, encima, una capa con un botón por elemento.
+   Las cajas van en % del lienzo de 1080×1920, así que escalan solas con el tamaño en pantalla.
+   El ancho también se limita por el alto de la ventana para que el lienzo entero quede a la vista. */
+.pl-lienzo { position: relative; width: min(100%, 320px, calc((100vh - 250px) * .5625)); min-width: 150px; border: 1px solid #333; border-radius: 9px; background: #030303; box-shadow: var(--sombra-flota); line-height: 0; user-select: none; -webkit-user-select: none; }
+.pl-lienzo img { width: 100%; height: auto; aspect-ratio: 9/16; display: block; border: 0; border-radius: 8px; box-shadow: none; background: none; transition: opacity var(--t-rapida); }
 .pl-vista.cargando img { opacity: .6; }
+.pl-capa { position: absolute; inset: 0; }
+.pl-el { position: absolute; padding: 0; min-height: 0; background: none; border: 1.5px dashed transparent; border-radius: 3px; cursor: grab; touch-action: pan-y; line-height: 1.3; }
+.pl-el::before { content: ""; position: absolute; inset: -5px; }                 /* los elementos pequeños se dejan tocar */
+.pl-el:hover { background: none; border-color: #ffffff66; }
+.pl-el:focus-visible { outline: none; }                                           /* enfocar selecciona: el marco es el indicador */
+.pl-el.sel { border: 1.5px solid var(--acento); touch-action: none; z-index: 2; }
+.pl-el.arrastra { cursor: grabbing; background: #d8aa9117; }
+.pl-etiqueta { position: absolute; left: -1.5px; bottom: 100%; margin-bottom: 4px; padding: 1px 7px; border-radius: 4px; background: var(--acento); color: var(--acento-tinta); font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; display: none; pointer-events: none; }
+.pl-el.sel .pl-etiqueta { display: block; }
+.pl-el:hover:not(.sel) .pl-etiqueta { display: block; background: #29292c; color: var(--texto); font-weight: 400; }
+.pl-tirador { position: absolute; width: 11px; height: 11px; background: var(--claro); border: 1.5px solid var(--acento-tinta); border-radius: 2px; display: none; }
+.pl-tirador::after { content: ""; position: absolute; inset: -9px; }             /* zona de toque mayor que el tirador */
+.pl-el.sel .pl-tirador { display: block; }
+.pl-tirador.esquina { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.pl-tirador.lado { right: -5px; top: 50%; width: 8px; height: 18px; margin-top: -9px; cursor: ew-resize; }
+.pl-guia { position: absolute; background: #a9b8d0; pointer-events: none; z-index: 3; }
+.pl-guia.h { left: -10px; right: -10px; height: 1px; }
+.pl-guia.v { top: -10px; bottom: -10px; width: 1px; }
 .pl-vista .error { font-size: 13px; padding: 0 20px 14px; }
 .pl-vista .error:empty { display: none; }
 #pl-estado:empty { display: none; }
@@ -390,11 +416,12 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .dos-columnas { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
   .app:not(.plegada) .dos-columnas { grid-template-columns: 1fr; }     /* con la barra desplegada queda poco ancho */
   .rejilla2, .detalle { grid-template-columns: 1fr; }
-  .plantilla { grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; }
+  .plantilla { grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; }
+  .pl-vista .formato-escena { padding: 4px 12px 16px; }
   /* Con la barra desplegada no caben dos columnas: la vista previa pasa arriba, como en móvil. */
   .app:not(.plegada) .plantilla { grid-template-columns: 1fr; }
   .app:not(.plegada) .pl-vista { position: static; order: -1; }
-  .app:not(.plegada) .pl-vista .formato-escena img { width: 170px; }
+  .app:not(.plegada) .pl-lienzo { width: min(100%, 280px); }
   .acceso-doble { grid-template-columns: minmax(0, 400px); justify-content: center; gap: 28px; }
   .detalle video, .detalle .hueco { max-width: 300px; margin: 0 auto; }
   .dato { grid-template-columns: 1fr; gap: 2px; }
@@ -419,7 +446,7 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .dos-columnas { grid-template-columns: 1fr; }
   .plantilla { grid-template-columns: 1fr; }
   .pl-vista { position: static; order: -1; }          /* en móvil, la vista previa va primero */
-  .pl-vista .formato-escena img { width: 170px; }
+  .pl-lienzo { width: min(100%, 280px); }
   .tabla-cola th:nth-child(3), .tabla-cola td:nth-child(3) { display: none; }
   .tabla-cola th, .tabla-cola td { padding: 12px 10px; }
   .modal-fondo { padding: 12px; }
@@ -432,6 +459,9 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   label.linea { min-height: 44px; }
   .filtros button, .modal-pestanas button, .enlace-fino { min-height: 44px; }
   input[type=checkbox] { width: 22px; height: 22px; min-height: 22px; }
+  .pl-tirador { width: 15px; height: 15px; } .pl-tirador.esquina { right: -8px; bottom: -8px; }
+  .pl-tirador.lado { width: 11px; height: 24px; margin-top: -12px; right: -7px; }
+  .pl-vista .panel-pie { display: none; }                                         /* la ayuda es de teclado */
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

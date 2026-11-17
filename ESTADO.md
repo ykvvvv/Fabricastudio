@@ -607,3 +607,16 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   `ajuste = valor + signo·dy` (limitado a min/max). Logo y firma comparten `mover` (se mueven juntos).
   Tras cada cambio hay que volver a pedir la disposición: el motor puede limitar posiciones. 80 pruebas.
   **Falta la interfaz** (Claude Code del PC).
+- **2026-11-17 · Claude Code (PC Windows)** — Editor visual estilo Canva, interfaz (`app.js`, `estilo.css`,
+  `iconos.js`): capa de botones sobre la maqueta en % del lienzo 1080×1920; clic/toque selecciona (marco y
+  etiqueta); arrastre vertical = regla `mover`, tirador de esquina = `tamano`, tirador lateral del banner = `ancho`,
+  siempre dentro de min/max. Durante el arrastre solo se mueve el marco; al soltar se escribe el campo, se piden
+  de nuevo maqueta y disposición, y GSAP lleva cada marco a su sitio real. Guías magnéticas (centro del lienzo,
+  bordes de los demás). Teclado: flechas (1 px, Mayús 10), + y − para tamaño, Esc suelta. Deshacer/rehacer
+  (botones y Ctrl+Z / Ctrl+Y; dentro de un campo de texto manda el deshacer del navegador) con historial de la
+  sesión que también recoge los cambios del formulario. «Cambios sin guardar» se compara con lo guardado (deshacer
+  hasta lo guardado quita el aviso). Con el dedo, el primer toque solo selecciona, para no bloquear el
+  desplazamiento de la página. 80 pruebas. Playwright con datos temporales: escritorio 1440×900 y tablet emulada
+  920×1400 táctil (toques reales vía CDP): seleccionar, arrastrar, agrandar, ancho, teclado, deshacer, rehacer,
+  guardar y recargar, sin errores de consola. Capturas en `docs/diseno/capturas-editor/`.
+  **No probado** en la MatePad real ni con lector de pantalla real (solo nombres accesibles revisados).

@@ -839,6 +839,7 @@ const SECCIONES_PLANTILLA = [
     ["nombre_color", "Firma: color", "color"], ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"],
     ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
 ];
+const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, campos]) => campos.map(([k, n]) => [k, n])));
 const campoPlantilla = ([k, n, tipo = "number", ops], v) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
   : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
     : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}"></label>`);
@@ -863,15 +864,20 @@ async function pintarPlantilla(m) {
   m.innerHTML = h`<form id="form-plantilla"><div class="cabecera"><div><div class="antetitulo">Identidad del canal</div><h1>Tu plantilla</h1><p>Un formato reconocible en todos tus clips.</p></div>
       <div class="fila"><span class="pastilla" id="pl-estado" role="status"></span><button type="button" class="texto" data-accion="restablecer">Restablecer</button><button class="primario">${ic("check")}Guardar diseño</button></div></div>
     <div class="plantilla"><div class="panel pl-form">${SECCIONES_PLANTILLA.map((s) => crudo(seccion(s)))}</div>
-      <aside class="panel pl-vista" aria-label="Vista previa"><div class="panel-titulo"><div><h2>Vista previa</h2><p>La dibuja tu PC con los valores del formulario.</p></div><span class="pastilla proceso" id="pl-vivo">En vivo</span></div>
-        <div class="formato-escena"><img id="pl-img" alt="Maqueta del Short con los valores del formulario" width="540" height="960"></div>
-        <p class="error" id="pl-error" role="alert"></p>
-        <div class="panel-pie"><span>1080 × 1920</span><span>Se aplica a los próximos renders</span></div></aside></div></form>`;
+      <aside class="panel pl-vista" aria-label="Editor visual de la plantilla"><div class="panel-titulo"><div><h2>Editor visual</h2><p>Toca un elemento y arrástralo.</p></div>
+          <div class="fila" style="gap:2px;flex-wrap:nowrap"><button type="button" class="icono-boton" id="pl-deshacer" aria-label="Deshacer" title="Deshacer (Ctrl+Z)" disabled>${ic("deshacer")}</button><button type="button" class="icono-boton" id="pl-rehacer" aria-label="Rehacer" title="Rehacer (Ctrl+Y)" disabled>${ic("rehacer")}</button></div></div>
+        <div class="formato-escena"><div class="pl-lienzo"><img id="pl-img" alt="Maqueta del Short con los valores del formulario" width="540" height="960">
+          <div class="pl-capa" id="pl-capa" role="group" aria-label="Elementos de la plantilla"><i class="pl-guia h" hidden></i><i class="pl-guia v" hidden></i><i class="pl-guia v" hidden></i></div></div></div>
+        <p class="error" id="pl-error" role="alert"></p><p class="pl-avisos" id="pl-avisos"></p><p class="solo-lector" id="pl-lector" role="status"></p>
+        <div class="panel-pie"><span>Flechas para mover (con Mayús, de 10 en 10); + y − para el tamaño; Esc para soltar.</span></div></aside></div></form>`;
 
-  const f = $("#form-plantilla"), img = $("#pl-img"), panel = $(".pl-vista"), estado = $("#pl-estado"), error = $("#pl-error"), vivo = $("#pl-vivo");
+  const f = $("#form-plantilla"), img = $("#pl-img"), panel = $(".pl-vista"), estado = $("#pl-estado"), error = $("#pl-error"), capa = $("#pl-capa");
   const valores = () => { const c = {}; f.querySelectorAll("[name]").forEach((i) => { c[i.name] = i.type === "checkbox" ? i.checked : i.value; }); return c; };
-  const marcar = (sucio, recien = false) => {
-    S.sucio = sucio;
+  const escribir = (cambios) => Object.entries(cambios).forEach(([k, x]) => { if (f[k].type === "checkbox") f[k].checked = x; else f[k].value = x; });
+  const decir = (texto) => { $("#pl-lector").textContent = texto; };            // para lectores de pantalla
+  let guardado = JSON.stringify(valores());
+  const marcar = (recien = false) => {
+    const sucio = S.sucio = JSON.stringify(valores()) !== guardado;             // deshacer hasta lo guardado quita el aviso
     estado.className = `pastilla ${sucio ? "listo" : "subido"} ${recien ? "recien" : ""}`;
     estado.innerHTML = sucio ? "Cambios sin guardar" : recien ? `${icono("check")}Guardado` : "";
   };
@@ -880,41 +886,187 @@ async function pintarPlantilla(m) {
     $("#pl-logo-nota").textContent = propio ? "Usando tu logo. Los márgenes transparentes se recortan automáticamente."
       : "Sin logo propio: se muestra el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.";
   };
-  // Vista previa: solo se muestra la respuesta de la última petición; un error del servidor se ve tal cual.
-  let espera, turno = 0;
-  const vista = async () => {
-    const n = ++turno;
-    panel.classList.add("cargando"); vivo.textContent = "Actualizando…";
-    try {
-      const r = await fetch(`/api/diseno/vista?${new URLSearchParams({ ...valores(), banner: $("#pl-banner").value })}`);
-      if (n !== turno || !img.isConnected) return;
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
-      img.onload = () => URL.revokeObjectURL(img.src);
-      img.src = URL.createObjectURL(await r.blob());
-      error.textContent = "";
-      if (animar()) gsap.fromTo(img, { scale: 0.985 }, { scale: 1, duration: 0.22, ease: "power3.out", clearProps: "transform" });
-    } catch (e) { if (n === turno) error.textContent = e.message; }
-    if (n === turno) { panel.classList.remove("cargando"); vivo.textContent = "En vivo"; }      // referencias fijas: la vista pudo cerrarse entretanto
+
+  // ---- Historial de la sesión: cada entrada guarda solo los campos que cambiaron (formulario o editor visual).
+  let ultimo = valores(), hist = [], pos = 0, espera;
+  const botones = () => { $("#pl-deshacer").disabled = !pos; $("#pl-rehacer").disabled = pos === hist.length; };
+  const registrar = () => {
+    const ahora = valores(), antes = {}, despues = {};
+    for (const k in ahora) if (ahora[k] !== ultimo[k]) { antes[k] = ultimo[k]; despues[k] = ahora[k]; }
+    if (Object.keys(antes).length) { hist.length = pos; hist.push({ antes, despues }); pos++; }
+    ultimo = ahora; botones();
   };
-  f._vista = vista; f._logo = logo;                     // las acciones del logo refrescan sin repintar el formulario
-  f.addEventListener("input", (e) => {
-    if (e.target.name) marcar(true);
-    $("#pl-completo").hidden = f.estilo.value !== "completo";
-    clearTimeout(espera); espera = setTimeout(vista, 250);
+  // Tras cualquier cambio: aviso de «sin guardar» y, después de una pausa, historial + maqueta y disposición nuevas.
+  const cambio = (pausa = 250) => {
+    marcar(); $("#pl-completo").hidden = f.estilo.value !== "completo";
+    clearTimeout(espera); espera = setTimeout(() => { registrar(); vista(); }, pausa);
+  };
+  const historia = (atras) => {
+    clearTimeout(espera); registrar();                    // un cambio aún sin anotar entra antes al historial
+    if (atras ? !pos : pos === hist.length) return;
+    const e = atras ? hist[--pos] : hist[pos++];
+    escribir(atras ? e.antes : e.despues); ultimo = valores(); botones();
+    decir(atras ? "Cambio deshecho." : "Cambio rehecho.");
+    marcar(); $("#pl-completo").hidden = f.estilo.value !== "completo"; vista();
+  };
+  $("#pl-deshacer").onclick = () => historia(true); $("#pl-rehacer").onclick = () => historia(false);
+
+  // ---- Maqueta y disposición: se piden juntas y solo se muestra la respuesta de la última petición.
+  let turno = 0, elementos = [], lienzo = { w: 1080, h: 1920 }, sel = null, arr = null;
+  const pedir = async (ruta, q) => {
+    const r = await fetch(`/api/diseno/${ruta}?${q}`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
+    return r;
+  };
+  const vista = async () => {
+    const n = ++turno, q = new URLSearchParams({ ...valores(), banner: $("#pl-banner").value });
+    panel.classList.add("cargando");
+    try {
+      const [imagen, d] = await Promise.all([pedir("vista", q).then((r) => r.blob()), pedir("disposicion", q).then((r) => r.json())]);
+      if (n !== turno || !img.isConnected) return;
+      img.onload = () => URL.revokeObjectURL(img.src);
+      img.src = URL.createObjectURL(imagen);
+      await img.decode().catch(() => {});                  // imagen y marcos cambian en el mismo cuadro
+      if (n !== turno) return;
+      error.textContent = ""; $("#pl-avisos").textContent = (d.avisos || []).join(" ");
+      lienzo = d.lienzo; pintarCapa(d.elementos);
+    } catch (e) { if (n === turno) error.textContent = e.message; }
+    if (n === turno) panel.classList.remove("cargando");
+  };
+
+  // ---- Capa interactiva. Reglas del servidor por elemento: mover, tamano y ancho = {ajuste, signo, valor, min, max}.
+  const pct = (v, total) => `${(v / total) * 100}%`;
+  const escala = () => capa.clientWidth / lienzo.w;        // px de pantalla por px del lienzo
+  const deId = (id) => elementos.find((x) => x.id === id);
+  const marcos = () => [...capa.querySelectorAll(".pl-el")];
+  const limitar = (r, v) => Math.min(r.max ?? Infinity, Math.max(r.min ?? -Infinity, Math.round(v)));
+  const caja = (b, c) => Object.assign(b.style, { left: pct(c.x, lienzo.w), top: pct(c.y, lienzo.h), width: pct(c.w, lienzo.w), height: pct(c.h, lienzo.h), transform: "" });
+  const [guiaH, ...guiasV] = capa.querySelectorAll(".pl-guia");
+  const guias = (y, xs = []) => {
+    guiaH.hidden = y == null; if (y != null) guiaH.style.top = pct(y, lienzo.h);
+    guiasV.forEach((g, i) => { g.hidden = xs[i] == null; if (xs[i] != null) g.style.left = pct(xs[i], lienzo.w); });
+  };
+  const seleccionar = (id, foco = false) => {
+    sel = id;
+    marcos().forEach((b) => { const si = b.dataset.id === id; b.classList.toggle("sel", si); b.setAttribute("aria-pressed", si); if (si && foco) b.focus({ preventScroll: true }); });
+  };
+  function pintarCapa(nuevos) {
+    const antes = new Map(marcos().map((b) => [b.dataset.id, b.getBoundingClientRect()])), conFoco = capa.contains(document.activeElement);
+    elementos = nuevos; arr = null; guias(null);
+    marcos().forEach((b) => b.remove());
+    // Los más grandes primero: los pequeños quedan encima y se pueden tocar.
+    [...nuevos].sort((a, b) => b.caja.w * b.caja.h - a.caja.w * a.caja.h).forEach((el) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "pl-el"; b.dataset.id = el.id; caja(b, el.caja);
+      b.setAttribute("aria-label", `${el.nombre}. ${["mover", "tamano", "ancho"].filter((r) => el[r]).map((r) => `${NOMBRE_AJUSTE[el[r].ajuste]}: ${el[r].valor}`).join(". ")}`);
+      b.innerHTML = h`<span class="pl-etiqueta">${el.nombre}</span>${el.tamano ? crudo(`<i class="pl-tirador esquina" data-modo="tamano"></i>`) : ""}${el.ancho ? crudo(`<i class="pl-tirador lado" data-modo="ancho"></i>`) : ""}`;
+      capa.append(b);
+    });
+    seleccionar(deId(sel) ? sel : null, conFoco);
+    // Cada marco viaja desde donde estaba (donde se soltó, o su sitio anterior al deshacer) hasta donde lo dejó el motor.
+    if (animar()) marcos().forEach((b) => {
+      const o = antes.get(b.dataset.id), r = b.getBoundingClientRect();
+      if (o && (Math.abs(o.top - r.top) > 0.5 || Math.abs(o.height - r.height) > 0.5 || Math.abs(o.width - r.width) > 0.5)) {
+        gsap.from(b, { x: o.left - r.left, y: o.top - r.top, scaleX: o.width / r.width, scaleY: o.height / r.height, transformOrigin: "0 0", duration: 0.28, ease: "power3.out", clearProps: "transform,transformOrigin" });
+      }
+    });
+  }
+  // Mueve solo los marcos (nada se pide al servidor hasta soltar). dx y dy en px del lienzo.
+  function arrastrar(dx, dy) {
+    const { b, el, modo, grupo } = arr, r = el[modo], c = el.caja, iman = 6 / escala();
+    let nuevo, linea = null;
+    if (modo === "mover") {
+      // Imán: centro del lienzo y bordes de los demás elementos.
+      const lineas = [lienzo.h / 2, ...elementos.filter((o) => o.mover?.ajuste !== r.ajuste).flatMap((o) => [o.caja.y, o.caja.y + o.caja.h])];
+      const bordes = [c.y, c.y + c.h / 2, c.y + c.h];
+      let mejor = iman + 1;
+      for (const bo of bordes) for (const l of lineas) if (Math.abs(l - bo - dy) < Math.abs(mejor)) { mejor = l - bo - dy; linea = l; }
+      if (Math.abs(mejor) <= iman) dy += mejor;
+      nuevo = limitar(r, r.valor + r.signo * dy);
+      dy = (nuevo - r.valor) * r.signo;                    // lo que de verdad permite el rango del ajuste
+      grupo.forEach((o) => { o.style.transform = `translateY(${dy * escala()}px)`; });
+      guias(bordes.some((bo) => Math.abs(bo + dy - linea) < 1) ? linea : null);
+    } else if (modo === "tamano") {
+      // El alto máximo del video es su propio alto; los demás tamaños crecen en proporción a la caja.
+      nuevo = limitar(r, el.id === "video" ? c.h + dy : r.valor * (c.h + dy) / c.h);
+      // El banner (su ancho es otro ajuste) y el video (ya ocupa el ancho) solo crecen en alto; el resto, en proporción.
+      const factor = el.id === "video" ? nuevo / c.h : nuevo / r.valor, w = el.ancho || el.id === "video" ? c.w : c.w * factor;
+      caja(b, { x: c.x + (c.w - w) / 2, y: c.y, w, h: c.h * factor });
+    } else {
+      let w = c.w + 2 * dx;                                // centrado: crece hacia los dos lados
+      const ancla = [lienzo.w, ...elementos.filter((o) => o !== el).map((o) => o.caja.w)].find((a) => Math.abs(a - w) <= iman);
+      if (ancla) w = ancla;
+      nuevo = limitar(r, r.valor + w - c.w); w = c.w + nuevo - r.valor;
+      caja(b, { ...c, x: c.x + (c.w - w) / 2, w });
+      guias(null, ancla === w ? [(lienzo.w - w) / 2, (lienzo.w + w) / 2] : []);
+    }
+    arr.nuevo = nuevo;
+    $(".pl-etiqueta", b).textContent = `${el.nombre} · ${NOMBRE_AJUSTE[r.ajuste].toLowerCase()} ${nuevo}`;
+  }
+  function soltar(aplicar) {
+    if (!arr) return;
+    const { b, el, modo, nuevo, grupo } = arr, r = el[modo];
+    arr = null; b.classList.remove("arrastra"); guias(null);
+    $(".pl-etiqueta", b).textContent = el.nombre;
+    if (aplicar && nuevo !== r.valor) {                    // el marco se queda donde se soltó hasta que llega la disposición real
+      escribir({ [r.ajuste]: nuevo }); decir(`${el.nombre}. ${NOMBRE_AJUSTE[r.ajuste]}: ${nuevo}`);
+      return cambio(0);
+    }
+    grupo.forEach((o) => caja(o, deId(o.dataset.id).caja));
+  }
+  capa.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(".pl-el");
+    if (!b) return seleccionar(null);
+    const el = deId(b.dataset.id), modo = e.target.dataset.modo || "mover", yaElegido = sel === el.id;
+    seleccionar(el.id, true);
+    // Con el dedo, el primer toque solo selecciona (así se puede seguir desplazando la página sobre la maqueta).
+    if (e.button || !el[modo] || (e.pointerType === "touch" && !yaElegido)) return;
+    e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add("arrastra");
+    arr = { b, el, modo, x: e.clientX, y: e.clientY, nuevo: el[modo].valor, grupo: modo === "mover" ? marcos().filter((o) => deId(o.dataset.id).mover?.ajuste === el.mover.ajuste) : [b] };
   });
+  capa.addEventListener("pointermove", (e) => { if (arr) arrastrar((e.clientX - arr.x) / escala(), (e.clientY - arr.y) / escala()); });
+  capa.addEventListener("pointerup", () => soltar(true));
+  capa.addEventListener("pointercancel", () => soltar(false));
+  capa.addEventListener("focusin", (e) => { const b = e.target.closest(".pl-el"); if (b && sel !== b.dataset.id) seleccionar(b.dataset.id); });
+  capa.addEventListener("keydown", (e) => {
+    const el = deId(sel);
+    if (!el) return;
+    if (e.key === "Escape") { if (arr) soltar(false); else { seleccionar(null); document.activeElement.blur(); } return; }
+    const paso = e.shiftKey ? 10 : 1;
+    const [modo, d] = { ArrowUp: ["mover", -paso], ArrowDown: ["mover", paso], ArrowLeft: ["ancho", -paso], ArrowRight: ["ancho", paso], "+": ["tamano", 2], "=": ["tamano", 2], "-": ["tamano", -2] }[e.key] || [];
+    if (!modo || !el[modo] || arr || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    // Se acumula sobre el valor del formulario: varias pulsaciones seguidas valen aunque la maqueta aún no haya vuelto.
+    const r = el[modo], actual = +f[r.ajuste].value, nuevo = limitar(r, actual + (modo === "mover" ? r.signo * d : d));
+    if (nuevo === actual) return decir(`${NOMBRE_AJUSTE[r.ajuste]}: ${actual}. No admite más.`);
+    escribir({ [r.ajuste]: nuevo }); decir(`${NOMBRE_AJUSTE[r.ajuste]}: ${nuevo}`);
+    if (modo === "mover") marcos().filter((o) => deId(o.dataset.id).mover?.ajuste === r.ajuste).forEach((o) => { o.style.transform = `translateY(${(nuevo - r.valor) * r.signo * escala()}px)`; });
+    cambio();
+  });
+
+  f._vista = vista; f._logo = logo; f._historia = historia;      // para las acciones del logo y los atajos de teclado
+  f.addEventListener("input", (e) => { if (e.target.name || e.target.id === "pl-banner") cambio(); });
   f.addEventListener("submit", intentar(async (e) => {
     e.preventDefault();
+    clearTimeout(espera); registrar();
     S.ajustes.valores = (await api("/api/ajustes", { method: "PUT", json: valores() })).valores;
-    marcar(false, true); avisar("Diseño guardado. Se aplica a los próximos renders."); refrescar();
+    guardado = JSON.stringify(valores()); marcar(true); avisar("Diseño guardado. Se aplica a los próximos renders."); vista(); refrescar();
   }));
   $("#logo").addEventListener("change", intentar(async (e) => {
     const datos = new FormData(); datos.append("archivo", e.target.files[0]);
     await api("/api/logo", { method: "POST", body: datos }); avisar("Logo actualizado."); logo(true); vista();
   }));
-  logo(a.logo_propio); vista();
+  logo(a.logo_propio); marcar(); vista();
   // Misma curva y ritmo que la entrada del acceso (fase 2 del login).
   if (animar()) gsap.from("#form-plantilla fieldset:not([hidden]), .pl-vista", { y: 10, opacity: 0, duration: 0.3, ease: "power3.out", stagger: 0.05, clearProps: "all" });
 }
+// Deshacer y rehacer en la Plantilla. Dentro de un campo de texto manda el deshacer propio del navegador.
+document.addEventListener("keydown", (e) => {
+  const f = $("#form-plantilla"), tecla = e.key.toLowerCase();
+  if (!f || !(e.ctrlKey || e.metaKey) || (tecla !== "z" && tecla !== "y") || !$("#modal-fondo").hidden) return;
+  if (e.target.matches?.("input:not([type=checkbox]):not([type=color]), textarea")) return;
+  e.preventDefault(); f._historia(tecla === "z" && !e.shiftKey);
+});
 
 // ---------------------------------------------------------------- ajustes
 // Nombre legible a partir del agente de usuario; si no se reconoce, no se inventa.
