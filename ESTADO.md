@@ -627,3 +627,11 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   completa y avisa. Ajustes `dividido_*` validados y editables en el editor visual. Probado con un stream
   simulado (facecam + persona en movimiento). 86 pruebas. **Falta en el panel:** opción «Vista dividida»
   en los selectores de estilo y su sección en Plantilla (Claude Code del PC). Sin probar con un clip real.
+- **2026-11-17 · Claude Code (PC Windows)** — Vista dividida en el panel: opción «Vista dividida: cámara arriba,
+  contenido abajo» en el selector de estilo de Plantilla y en el de cada clip (y en «Tu formato» del Resumen). Sección
+  «Vista dividida» en Plantilla, visible solo con ese estilo: `dividido_proporcion`, `dividido_sub_y`,
+  `dividido_sub_tamano`, `dividido_logo_y`, `dividido_logo_alto`, `dividido_banner`, `dividido_firma`.
+  `/api/ajustes` ahora devuelve `limites` (`config.LIMITES`) y los campos numéricos de Plantilla llevan min/max.
+  86 pruebas. Playwright con datos temporales (1440×900): mostrar/ocultar sección, cambiar proporción, guardar y
+  recargar, selector de un clip simulado en `error` guarda `dividido`. Capturas
+  `docs/diseno/capturas-editor/dividido-*.png`. **No probado** en la MatePad ni con un clip real.

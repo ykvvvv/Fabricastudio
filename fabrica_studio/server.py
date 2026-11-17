@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, acceso, cuentas, render, textos
-from .config import AJUSTES_POR_DEFECTO, FUENTES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
+from .config import AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
 from .errores import ErrorEtapa, sin_secretos
 from .pipeline import Fabrica
 
@@ -318,7 +318,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     # ------------------------------------------------------------ ajustes y diseño
     @app.get("/api/ajustes")
     def ajustes():
-        return {"valores": fab.db.ajustes(), "defecto": AJUSTES_POR_DEFECTO,
+        return {"valores": fab.db.ajustes(), "defecto": AJUSTES_POR_DEFECTO, "limites": LIMITES,
                 "logo_propio": (fab.rutas.recursos / "logo.png").exists()}
 
     @app.put("/api/ajustes")

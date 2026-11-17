@@ -506,7 +506,7 @@ function pintarResumen(m, completo) {
   if (recientes.length) ponerLista($("#r-recientes"), recientes, "div", (t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`);
   else poner($("#r-recientes"), `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
   poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
-  $("#r-estilo").textContent = e.estilo === "completo" ? "Pantalla completa con seguimiento" : "Clásico: video completo con tarjeta";
+  $("#r-estilo").textContent = NOMBRE_ESTILO[e.estilo] || NOMBRE_ESTILO.clasico;
   poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
       <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}</p></div>
     <a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">${yt.canal_id ? "Ver" : "Conectar"}</a>`);
@@ -603,11 +603,12 @@ function pintarTrabajo(m, completo) {
     botones += `<button data-accion="renderizar" data-foco="b-render">Renderizar de nuevo</button>`;
   }
   if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
-    const general = S.estado.estilo === "completo" ? "pantalla completa" : "clásico";
+    const general = { completo: "pantalla completa", dividido: "vista dividida" }[S.estado.estilo] || "clásico";
     botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo data-foco="b-estilo">
       <option value="" ${t.estilo === "" ? "selected" : ""}>General de Ajustes (${general})</option>
       <option value="clasico" ${t.estilo === "clasico" ? "selected" : ""}>Clásico: video completo con tarjeta</option>
-      <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option></select></label>`;
+      <option value="completo" ${t.estilo === "completo" ? "selected" : ""}>Pantalla completa con seguimiento</option>
+      <option value="dividido" ${t.estilo === "dividido" ? "selected" : ""}>Vista dividida: cámara arriba, contenido abajo</option></select></label>`;
   }
   if (t.tiene_video) botones += h`<a class="boton" href="/media/${t.id}/short.mp4" download="${t.nombre}.mp4">Descargar MP4</a>`;
   if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`;
@@ -819,7 +820,7 @@ const acciones = {
 // valores del formulario, guardados o no. Campo: [clave, etiqueta, tipo = "number", opciones].
 const SECCIONES_PLANTILLA = [
   ["Encuadre", [
-    ["estilo", "Estilo de encuadre", "select", [["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"]]],
+    ["estilo", "Estilo de encuadre", "select", [["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"], ["dividido", "Vista dividida: cámara arriba, contenido abajo"]]],
     ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
     ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
   ["Pantalla completa", [
@@ -827,6 +828,11 @@ const SECCIONES_PLANTILLA = [
     ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
     ["completo_logo_y", "Logo: posición vertical"], ["completo_logo_alto", "Logo: alto (px)"],
     ["completo_banner", "Mostrar tarjeta del banner arriba", "check"], ["completo_mayusculas", "Subtítulos en mayúsculas", "check"]]],
+  ["Vista dividida", [
+    ["dividido_proporcion", "Cámara: % del alto"], ["dividido_sub_y", "Subtítulos: posición vertical"],
+    ["dividido_sub_tamano", "Subtítulos: tamaño"], ["dividido_logo_y", "Logo: posición vertical"],
+    ["dividido_logo_alto", "Logo: alto (px)"], ["dividido_banner", "Mostrar tarjeta del banner", "check"],
+    ["dividido_firma", "Mostrar firma bajo el logo", "check"]]],
   ["Banner superior", [
     ["banner_color", "Color del texto", "color"], ["banner_tamano", "Tamaño de letra"], ["banner_ancho", "Ancho de la tarjeta"],
     ["banner_separacion", "Separación del video"], ["banner_radio", "Redondeo de esquinas"]]],
@@ -840,9 +846,14 @@ const SECCIONES_PLANTILLA = [
     ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
 ];
 const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, campos]) => campos.map(([k, n]) => [k, n])));
-const campoPlantilla = ([k, n, tipo = "number", ops], v) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
+const NOMBRE_ESTILO = { clasico: "Clásico: video completo con tarjeta", completo: "Pantalla completa con seguimiento",
+  dividido: "Vista dividida: cámara arriba, contenido abajo" };
+// Secciones que solo se ven con su estilo de encuadre.
+const SECCION_ESTILO = { "Pantalla completa": ["pl-completo", "completo"], "Vista dividida": ["pl-dividido", "dividido"] };
+const seccionesEstilo = (estilo) => Object.values(SECCION_ESTILO).forEach(([id, e]) => { $(`#${id}`).hidden = estilo !== e; });
+const campoPlantilla = ([k, n, tipo = "number", ops], v, lim) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
   : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
-    : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}"></label>`);
+    : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}" ${crudo(lim?.[k] ? `min="${lim[k][0]}" max="${lim[k][1]}"` : "")}></label>`);
 
 async function pintarPlantilla(m) {
   let a;
@@ -853,8 +864,9 @@ async function pintarPlantilla(m) {
   if (S.vista !== "plantilla") return;     // se cambió de vista mientras llegaban los datos
   const v = a.valores;
   const seccion = ([titulo, campos]) => {
-    const de = (...tipos) => campos.filter((c) => tipos.includes(c[2] || "number")).map((c) => crudo(campoPlantilla(c, v)));
-    return h`<fieldset ${titulo === "Pantalla completa" ? crudo(`id="pl-completo"${v.estilo === "completo" ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
+    const de = (...tipos) => campos.filter((c) => tipos.includes(c[2] || "number")).map((c) => crudo(campoPlantilla(c, v, a.limites)));
+    const [id, e] = SECCION_ESTILO[titulo] || [];
+    return h`<fieldset ${id ? crudo(`id="${id}"${v.estilo === e ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
       ${titulo === "Banner superior" ? crudo(`<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`) : ""}
       ${de("select")}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
       ${titulo === "Marca y nombre" ? crudo(h`<p class="pequeno tenue" id="pl-logo-nota"></p>
@@ -898,7 +910,7 @@ async function pintarPlantilla(m) {
   };
   // Tras cualquier cambio: aviso de «sin guardar» y, después de una pausa, historial + maqueta y disposición nuevas.
   const cambio = (pausa = 250) => {
-    marcar(); $("#pl-completo").hidden = f.estilo.value !== "completo";
+    marcar(); seccionesEstilo(f.estilo.value);
     clearTimeout(espera); espera = setTimeout(() => { registrar(); vista(); }, pausa);
   };
   const historia = (atras) => {
@@ -907,7 +919,7 @@ async function pintarPlantilla(m) {
     const e = atras ? hist[--pos] : hist[pos++];
     escribir(atras ? e.antes : e.despues); ultimo = valores(); botones();
     decir(atras ? "Cambio deshecho." : "Cambio rehecho.");
-    marcar(); $("#pl-completo").hidden = f.estilo.value !== "completo"; vista();
+    marcar(); seccionesEstilo(f.estilo.value); vista();
   };
   $("#pl-deshacer").onclick = () => historia(true); $("#pl-rehacer").onclick = () => historia(false);
 

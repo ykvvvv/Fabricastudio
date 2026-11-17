@@ -128,6 +128,7 @@ def test_ajustes_fuera_de_rango_se_rechazan_en_espanol(fabrica):
     assert pc.get("/api/ajustes").json()["valores"]["creador"] == "Jongottii"     # nada se guardó a medias
     assert pc.put("/api/ajustes", json={"banner_color": "rojo"}).status_code == 400
     assert pc.put("/api/ajustes", json={"estilo": "inventado"}).status_code == 400
+    assert pc.get("/api/ajustes").json()["limites"]["dividido_proporcion"] == [30, 60]   # el panel usa min/max
     assert pc.put("/api/ajustes", json={"sub_tamano": 70, "banner_color": "#112233"}).status_code == 200
     r = pc.get("/api/diseno/vista", params={"banner_tamano": "-3"})
     assert r.status_code == 400 and "tamaño del banner" in r.json()["error"]
