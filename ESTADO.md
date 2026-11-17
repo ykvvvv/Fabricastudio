@@ -232,7 +232,35 @@ Capturas en `.playwright-mcp/movimiento/` (carpeta local, no se sube al reposito
 con el mouse (se simuló el evento); el check de «subido» y el de «momentos listos» (solo se vio el de «renderizado»);
 Firefox y Safari.
 
-**Falta:** fase 3 (Plantilla con vista previa en vivo), fase 4 (Ajustes y ayuda).
+**Fase 3 hecha (2026-11-17): Plantilla con vista previa en vivo.** Solo `web/` (`index.html`, `app.js`, `estilo.css`, `iconos.js`).
+
+- Entrada nueva «Plantilla» en el menú (`#plantilla`). Sustituye a la pestaña «Diseño» de Ajustes, que desaparece
+  (Ajustes abre ahora en YouTube). El enlace «Personalizar» del Resumen lleva aquí.
+- Formulario por secciones: Encuadre, Pantalla completa (solo visible con ese estilo), Banner superior, Subtítulos,
+  Marca y nombre (con el logo). Los 31 campos son ajustes reales de `config.py`; no se añadió ninguno.
+- Vista previa en vivo: la maqueta la dibuja el PC (`/api/diseno/vista`) con los valores del formulario, guardados o
+  no, 250 ms después del último cambio (varios cambios seguidos = una sola petición). Acompaña al desplazarse.
+  Si el servidor rechaza un valor, su mensaje se muestra bajo la maqueta. «Texto de ejemplo» solo afecta a la vista.
+- Estado visible: «Cambios sin guardar» / «Guardado». «Restablecer» pide confirmación. Subir o quitar el logo no
+  borra lo que se esté editando.
+- Tokens y movimiento del login: `--t-rapida`, `--sombra-flota`, `--curva`; entrada escalonada de las secciones y
+  pulso de la maqueta con GSAP (`animar()`); sin GSAP o con «reducir movimiento» no se anima.
+- Tamaños: dos columnas hasta 680 px (230 px de maqueta en tablet vertical); en móvil, o en tablet con la barra
+  lateral desplegada, la vista previa pasa arriba.
+
+Probado aquí (Chromium/Playwright, servidor temporal con datos vacíos) en 1440×900 y, por la IP de la red como
+dispositivo vinculado, en 1280×800, 800×1280 (barra plegada y desplegada) y 600×900: vista previa al cambiar texto
+de ejemplo, color, tamaño y estilo; valor imposible (error 400 visible); guardar y recargar; restablecer (cancelar y
+aceptar); subir, quitar y rechazar un logo; salir con cambios sin guardar; guardar desde la tablet; sin desborde
+horizontal, letra mínima 12 px, sin errores de JavaScript. Capturas en `docs/diseno/capturas-plantilla/`.
+Prueba nueva: cada campo de la plantilla existe en `AJUSTES_POR_DEFECTO`. 78 pruebas tras integrar el cambio de la nube.
+
+**No probado:** la tablet real; un render real con la plantilla cambiada (la maqueta y el render usan el mismo código
+de disposición, pero no se generó un Short aquí). **Límites:** al salir de la vista con cambios sin guardar se
+descartan sin preguntar (solo avisa la pastilla); el servidor guarda valores imposibles (p. ej. tamaño negativo) sin
+validarlos, igual que antes: la maqueta muestra el error pero «Guardar» no lo impide.
+
+**Falta:** fase 4 (Ajustes y ayuda).
 
 ## Beta 0.1 encontrada (2026-11-16)
 
@@ -566,3 +594,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   (por defecto desactivado) y `momentos_auto_solo_ia` (por defecto activado: con la heurística local solo avisa).
   Gemini analiza VODs largos por tramos (antes fallaba con más de ~1 h y caía a la heurística). 77 pruebas.
   **Falta en el panel:** dos interruptores en Ajustes (Claude Code del PC, fase 4). Sin probar con un VOD real.
+- **2026-11-17 · Claude Code (PC Windows)** — Panel, fase 3: vista «Plantilla» con vista previa en vivo (sustituye a
+  Ajustes → Diseño), con los tokens y el movimiento GSAP del login. 78 pruebas (con las de la nube). Playwright en escritorio, tablet y móvil;
+  capturas en `docs/diseno/capturas-plantilla/`. Siguiente: Cristóbal la revisa y prueba un render real; después, fase 4.

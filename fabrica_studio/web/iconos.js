@@ -18,6 +18,7 @@ const ICONOS = {
   subir: '<path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/>',
   cerrar: '<path d="m6 6 12 12M18 6 6 18"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  deslizadores: '<path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   ojo: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   salir: '<path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9"/>',
   papelera:'<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/>',

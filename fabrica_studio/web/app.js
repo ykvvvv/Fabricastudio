@@ -15,7 +15,7 @@ const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number)
 const ESTADOS = { pendiente: "En espera", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
 const dos = (n) => String(n).padStart(2, "0");
 const calma = matchMedia("(prefers-reduced-motion: reduce)");   // con «reducir movimiento» nada se anima
-let S = { cambios: {}, orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "diseno", ajustes: null };
+let S = { cambios: {}, orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "youtube", ajustes: null };
 
 async function api(ruta, opciones = {}) {
   if (opciones.json !== undefined) {
@@ -52,7 +52,7 @@ const CLASE_ESTADO = { pendiente: "", procesando: "proceso", subiendo: "proceso"
 const FILTROS = [["todos", "Todos", () => true], ["espera", "En espera", (t) => t.estado === "pendiente"],
   ["generando", "Generando", (t) => ["procesando", "subiendo"].includes(t.estado)],
   ["listos", "Listos", (t) => ["renderizado", "propuestas", "publicado"].includes(t.estado)], ["error", "Con error", (t) => t.estado === "error"]];
-const NOMBRES_VISTA = { resumen: "Resumen", cola: "Cola de clips", biblioteca: "Biblioteca", ajustes: "Ajustes", trabajo: "Clip" };
+const NOMBRES_VISTA = { resumen: "Resumen", cola: "Cola de clips", biblioteca: "Biblioteca", plantilla: "Plantilla", ajustes: "Ajustes", trabajo: "Clip" };
 const enCola = (t) => ["pendiente", "procesando", "subiendo"].includes(t.estado);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const coincide = (t) => !S.busca || `${t.nombre} ${t.textos.titulo || ""}`.toLowerCase().includes(S.busca);
@@ -445,6 +445,7 @@ function pintar(completo) {
   else if (S.vista === "cola") pintarCola(m, completo);
   else if (S.vista === "biblioteca") pintarBiblioteca(m, completo);
   else if (S.vista === "trabajo") pintarTrabajo(m, completo);
+  else if (S.vista === "plantilla" && completo) { esqueleto(m); pintarPlantilla(m); }
   else if (S.vista === "ajustes" && completo) { esqueleto(m); pintarAjustes(m); }
 }
 
@@ -479,7 +480,7 @@ function pintarResumen(m, completo) {
           <div class="panel-pie" id="r-pie"></div></div>
         <div class="panel formato"><div class="panel-titulo"><div><h2>Tu formato</h2><p id="r-estilo"></p></div><span class="pequeno tenue">9:16</span></div>
           <div class="formato-escena"><img src="/api/diseno/vista?t=${Date.now()}" alt="Maqueta del diseño actual de tus Shorts" width="176" height="313"></div>
-          <div class="panel-pie"><span>1080 × 1920</span><a class="enlace-fino" href="#ajustes" data-accion="ir-ajustes" data-p="diseno">Personalizar${ic("flecha")}</a></div></div></div>
+          <div class="panel-pie"><span>1080 × 1920</span><a class="enlace-fino" href="#plantilla">Personalizar${ic("flecha")}</a></div></div></div>
       <div class="dos-columnas"><div class="panel conexion" id="r-youtube"></div><div class="panel conexion" id="r-tablet"></div></div>`;
     $("#r-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -804,13 +805,116 @@ const acciones = {
     const r = await api("/api/proveedores/gemini");
     $("#gemini-info").textContent = r.clave ? `Clave válida. Modelo que se usará: ${r.elegido}. Disponibles: ${r.modelos.join(", ")}` : "No hay clave configurada.";
   }),
-  "logo-quitar": intentar(async () => { await api("/api/logo", { method: "DELETE" }); pintarAjustes($("#principal")); }),
+  "logo-quitar": intentar(async () => { await api("/api/logo", { method: "DELETE" }); avisar("Logo quitado."); const f = $("#form-plantilla"); f._logo(false); f._vista(); }),
   "restablecer": intentar(async () => {
+    if (!await confirmar("Restablecer la plantilla", "Todos los valores de la plantilla volverán a los iniciales y se guardarán. Tu logo no se toca.", "Restablecer", true)) return;
     const { defecto } = S.ajustes; const cambios = {};
-    document.querySelectorAll("#form-diseno [name]").forEach((i) => { cambios[i.name] = defecto[i.name]; });
-    await api("/api/ajustes", { method: "PUT", json: cambios }); avisar("Diseño restablecido."); pintarAjustes($("#principal"));
+    document.querySelectorAll("#form-plantilla [name]").forEach((i) => { cambios[i.name] = defecto[i.name]; });
+    await api("/api/ajustes", { method: "PUT", json: cambios }); avisar("Plantilla restablecida."); pintarPlantilla($("#principal")); refrescar();
   }),
 };
+
+// ---------------------------------------------------------------- plantilla (fase 3 del panel)
+// Cada campo es un ajuste real de config.py; la vista previa la dibuja el PC (/api/diseno/vista) con los
+// valores del formulario, guardados o no. Campo: [clave, etiqueta, tipo = "number", opciones].
+const SECCIONES_PLANTILLA = [
+  ["Encuadre", [
+    ["estilo", "Estilo de encuadre", "select", [["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"]]],
+    ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
+    ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
+  ["Pantalla completa", [
+    ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"], ["completo_banner_y", "Banner: posición vertical"],
+    ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
+    ["completo_logo_y", "Logo: posición vertical"], ["completo_logo_alto", "Logo: alto (px)"],
+    ["completo_banner", "Mostrar tarjeta del banner arriba", "check"], ["completo_mayusculas", "Subtítulos en mayúsculas", "check"]]],
+  ["Banner superior", [
+    ["banner_color", "Color del texto", "color"], ["banner_tamano", "Tamaño de letra"], ["banner_ancho", "Ancho de la tarjeta"],
+    ["banner_separacion", "Separación del video"], ["banner_radio", "Redondeo de esquinas"]]],
+  ["Subtítulos", [
+    ["sub_tamano", "Tamaño"], ["sub_desplazamiento", "Distancia bajo el video"], ["sub_palabras_max", "Palabras por bloque"],
+    ["sub_caracteres_max", "Caracteres por bloque"], ["sub_color_resalte", "Color de la palabra activa", "color"],
+    ["sub_resaltar", "Resaltar en color la palabra que se está diciendo", "check"]]],
+  ["Marca y nombre", [
+    ["creador", "Nombre del creador (títulos)", "text"], ["firma", "Firma bajo el logo", "text"], ["nombre_tamano", "Firma: tamaño"],
+    ["nombre_color", "Firma: color", "color"], ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"],
+    ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
+];
+const campoPlantilla = ([k, n, tipo = "number", ops], v) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
+  : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
+    : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}"></label>`);
+
+async function pintarPlantilla(m) {
+  let a;
+  try { a = S.ajustes = await api("/api/ajustes"); } catch (e) {
+    if ($(".esqueleto", m)) m.innerHTML = `<div class="panel sin-nada" role="alert">No se pudo cargar la plantilla. Vuelve a entrar en Plantilla para reintentar.</div>`;
+    return avisar(e.message, true);
+  }
+  if (S.vista !== "plantilla") return;     // se cambió de vista mientras llegaban los datos
+  const v = a.valores;
+  const seccion = ([titulo, campos]) => {
+    const de = (...tipos) => campos.filter((c) => tipos.includes(c[2] || "number")).map((c) => crudo(campoPlantilla(c, v)));
+    return h`<fieldset ${titulo === "Pantalla completa" ? crudo(`id="pl-completo"${v.estilo === "completo" ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
+      ${titulo === "Banner superior" ? crudo(`<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`) : ""}
+      ${de("select")}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
+      ${titulo === "Marca y nombre" ? crudo(h`<p class="pequeno tenue" id="pl-logo-nota"></p>
+        <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">${ic("subir")}Subir logo PNG<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
+        <button type="button" data-accion="logo-quitar" id="pl-logo-quitar">Quitar logo</button></div>`) : ""}</fieldset>`;
+  };
+  m.innerHTML = h`<form id="form-plantilla"><div class="cabecera"><div><div class="antetitulo">Identidad del canal</div><h1>Tu plantilla</h1><p>Un formato reconocible en todos tus clips.</p></div>
+      <div class="fila"><span class="pastilla" id="pl-estado" role="status"></span><button type="button" class="texto" data-accion="restablecer">Restablecer</button><button class="primario">${ic("check")}Guardar diseño</button></div></div>
+    <div class="plantilla"><div class="panel pl-form">${SECCIONES_PLANTILLA.map((s) => crudo(seccion(s)))}</div>
+      <aside class="panel pl-vista" aria-label="Vista previa"><div class="panel-titulo"><div><h2>Vista previa</h2><p>La dibuja tu PC con los valores del formulario.</p></div><span class="pastilla proceso" id="pl-vivo">En vivo</span></div>
+        <div class="formato-escena"><img id="pl-img" alt="Maqueta del Short con los valores del formulario" width="540" height="960"></div>
+        <p class="error" id="pl-error" role="alert"></p>
+        <div class="panel-pie"><span>1080 × 1920</span><span>Se aplica a los próximos renders</span></div></aside></div></form>`;
+
+  const f = $("#form-plantilla"), img = $("#pl-img"), panel = $(".pl-vista"), estado = $("#pl-estado"), error = $("#pl-error"), vivo = $("#pl-vivo");
+  const valores = () => { const c = {}; f.querySelectorAll("[name]").forEach((i) => { c[i.name] = i.type === "checkbox" ? i.checked : i.value; }); return c; };
+  const marcar = (sucio, recien = false) => {
+    S.sucio = sucio;
+    estado.className = `pastilla ${sucio ? "listo" : "subido"} ${recien ? "recien" : ""}`;
+    estado.innerHTML = sucio ? "Cambios sin guardar" : recien ? `${icono("check")}Guardado` : "";
+  };
+  const logo = (propio) => {
+    $("#pl-logo-quitar").hidden = !propio;
+    $("#pl-logo-nota").textContent = propio ? "Usando tu logo. Los márgenes transparentes se recortan automáticamente."
+      : "Sin logo propio: se muestra el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.";
+  };
+  // Vista previa: solo se muestra la respuesta de la última petición; un error del servidor se ve tal cual.
+  let espera, turno = 0;
+  const vista = async () => {
+    const n = ++turno;
+    panel.classList.add("cargando"); vivo.textContent = "Actualizando…";
+    try {
+      const r = await fetch(`/api/diseno/vista?${new URLSearchParams({ ...valores(), banner: $("#pl-banner").value })}`);
+      if (n !== turno || !img.isConnected) return;
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
+      img.onload = () => URL.revokeObjectURL(img.src);
+      img.src = URL.createObjectURL(await r.blob());
+      error.textContent = "";
+      if (animar()) gsap.fromTo(img, { scale: 0.985 }, { scale: 1, duration: 0.22, ease: "power3.out", clearProps: "transform" });
+    } catch (e) { if (n === turno) error.textContent = e.message; }
+    if (n === turno) { panel.classList.remove("cargando"); vivo.textContent = "En vivo"; }      // referencias fijas: la vista pudo cerrarse entretanto
+  };
+  f._vista = vista; f._logo = logo;                     // las acciones del logo refrescan sin repintar el formulario
+  f.addEventListener("input", (e) => {
+    if (e.target.name) marcar(true);
+    $("#pl-completo").hidden = f.estilo.value !== "completo";
+    clearTimeout(espera); espera = setTimeout(vista, 250);
+  });
+  f.addEventListener("submit", intentar(async (e) => {
+    e.preventDefault();
+    S.ajustes.valores = (await api("/api/ajustes", { method: "PUT", json: valores() })).valores;
+    marcar(false, true); avisar("Diseño guardado. Se aplica a los próximos renders."); refrescar();
+  }));
+  $("#logo").addEventListener("change", intentar(async (e) => {
+    const datos = new FormData(); datos.append("archivo", e.target.files[0]);
+    await api("/api/logo", { method: "POST", body: datos }); avisar("Logo actualizado."); logo(true); vista();
+  }));
+  logo(a.logo_propio); vista();
+  // Misma curva y ritmo que la entrada del acceso (fase 2 del login).
+  if (animar()) gsap.from("#form-plantilla fieldset:not([hidden]), .pl-vista", { y: 10, opacity: 0, duration: 0.3, ease: "power3.out", stagger: 0.05, clearProps: "all" });
+}
 
 // ---------------------------------------------------------------- ajustes
 // Nombre legible a partir del agente de usuario; si no se reconoce, no se inventa.
@@ -818,22 +922,6 @@ const primero = (lista, ag) => lista.find(([r]) => r.test(ag))?.[1];
 const dispositivoDe = (ag) => [primero([[/Windows/, "Windows"], [/HarmonyOS|OpenHarmony/, "HarmonyOS"], [/Android/, "Android"], [/iPad|iPhone/, "iOS"], [/Mac OS X/, "macOS"], [/Linux|X11/, "Linux"]], ag),
   primero([[/Edg\//, "Edge"], [/HuaweiBrowser/, "Navegador Huawei"], [/Firefox\//, "Firefox"], [/Chrome\//, "Chrome"], [/Safari\//, "Safari"]], ag)].filter(Boolean).join(" · ") || `Navegador desconocido${ag ? ` (${ag.slice(0, 40)})` : ""}`;
 const lapso = (s) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} días`);
-const CAMPOS_COMPLETO = [
-  ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"], ["completo_banner_y", "Banner: posición vertical"],
-  ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
-  ["completo_logo_y", "Logo: posición vertical"], ["completo_logo_alto", "Logo: alto (px)"],
-];
-const CAMPOS_DISENO = [
-  ["creador", "Nombre del creador (títulos)", "text"], ["firma", "Firma bajo el logo", "text"],
-  ["banner_color", "Color del banner", "color"], ["sub_color_resalte", "Color de la palabra activa", "color"],
-  ["nombre_color", "Color de la firma", "color"],
-  ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
-  ["banner_tamano", "Banner: tamaño de letra"], ["banner_ancho", "Banner: ancho de tarjeta"],
-  ["banner_separacion", "Banner: separación del video"], ["banner_radio", "Banner: redondeo de esquinas"],
-  ["sub_tamano", "Subtítulos: tamaño"], ["sub_desplazamiento", "Subtítulos: distancia bajo el video"],
-  ["sub_palabras_max", "Subtítulos: palabras por bloque"], ["sub_caracteres_max", "Subtítulos: caracteres por bloque"],
-  ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"], ["nombre_tamano", "Firma: tamaño"],
-];
 
 async function pintarAjustes(m) {
   let a;
@@ -844,30 +932,9 @@ async function pintarAjustes(m) {
   if (S.vista !== "ajustes") return;     // se cambió de vista mientras llegaban los datos
   const v = a.valores, local = S.sesion.local, yt = S.estado.youtube, p = S.estado.proveedores;
   const soloPc = local ? "" : `<p class="nota">Por seguridad, esta sección solo se puede modificar desde el panel abierto en el PC.</p>`;
-  const pestanas = [["diseno", "Diseño"], ["youtube", "YouTube"], ["proveedores", "Proveedores"], ["dispositivos", "Dispositivos"], ["cuenta", "Cuenta"]];
+  const pestanas = [["youtube", "YouTube"], ["proveedores", "Proveedores"], ["dispositivos", "Dispositivos"], ["cuenta", "Cuenta"]];
   let cuerpo = "";
-  if (S.pestana === "diseno") {
-    cuerpo = h`<div class="diseno"><form class="pila" id="form-diseno">
-      <label>Estilo de encuadre<select name="estilo">
-        <option value="clasico" ${v.estilo === "clasico" ? "selected" : ""}>Clásico: video completo centrado con tarjeta</option>
-        <option value="completo" ${v.estilo === "completo" ? "selected" : ""}>Pantalla completa: recorte 9:16 que sigue los rostros</option></select></label>
-      <div class="campos">${CAMPOS_DISENO.map(([k, n, tipo]) => crudo(h`<label>${n}<input name="${k}" type="${tipo || "number"}" value="${v[k]}"></label>`))}</div>
-      <details class="tarjeta"${v.estilo === "completo" ? " open" : ""}><summary>Ajustes de pantalla completa</summary><div class="campos" style="margin-top:12px">
-        ${CAMPOS_COMPLETO.map(([k, n]) => crudo(h`<label>${n}<input name="${k}" type="number" value="${v[k]}"></label>`))}</div>
-        <label class="linea" style="margin-top:10px"><input type="checkbox" name="completo_banner" ${v.completo_banner ? "checked" : ""}> Mostrar tarjeta del banner arriba</label>
-        <label class="linea"><input type="checkbox" name="completo_mayusculas" ${v.completo_mayusculas ? "checked" : ""}> Subtítulos en mayúsculas</label></details>
-      <label class="linea"><input type="checkbox" name="mostrar_logo" ${v.mostrar_logo ? "checked" : ""}> Mostrar logo</label>
-      <label class="linea"><input type="checkbox" name="mostrar_nombre" ${v.mostrar_nombre ? "checked" : ""}> Mostrar firma bajo el logo</label>
-      <label class="linea"><input type="checkbox" name="sub_resaltar" ${v.sub_resaltar ? "checked" : ""}> Resaltar en color la palabra que se está diciendo</label>
-      <label class="linea"><input type="checkbox" name="recortar_bordes" ${v.recortar_bordes ? "checked" : ""}> Quitar franjas negras del clip original</label>
-      <div class="tarjeta pila"><h3>Logo</h3>
-        <p class="pequeno tenue">${a.logo_propio ? "Usando tu logo. Los márgenes transparentes se recortan automáticamente." : "Sin logo propio: se muestra el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo."}</p>
-        <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">Subir logo PNG<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
-        ${a.logo_propio ? crudo(`<button type="button" data-accion="logo-quitar">Quitar logo</button>`) : ""}</div></div>
-      <div class="fila"><button class="primario">Guardar diseño</button><button type="button" data-accion="restablecer">Restablecer valores iniciales</button></div>
-      <p class="pequeno tenue" id="diseno-aviso">Los cambios se aplican a los próximos renders. En un Short ya renderizado, pulsa «Renderizar de nuevo».</p>
-    </form><img id="vista-diseno" alt="Maqueta del diseño con los ajustes actuales"></div>`;
-  } else if (S.pestana === "youtube") {
+  if (S.pestana === "youtube") {
     cuerpo = h`${crudo(soloPc)}<div class="tarjeta">
       <div class="dato"><span>Credenciales OAuth</span><span>${yt.credenciales ? `Cargadas (tipo ${yt.tipo_cliente === "installed" ? "escritorio" : yt.tipo_cliente})` : "Falta client_secret.json"}</span></div>
       <div class="dato"><span>Cuenta</span><span>${yt.conectado ? "Conectada" : "Sin conectar"}</span></div>
@@ -948,7 +1015,7 @@ async function pintarAjustes(m) {
     e.target.querySelectorAll("[name]").forEach((i) => { cambios[i.name] = i.type === "checkbox" ? i.checked : i.value; });
     await api("/api/ajustes", { method: "PUT", json: cambios }); avisar(mensaje); refrescar();
   }));
-  guardarForm("#form-diseno", "Diseño guardado."); guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
+  guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
 
   $("#form-clave")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -960,21 +1027,6 @@ async function pintarAjustes(m) {
     } catch (err) { error.textContent = err.message; }
   });
 
-  const fd = $("#form-diseno");
-  if (fd) {
-    let espera;
-    const vista = () => {
-      const q = new URLSearchParams();
-      fd.querySelectorAll("[name]").forEach((i) => q.set(i.name, i.type === "checkbox" ? i.checked : i.value));
-      $("#vista-diseno").src = `/api/diseno/vista?${q}&t=${Date.now()}`;
-    };
-    fd.addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(vista, 350); });
-    vista();
-    $("#logo").addEventListener("change", intentar(async (e) => {
-      const datos = new FormData(); datos.append("archivo", e.target.files[0]);
-      await api("/api/logo", { method: "POST", body: datos }); avisar("Logo actualizado."); pintarAjustes(m);
-    }));
-  }
   $("#yt-cred")?.addEventListener("change", intentar(async (e) => {
     const datos = new FormData(); datos.append("archivo", e.target.files[0]);
     await api("/api/youtube/credenciales", { method: "POST", body: datos }); avisar("Credenciales cargadas."); await refrescar(); pintarAjustes(m);

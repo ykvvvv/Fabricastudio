@@ -287,8 +287,21 @@ details > summary:hover { color: var(--texto); }
 .pestanas button { border: none; background: none; border-radius: 0; color: var(--tenue); border-bottom: 2px solid transparent; padding: 10px 12px; }
 .pestanas button:hover { background: none; color: var(--texto); }
 .pestanas button.activa { color: var(--texto); border-bottom-color: #ddd; }
-.diseno { display: grid; grid-template-columns: 1fr 270px; gap: 28px; align-items: start; }
-.diseno img { width: 100%; border-radius: var(--radio); border: 1px solid var(--borde); position: sticky; top: 20px; }
+/* Plantilla: formulario por secciones y vista previa en vivo que acompaña al desplazarse. */
+.plantilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 22px; align-items: start; }
+.pl-form { padding: 4px 22px; }
+.pl-form fieldset { border: 0; border-bottom: 1px solid var(--borde); margin: 0; padding: 20px 0 22px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.pl-form fieldset:last-child { border-bottom: 0; }
+.pl-form legend { float: left; width: 100%; padding: 0; font-size: 14px; font-weight: 500; color: var(--texto); }
+.pl-form legend + * { clear: both; }
+.pl-form .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
+.pl-vista { position: sticky; top: 20px; display: flex; flex-direction: column; }
+.pl-vista .formato-escena { padding: 6px 20px 20px; }
+.pl-vista .formato-escena img { width: min(100%, 250px); height: auto; box-shadow: var(--sombra-flota); transition: opacity var(--t-rapida); }
+.pl-vista.cargando img { opacity: .6; }
+.pl-vista .error { font-size: 13px; padding: 0 20px 14px; }
+.pl-vista .error:empty { display: none; }
+#pl-estado:empty { display: none; }
 .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
 .dato { display: grid; grid-template-columns: 150px 1fr; gap: 10px; font-size: 14px; padding: 8px 0; border-bottom: 1px solid var(--borde); }
 .dato:last-child { border: 0; } .dato > span:first-child { color: var(--tenue); }
@@ -376,10 +389,14 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 @media (max-width: 900px) {
   .dos-columnas { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
   .app:not(.plegada) .dos-columnas { grid-template-columns: 1fr; }     /* con la barra desplegada queda poco ancho */
-  .rejilla2, .detalle, .diseno { grid-template-columns: 1fr; }
+  .rejilla2, .detalle { grid-template-columns: 1fr; }
+  .plantilla { grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; }
+  /* Con la barra desplegada no caben dos columnas: la vista previa pasa arriba, como en móvil. */
+  .app:not(.plegada) .plantilla { grid-template-columns: 1fr; }
+  .app:not(.plegada) .pl-vista { position: static; order: -1; }
+  .app:not(.plegada) .pl-vista .formato-escena img { width: 170px; }
   .acceso-doble { grid-template-columns: minmax(0, 400px); justify-content: center; gap: 28px; }
   .detalle video, .detalle .hueco { max-width: 300px; margin: 0 auto; }
-  .diseno img { max-width: 260px; margin: 0 auto; display: block; position: static; }
   .dato { grid-template-columns: 1fr; gap: 2px; }
   .buscar input { width: 130px; }
 }
@@ -400,6 +417,9 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .galeria { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
   .cifras { grid-template-columns: 1fr; gap: 10px; } .cifra { min-height: 0; }
   .dos-columnas { grid-template-columns: 1fr; }
+  .plantilla { grid-template-columns: 1fr; }
+  .pl-vista { position: static; order: -1; }          /* en móvil, la vista previa va primero */
+  .pl-vista .formato-escena img { width: 170px; }
   .tabla-cola th:nth-child(3), .tabla-cola td:nth-child(3) { display: none; }
   .tabla-cola th, .tabla-cola td { padding: 12px 10px; }
   .modal-fondo { padding: 12px; }

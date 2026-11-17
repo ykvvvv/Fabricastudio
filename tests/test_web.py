@@ -46,3 +46,12 @@ def test_gsap_local_referenciado_e_intacto():
     # Sin la biblioteca el panel debe seguir funcionando: todo uso pasa por animar() o comprueba window.gsap.
     js = _texto("app.js")
     assert "const animar = () => !!window.gsap && !calma.matches;" in js
+
+
+def test_campos_de_la_plantilla_son_ajustes_reales():
+    """Un campo con la clave mal escrita se guardaría en vacío: el servidor ignora claves desconocidas."""
+    from fabrica_studio.config import AJUSTES_POR_DEFECTO
+    bloque = _texto("app.js").split("const SECCIONES_PLANTILLA = [")[1].split("\n];")[0]
+    claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in ("clasico", "completo")]   # opciones de «estilo»
+    assert len(claves) > 20 and len(claves) == len(set(claves))
+    assert set(claves) <= set(AJUSTES_POR_DEFECTO), set(claves) - set(AJUSTES_POR_DEFECTO)
