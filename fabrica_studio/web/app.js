@@ -601,6 +601,7 @@ function pintarTrabajo(m, completo) {
   if (t.estado === "renderizado" && !t.subir_solicitado) {
     botones += yt.canal_id ? h`<button class="primario" data-accion="subir" data-foco="b-subir">Subir en privado a ${yt.canal_nombre}</button>` : `<a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">Conectar YouTube para subir</a>`;
     botones += `<button data-accion="renderizar" data-foco="b-render">Renderizar de nuevo</button>`;
+    if (!t.youtube_id) botones += h`<button data-accion="editar-tiempos" data-foco="b-tiempos">${ic("tijera")}Editar tiempos</button>`;
   }
   if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
     const general = { completo: "pantalla completa", dividido: "vista dividida" }[S.estado.estilo] || "clásico";
@@ -778,6 +779,10 @@ const acciones = {
       const r = await api("/api/diagnostico?autoprueba=true");
       $("#diag").innerHTML = r.map((x) => h`<div class="dato"><span>${x.ok === true ? "✓" : x.ok === false ? "✗ Falla" : "– Opcional"} · ${x.nombre}</span><span class="${x.ok === false ? "error" : ""}">${x.detalle}</span></div>`).join("");
     } finally { b.disabled = false; }
+  }),
+  "editar-tiempos": intentar(async (b) => {          // web/editor.js
+    b.disabled = true; b.lastChild.textContent = "Preparando…";
+    try { await abrirEditorTiempos(S.detalle); } finally { b.disabled = false; b.lastChild.textContent = "Editar tiempos"; }
   }),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),

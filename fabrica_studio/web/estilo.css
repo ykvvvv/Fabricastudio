@@ -471,3 +471,72 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 }
 .soltar:focus-within { outline: 2px solid var(--acento); outline-offset: 2px; }
 button.primario.peligro { background: var(--mal); border-color: var(--mal); color: #2a1210; }
+
+/* ---------------------------------------------------------------- editor de tiempos (web/editor.js) */
+/* Lo conservado es la onda arena «iluminada»; lo cortado queda bajo un rayado oscuro. */
+.et:focus { outline: none; }
+.et { position: fixed; inset: 0; z-index: 40; background: var(--fondo); display: flex; flex-direction: column; overflow: hidden; }
+.et-cabeza { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--borde-suave); }
+.et-nombre { min-width: 0; margin-right: auto; }
+.et-nombre h2 { font-size: 16px; font-weight: 500; letter-spacing: -0.02em; }
+.et-nombre p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.et-historia { gap: 2px; flex-wrap: nowrap; }
+.et-escena { flex: 1 1 0; min-height: 150px; display: grid; place-items: center; padding: 14px 20px 6px; background: radial-gradient(ellipse at center, #19191b, var(--fondo) 70%); }
+.et-escena video { width: 100%; height: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; background: #000; min-height: 0; }
+.et-escena .nota { max-width: 520px; }
+.et-mando, .et-herramientas { display: flex; align-items: center; gap: 10px; padding: 8px 20px; flex-wrap: wrap; }
+.et-play { width: 44px; height: 44px; border-radius: 50%; padding: 0; background: var(--claro); border-color: var(--claro); color: var(--acento-tinta); }
+.et-play:hover { background: #fff; border-color: #fff; }
+.et-play .ic { width: 18px; height: 18px; fill: currentColor; }
+.et-reloj { font-size: 15px; letter-spacing: -0.01em; }
+.et-reloj b { font-weight: 600; }
+.et-resultado { margin-left: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; justify-content: flex-end; color: var(--tenue); }
+.et-resultado b { color: var(--acento); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-left: 4px; }
+.et-resultado.fuera b { color: var(--mal); }
+.et-aviso { color: var(--mal); font-size: 13px; }
+.et-zoom { display: flex; align-items: center; gap: 2px; }
+.et-zoom span { min-width: 34px; text-align: center; font-size: 13px; color: var(--tenue); }
+.et-herramientas { padding-top: 0; }
+.et-herramientas kbd, .et-ayuda kbd { font: inherit; font-size: 11px; color: var(--apagado); border: 1px solid #343437; border-radius: 3px; padding: 0 5px; margin-left: 2px; }
+.et-herramientas #et-completo { margin-left: auto; }
+
+.et-linea { overflow-x: auto; overflow-y: hidden; padding: 0 20px 6px; border-top: 1px solid var(--borde-suave); background: var(--lateral); scrollbar-color: #3d3d42 transparent; }
+.et-lienzo { position: relative; width: 100%; min-width: 100%; user-select: none; -webkit-user-select: none; }
+.et-regla { position: relative; height: 26px; overflow: hidden; cursor: ew-resize; touch-action: none; border-bottom: 1px solid var(--borde-suave); }
+.et-regla span { position: absolute; bottom: 4px; font-size: 11px; color: var(--apagado); padding-left: 4px; border-left: 1px solid #3d3d42; line-height: 1; height: 13px; white-space: nowrap; }
+.et-onda { position: relative; height: 104px; margin: 8px 0 6px; touch-action: pan-x; cursor: pointer; }
+.et-onda svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.et-onda path { fill: var(--acento); }
+.et-corte { position: absolute; top: -2px; bottom: -2px; background: repeating-linear-gradient(135deg, #0c0c0de6 0 5px, #0c0c0db3 5px 10px); border-inline: 1px dashed #4a4a50; pointer-events: none; }
+.et-tramo { position: absolute; top: 0; bottom: 0; border-block: 2px solid #d8aa9166; background: #d8aa9112; border-radius: 6px; }
+.et-tramo.elegido { border-color: var(--acento); background: #d8aa9126; }
+.et-asa { position: absolute; top: -2px; bottom: -2px; width: 12px; min-height: 0; padding: 0; border: 0; border-radius: 6px 0 0 6px; background: var(--acento); cursor: ew-resize; touch-action: none; z-index: 2; }
+.et-asa.ini { left: 0; } .et-asa.fin { right: 0; border-radius: 0 6px 6px 0; }
+.et-asa::before { content: ""; position: absolute; inset: 0 -10px; }                       /* área de toque más ancha que la barra */
+.et-asa::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 22px; margin: -11px 0 0 -1px; background: var(--acento-tinta); border-radius: 1px; opacity: .6; }
+.et-asa:hover, .et-asa:focus-visible { background: #f0c6ae; }
+.et-asa:focus-visible { outline-offset: 1px; }
+.et-palabras { position: relative; height: 38px; touch-action: none; }
+.et-palabra { position: absolute; top: 4px; bottom: 4px; min-height: 0; min-width: 3px; padding: 0 3px; border: 0; border-radius: 4px; background: #1d1d1f; color: #c9c9cd; font-size: 12px; font-weight: 400; justify-content: flex-start; overflow: hidden; white-space: nowrap; box-shadow: inset 1px 0 0 #0c0c0d; }
+.et-palabra:hover { background: #2a2a2d; }
+.et-palabra.fuera { color: var(--apagado); background: none; text-decoration: line-through; text-decoration-color: #df969099; }
+.et-palabra.sel { background: var(--acento); color: var(--acento-tinta); text-decoration: none; }
+.et-palabra:focus-visible { outline-offset: 0; z-index: 1; }
+.et-cabezal { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--claro); margin-left: -1px; pointer-events: none; z-index: 3; }
+.et-cabezal-asa { position: absolute; top: 0; left: -8px; width: 14px; height: 18px; background: var(--claro); clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); pointer-events: auto; cursor: ew-resize; touch-action: none; }
+.et-cabezal-asa:focus-visible { outline: none; background: var(--acento); }
+
+.et-pie { display: flex; align-items: center; gap: 9px; padding: 12px 20px; border-top: 1px solid var(--borde-suave); flex-wrap: wrap; }
+.et-ayuda { margin-right: auto; }
+@media (pointer: coarse) {
+  .et-ayuda { display: none; }                      /* la ayuda es de teclado */
+  .et-herramientas kbd { display: none; }
+  .et-asa { width: 16px; }
+  .et-palabras { height: 46px; }
+  .et-palabra { font-size: 13px; }
+}
+@media (max-width: 680px) {
+  .et-cabeza, .et-mando, .et-herramientas, .et-pie { padding-inline: 12px; }
+  .et-linea { padding-inline: 12px; }
+  .et-resultado { margin-left: 0; width: 100%; justify-content: flex-start; order: 5; }
+}

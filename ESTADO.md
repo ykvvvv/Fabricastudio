@@ -312,6 +312,7 @@ código de acceso por sesión (aquí hay vinculación por dispositivo), la plant
 | Subtítulos | Bloques cortos sincronizados, editables desde el panel. |
 | Render | 1080×1920, H.264 + AAC, tarjeta con banner, video centrado, subtítulos, logo y nombre. Ajustes con maqueta en vivo. |
 | Video largo | Transcribe, propone momentos (Gemini o heurística local), permite ajustar tiempos y crea clips que reutilizan la transcripción. |
+| Editor de tiempos | En el detalle de un clip renderizado: onda, tramos conservados, recortar bordes, dividir, quitar, cortar por palabras, vista previa que salta lo cortado, deshacer/rehacer. No destructivo (`edicion.py`, `web/editor.js`). |
 | YouTube | OAuth de escritorio, verificación de canal por ID, subida reanudable siempre privada, protección contra duplicados. |
 | Panel | Cola por etapas, biblioteca, vista previa, edición, ajustes, proveedores, dispositivos. Escritorio y tablet. |
 | Acceso | PC directo; otros dispositivos con código de un solo uso. Acciones sensibles solo desde el PC. |
@@ -649,3 +650,22 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   (tiempos del original). `PUT /api/trabajos/<id>/edicion` `{tramos: [[ini, fin], ...]}`: se ordenan y unen;
   total entre 3 y 180 s; `[]` o el clip completo quitan la edición. El original se reproduce en `/media/<id>/entrada`.
   92 pruebas. **Falta la interfaz** (Claude Code del PC).
+- **2026-11-17 · Claude Code (PC Windows)** — **Editor de tiempos, interfaz** (`web/editor.js` nuevo, `app.js`, `estilo.css`,
+  `iconos.js`, `index.html`). Botón «Editar tiempos» en el detalle de un clip `renderizado` sin subir (no en videos largos).
+  Pantalla completa sobre el detalle: reproductor del original (`/media/<id>/entrada`), regla con cabezal arrastrable, onda
+  (picos) en arena con lo cortado bajo un rayado oscuro, zoom 1×–32× (botones, + / −, Ctrl+rueda), pista de palabras.
+  Bordes de cada tramo arrastrables (se imantan al borde de la palabra más cercana; el video muestra el cuadro del borde),
+  «Dividir» (S), «Quitar tramo» (Supr); palabras: clic mueve el cabezal, Mayús+clic, arrastrar o Mayús+flechas eligen
+  varias y Supr las corta (si ya estaban cortadas, «Recuperar palabras»). La vista previa salta lo cortado y se detiene al
+  final del último tramo. Duración resultante siempre visible y aviso fuera de 3–180 s (no deja guardar).
+  Deshacer/rehacer (botones, Ctrl+Z / Ctrl+Y), «Volver al clip completo», «Guardar y renderizar» (PUT /edicion); salir con
+  cambios pide confirmación. GSAP: la onda se dibuja al abrir, el contador anima el cambio de duración, los cortes nuevos
+  aparecen con un fundido (todo respeta «reducir movimiento»). Atajos en todo el documento mientras está abierto; el resto
+  del panel queda `inert`. **Arreglado en el servidor:** la ficha seguía mostrando la duración del original tras editar
+  (caché de `_duracion` en `server.py`). Pruebas: `tests/test_editor_js.py` (operaciones de tramos con Node; se omite si
+  Node no está instalado) y ampliadas `test_web.py` y `test_edicion.py`. 95 pasan. Playwright con un clip de prueba de 40 s
+  y datos temporales: escritorio 1440×900 (recortar, dividir, quitar, cortar por palabras, deshacer, rehacer, vista previa,
+  guardar: el `short.mp4` nuevo dura 21,2 s, lo previsto) y tablet emulada 920×1400 con toques reales vía CDP (recortar con
+  el dedo, dividir, quitar, elegir palabras arrastrando, cortar, deshacer/rehacer, deslizar la onda desplaza sin cambiar
+  nada). Capturas en `docs/diseno/capturas-tiempos/`. **No probado** en la MatePad real, con un clip real ni con lector de
+  pantalla. Límite: la onda tiene 400 puntos, con mucho zoom se ve gruesa.

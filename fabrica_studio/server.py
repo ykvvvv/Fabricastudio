@@ -293,7 +293,9 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
     @app.put("/api/trabajos/{jid}/edicion")
     async def editar_tiempos(jid: str, request: Request):
-        return _publico(fab.editar_tiempos(jid, (await request.json()).get("tramos", [])))
+        t = fab.editar_tiempos(jid, (await request.json()).get("tramos", []))
+        duraciones.pop(jid, None)                 # el clip cambia de duración
+        return _publico(t)
 
     @app.put("/api/trabajos/{jid}/textos")
     async def editar_textos(jid: str, request: Request):

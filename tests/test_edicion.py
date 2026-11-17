@@ -76,6 +76,9 @@ def test_api_de_edicion(fabrica, clip8):
     fabrica._ejecutar(t)
     linea = pc.get(f"/api/trabajos/{t['id']}/linea").json()
     assert linea["tramos"] == [[0.0, linea["duracion"]]] and not linea["editado"]
+    assert abs(pc.get(f"/api/trabajos/{t['id']}").json()["duracion"] - 8) < 0.2
     assert pc.put(f"/api/trabajos/{t['id']}/edicion", json={"tramos": [[0, 1]]}).status_code == 400
     r = pc.put(f"/api/trabajos/{t['id']}/edicion", json={"tramos": [[1, 6]]})
     assert r.status_code == 200 and r.json()["estado"] == "pendiente"
+    fabrica._ejecutar(fabrica.db.trabajo(t["id"]))
+    assert abs(pc.get(f"/api/trabajos/{t['id']}").json()["duracion"] - 5) < 0.2     # la ficha no muestra la del original

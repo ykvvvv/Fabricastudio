@@ -19,7 +19,8 @@ def test_el_panel_no_carga_nada_de_internet():
         if archivo.suffix in (".html", ".css"):
             assert not re.search(r"""(src|href)\s*=\s*["']?(https?:)?//|url\(\s*["']?(https?:)?//|@import""",
                                  archivo.read_text(encoding="utf-8")), archivo.name
-    assert not re.search(r"""import\s*\(\s*["']https?:|<script[^>]+https?:""", _texto("app.js"))
+    for js in ("app.js", "editor.js"):
+        assert not re.search(r"""import\s*\(\s*["']https?:|<script[^>]+https?:|fetch\(\s*["'`]https?:""", _texto(js)), js
 
 
 def test_pantallas_de_acceso_servidas_y_enlazadas(fabrica):
@@ -28,12 +29,13 @@ def test_pantallas_de_acceso_servidas_y_enlazadas(fabrica):
                   'autocomplete="current-password"', 'autocomplete="new-password"'):
         assert pieza in html, pieza
     js = _texto("app.js")
+    assert '<script src="editor.js">' in html
     # Cada data-accion del HTML y del propio app.js tiene su función en `acciones`.
     definidas = set(re.findall(r'^  "?([a-z-]+)"?: ', js.split("const acciones = {")[1].split("\n};")[0], re.M))
     usadas = set(re.findall(r'data-accion="([a-z-]+)"', html + js))
     assert usadas <= definidas, usadas - definidas
     iconos = _texto("iconos.js")
-    for nombre in set(re.findall(r'data-icono="([a-z-]+)"', html)) | set(re.findall(r'\bic\("([a-z-]+)"\)', js)):
+    for nombre in set(re.findall(r'data-icono="([a-z-]+)"', html)) | set(re.findall(r'\b(?:ic|icono)\("([a-z-]+)"\)', js + _texto("editor.js"))):
         assert re.search(rf'^  "?{nombre}"?:', iconos, re.M), nombre
 
 

@@ -23,6 +23,11 @@ const ICONOS = {
   rehacer: '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>',
   ojo: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   salir: '<path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9"/>',
+  tijera: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
+  reproducir: '<path d="M7 4.5v15l12-7.5-12-7.5Z"/>',
+  pausa: '<path d="M8 5v14M16 5v14"/>',
+  acercar: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/>',
+  alejar: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/>',
   papelera:'<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/>',
 };
 const icono = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ICONOS.pelicula}</svg>`;
