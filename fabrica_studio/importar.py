@@ -19,7 +19,26 @@ def validar_enlace(url: str) -> str:
     if not any(host == h or host.endswith("." + h) for h in HOSTS_COMPATIBLES):
         raise ErrorEtapa(f"Fuente no compatible: {host}. Por ahora solo se aceptan enlaces públicos de Kick. "
                          "Puedes descargar el video por tu cuenta e importarlo como archivo.", "entrada")
+    if not _es_video_de_kick(p):
+        raise ErrorEtapa("Ese enlace no es de un clip ni de un video: parece una página del canal o de su lista "
+                         "de clips. En Kick abre un clip concreto y copia su dirección; debe verse como "
+                         "https://kick.com/canal/clips/clip_…", "entrada")
     return url
+
+
+def _es_video_de_kick(p) -> bool:
+    """Acepta solo enlaces a un clip o a un video concreto, no páginas de canal o listas."""
+    from urllib.parse import parse_qs
+    partes = [x for x in p.path.split("/") if x]
+    if parse_qs(p.query).get("clip", [""])[0].startswith("clip_"):      # kick.com/canal?clip=clip_…
+        return True
+    if len(partes) == 3 and partes[1] == "clips" and partes[2].startswith("clip_"):   # /canal/clips/clip_…
+        return True
+    if len(partes) == 3 and partes[1] == "videos" and len(partes[2]) >= 8:          # /canal/videos/<id>
+        return True
+    if len(partes) == 2 and partes[0] == "video" and len(partes[1]) >= 8:           # /video/<id>
+        return True
+    return False
 
 
 def descargar(url: str, carpeta: Path) -> Path:
@@ -31,7 +50,7 @@ def descargar(url: str, carpeta: Path) -> Path:
         raise ErrorEtapa("Falta yt-dlp. Ejecuta scripts\\instalar.ps1.", "herramienta")
     opciones = {
         "outtmpl": str(carpeta / "entrada.%(ext)s"), "format": "bv*+ba/b", "merge_output_format": "mp4",
-        "noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True,
+        "noplaylist": True, "playlistend": 1, "quiet": True, "no_warnings": True, "noprogress": True,
         "retries": 3, "socket_timeout": 30, "overwrites": True,
     }
     try:

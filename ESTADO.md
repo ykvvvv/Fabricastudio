@@ -423,3 +423,7 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-16 · Claude Code (PC Windows)** — Beta 0.1 de `Descargas\FabricaStudio` revisada en solo lectura (sin
   credenciales). Panel nuevo, fase 1: estructura, Resumen, Cola con filtros, ventana «Nuevo clip», campo
   `duracion` en la API. 62 pruebas. Siguiente: Cristóbal revisa en el navegador y pide la fase 2.
+- **2026-11-17 · Claude Code (nube)** — `importar.py`: solo se aceptan enlaces de Kick a un clip
+  (`/canal/clips/clip_…`, `?clip=clip_…`) o a un video (`/canal/videos/<id>`, `/video/<id>`). Antes se
+  aceptaba la página de clips del canal y se intentaba descargarla. Límite de un solo video por enlace
+  (`playlistend`). 63 pruebas. Falta probar con un enlace real de Kick en el PC.

@@ -170,3 +170,20 @@ def test_clip_con_franjas_negras_se_recorta_al_ancho_completo(fabrica, tmp_path)
     fabrica.renderizar_de_nuevo(t["id"])
     t = _procesar(fabrica, t)
     assert t["datos"]["disposicion"]["video"]["w"] < 1080
+
+
+def test_solo_se_aceptan_enlaces_a_un_clip_o_video_de_kick(fabrica):
+    from fabrica_studio import importar
+    validos = ["https://kick.com/jongottii/clips/clip_01JTZ79TQ46787D3MCG4FAY56P",
+               "https://kick.com/jongottii?clip=clip_01JTZ79TQ46787D3MCG4FAY56P",
+               "https://kick.com/jongottii/videos/3f9a2c1e-1111-2222-3333-444455556666",
+               "https://kick.com/video/3f9a2c1e-1111-2222-3333-444455556666"]
+    for url in validos:
+        assert importar.validar_enlace(url) == url
+    invalidos = ["https://kick.com/jongottii/clips?sort=date&range=all", "https://kick.com/jongottii",
+                 "https://kick.com/jongottii/clips", "https://kick.com/", "https://kick.com/jongottii/videos"]
+    for url in invalidos:
+        with pytest.raises(ErrorEtapa) as e:
+            fabrica.importar_enlace(url)
+        assert "no es de un clip" in str(e.value)
+    assert fabrica.db.trabajos() == []                     # no se crea ningún trabajo
