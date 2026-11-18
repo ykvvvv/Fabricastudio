@@ -887,3 +887,9 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   - `.github/workflows/windows.yml`: en un Windows real ejecuta pytest, arma el .exe con FFmpeg, prueba el
     programa armado (diagnóstico sin FFmpeg en el PATH, panel respondiendo), compila el instalador y lo prueba
     con instalación silenciosa. El instalador queda como artefacto (7 días). Sin firma digital (SmartScreen avisa).
+  - **Resultado en Windows (GitHub Actions, ejecución 44379578287, Windows Server 2025, Python 3.12):** pytest
+    **127 passed, 2 skipped**; programa armado: diagnóstico «Todo lo necesario funciona» con FFmpeg incluido
+    (9.0.2 essentials de gyan.dev) y autoprueba de render 1080×1920; panel respondió (0.4.0); instalador
+    `FabricaStudio-Setup-0.4.0.exe` de **184 MB**, instalación silenciosa OK y el programa instalado arranca.
+    Pendiente: probar el instalador en el PC de Cristóbal (SmartScreen, accesos directos, Defender) y en el PC de
+    un amigo sin Python ni FFmpeg.
