@@ -71,17 +71,30 @@ def normalizar_descripcion(descripcion, respaldo: str = "", permitir_gta6: bool 
     return f"{texto}\n{' '.join(limpias[:HASHTAGS_MAX])}"
 
 
-def normalizar(propuesta: dict, transcripcion: str = "", manual: bool = False) -> dict:
+def _con_juego(titulo, juego: str = "GTA 6") -> str:
+    """Asegura que el título mencione el juego (sin duplicarlo) antes de normalizarlo."""
+    t = _limpio(titulo)
+    if menciona_gta6(t):
+        return t
+    return f"{juego} | {t}" if t else juego
+
+
+def normalizar(propuesta: dict, transcripcion: str = "", manual: bool = False, tema: str = "",
+               hashtags_fijos: str = "") -> dict:
     """Normaliza una propuesta (de la IA o del usuario) y comprueba que sea utilizable.
 
-    #GTA6 solo se conserva si la transcripción menciona el juego, o si lo escribe
-    el usuario a mano (`manual=True`).
+    #GTA6 solo se conserva si la transcripción menciona el juego, si lo escribe el usuario
+    a mano (`manual=True`) o si el usuario declaró que todo su contenido es de GTA 6
+    (`tema="gta6"`). En ese modo el título siempre menciona GTA 6, se añaden los hashtags
+    fijos y el clip va en la categoría Gaming.
     """
     if not isinstance(propuesta, dict):
         raise ErrorEtapa("La propuesta de textos no es un objeto con banner, titulo y descripcion.", "formato")
-    gta = manual or menciona_gta6(transcripcion)
+    modo_gta = tema == "gta6"
+    gta = manual or modo_gta or menciona_gta6(transcripcion)
     banner = normalizar_banner(propuesta.get("banner"))
-    titulo = normalizar_titulo(propuesta.get("titulo"))
+    titulo = normalizar_titulo(_con_juego(propuesta.get("titulo")) if modo_gta and not manual
+                               else propuesta.get("titulo"))
     cuerpo = titulo[: -len(" #Shorts")].strip() if titulo.endswith("#Shorts") else titulo
     faltan = [n for n, v in (("banner", banner), ("titulo", cuerpo)) if not v]
     if faltan:
@@ -89,12 +102,11 @@ def normalizar(propuesta: dict, transcripcion: str = "", manual: bool = False) -
     hashtags = propuesta.get("hashtags")
     if isinstance(hashtags, str):
         hashtags = hashtags.split()
+    fijos = _HASHTAG.findall(hashtags_fijos or "") if modo_gta else []
     descripcion = normalizar_descripcion(propuesta.get("descripcion"), respaldo=cuerpo, permitir_gta6=gta,
-                                         hashtags_extra=[str(h) for h in hashtags or []])
-    if not gta:
-        banner = banner  # el banner no lleva hashtags; nada que filtrar
+                                         hashtags_extra=fijos + [str(h) for h in hashtags or []])
     return {"banner": banner, "titulo": titulo, "descripcion": descripcion,
-            "es_gaming": bool(propuesta.get("es_gaming", False))}
+            "es_gaming": True if modo_gta else bool(propuesta.get("es_gaming", False))}
 
 
 # ---------------------------------------------------------------- proveedor local
@@ -286,10 +298,21 @@ def pedir_json(clave: str, instrucciones: str, contenido: str, esquema: dict, mo
             c.close()
 
 
+_INSTRUCCIONES_GTA6 = """
+
+Todo el contenido de este canal es de GTA 6 (Grand Theft Auto VI). Escribe para la comunidad de GTA 6:
+- titulo: debe mencionar «GTA 6» de forma natural y destacar lo que pasa en la partida o la reacción del streamer.
+- banner: gancho corto sobre el momento (puede usar términos del juego: policía, persecución, misión, Vice City…
+  solo si aparecen o se deducen claramente de la transcripción).
+- hashtags: incluye #GTA6 y otros pertinentes al momento.
+- es_gaming: true.
+No inventes misiones, personajes, lugares ni sucesos del juego que no estén en la transcripción."""
+
+
 def generar_gemini(transcripcion: str, creador: str, clave: str, modelo_preferido: str = "",
-                   cliente: httpx.Client | None = None, espera: float = 2.0) -> tuple[dict, str]:
+                   cliente: httpx.Client | None = None, espera: float = 2.0, tema: str = "") -> tuple[dict, str]:
     """Devuelve (propuesta de textos, modelo usado)."""
-    return pedir_json(clave, _INSTRUCCIONES,
+    return pedir_json(clave, _INSTRUCCIONES + (_INSTRUCCIONES_GTA6 if tema == "gta6" else ""),
                       f"Creador: {creador}\n<transcripcion>\n{transcripcion[:6000]}\n</transcripcion>",
                       _ESQUEMA, modelo_preferido, cliente, espera)
 
@@ -305,19 +328,19 @@ def leer_clave_gemini(secretos: Path) -> str:
 
 
 def generar(transcripcion: str, creador: str, proveedor: str, clave: str, modelo_preferido: str = "",
-            cliente: httpx.Client | None = None) -> dict:
+            cliente: httpx.Client | None = None, tema: str = "", hashtags_fijos: str = "") -> dict:
     """Genera y normaliza los textos. Devuelve también de dónde salieron y, si la IA
     falló, por qué (para mostrarlo y permitir regenerar sin perder lo demás)."""
     aviso = ""
     if proveedor in ("auto", "gemini") and clave and transcripcion.strip():
         try:
-            propuesta, modelo = generar_gemini(transcripcion, creador, clave, modelo_preferido, cliente)
-            textos = normalizar(propuesta, transcripcion)
+            propuesta, modelo = generar_gemini(transcripcion, creador, clave, modelo_preferido, cliente, tema=tema)
+            textos = normalizar(propuesta, transcripcion, tema=tema, hashtags_fijos=hashtags_fijos)
             return {**textos, "origen": f"gemini:{modelo}", "aviso": ""}
         except ErrorEtapa as e:
             log.warning("Gemini falló (%s): %s", e.tipo, e)
             aviso = f"Textos generados con el borrador local porque Gemini falló ({e.tipo}): {e}"
     elif proveedor == "gemini" and not clave:
         aviso = "Textos generados con el borrador local: no hay clave de Gemini configurada."
-    textos = normalizar(generar_local(transcripcion, creador), transcripcion)
+    textos = normalizar(generar_local(transcripcion, creador), transcripcion, tema=tema, hashtags_fijos=hashtags_fijos)
     return {**textos, "origen": "local", "aviso": aviso}

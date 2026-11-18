@@ -820,3 +820,9 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   el análisis tiene un límite de tiempo (`LIMITE_MINIMO` 120 s o 8 × duración): si se supera, se corta y el clip
   sigue con lo analizado y un aviso. 2 pruebas nuevas (2 MB de avisos; FFmpeg colgado). 120 pruebas.
   Pendiente: confirmar en el PC con el clip `clip_01M7P6XP9GSGYN0F0WP3248PBB`.
+- **2026-11-18 · Claude Code (nube)** — **Modo GTA 6** (pedido por Cristóbal: desde ahora todos los clips son de
+  GTA 6). Ajustes `tema` (`""` | `"gta6"`) y `hashtags_fijos` (por defecto `#GTA6 #GTAVI #GTA #Gaming`). Con `gta6`:
+  el título siempre menciona «GTA 6» (si no, se antepone «GTA 6 | »), se añaden los hashtags fijos, categoría
+  Gaming, y Gemini recibe instrucciones para títulos de GTA 6 sin inventar misiones ni sucesos. Regla 5 de
+  CLAUDE.md actualizada. 122 pruebas. **Falta en el panel:** selector «Tema del canal» y campo «Hashtags fijos»
+  (Ajustes → Proveedores). Los clips ya procesados se actualizan con «Regenerar automáticamente».

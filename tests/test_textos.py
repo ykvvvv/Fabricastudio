@@ -85,3 +85,31 @@ def test_gemini_sin_cuota_cae_al_borrador_local_y_explica(monkeypatch):
 def test_los_secretos_no_llegan_a_los_mensajes():
     limpio = sin_secretos("fallo en https://x/y?key=AIzaSyA1234567890abcdefghijklmnop Bearer ya29.abc-def")
     assert "AIza" not in limpio and "ya29" not in limpio
+
+
+def test_modo_gta6():
+    p = {"banner": "lo persiguió la policía", "titulo": "Chetalonso escapa de la policía",
+         "descripcion": "Escapa en una moto", "hashtags": ["#Persecucion"], "es_gaming": False}
+    r = textos.normalizar(p, "me persigue la policía", tema="gta6", hashtags_fijos="#GTA6 #GTAVI #GTA #Gaming")
+    assert r["titulo"].startswith("GTA 6 | ") and r["titulo"].endswith("#Shorts") and len(r["titulo"]) <= 80
+    assert r["descripcion"].split("\n")[1] == "#Shorts #GTA6 #GTAVI #GTA #Gaming #Persecucion"
+    assert r["es_gaming"] is True
+    ya = textos.normalizar({**p, "titulo": "Su primera persecución en GTA 6"}, "", tema="gta6", hashtags_fijos="#GTA6")
+    assert ya["titulo"] == "Su primera persecución en GTA 6 #Shorts"                    # no duplica
+    sin = textos.normalizar({**p, "descripcion": "x #GTA6"}, "hablando de comida")
+    assert "#GTA6" not in sin["descripcion"] and not sin["es_gaming"]                    # sin el modo, igual que antes
+
+
+def test_modo_gta6_con_gemini_y_local(monkeypatch):
+    textos._modelos_cache.update(t=0)
+    vistas = []
+
+    def falsa(clave, instr, contenido, esquema, *a, **k):
+        vistas.append(instr)
+        return {"banner": "huida", "titulo": "Se escapa", "descripcion": "Huye", "hashtags": [], "es_gaming": False}, "gemini-9"
+    monkeypatch.setattr(textos, "pedir_json", falsa)
+    r = textos.generar("me escapo de la policía", "Chetalonso", "auto", "clave", tema="gta6", hashtags_fijos="#GTA6")
+    assert "GTA 6" in vistas[0] and "No inventes misiones" in vistas[0]
+    assert r["titulo"].startswith("GTA 6 | ") and "#GTA6" in r["descripcion"]
+    r = textos.generar("me escapo de la policía.", "Chetalonso", "local", "", tema="gta6", hashtags_fijos="#GTA6")
+    assert "GTA 6" in r["titulo"] and r["es_gaming"]

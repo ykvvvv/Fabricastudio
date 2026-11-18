@@ -194,7 +194,8 @@ class Fabrica:
             texto_corregido = " ".join(p["texto"] for p in subtitulos.corregir_palabras(
                 tr["palabras"], subtitulos.leer_correcciones(a["correcciones"]))) or tr["texto"]
             gen = textos.generar(texto_corregido, a["creador"], a["proveedor_textos"],
-                                 textos.leer_clave_gemini(self.rutas.secretos), a["gemini_modelo"])
+                                 textos.leer_clave_gemini(self.rutas.secretos), a["gemini_modelo"],
+                                 tema=a["tema"], hashtags_fijos=a["hashtags_fijos"])
             _escribir(f_ia, gen)
         gen = _leer(f_ia)
         t = self.db.trabajo(jid)

@@ -101,7 +101,11 @@ AJUSTES_POR_DEFECTO: dict = {
     "correcciones": "",
     # --- Textos ---
     "proveedor_textos": "auto",       # auto (Gemini si hay clave, si no local), gemini, local
-    "gemini_modelo": "",              # vacío = elegir entre los modelos que la API liste
+    "gemini_modelo": "",
+    # Tema fijo del canal. "gta6": el usuario declara que todo el contenido es de GTA 6 → títulos con «GTA 6»,
+    # hashtags fijos y categoría Gaming. "" = detectar por la transcripción.
+    "tema": "",
+    "hashtags_fijos": "#GTA6 #GTAVI #GTA #Gaming",              # vacío = elegir entre los modelos que la API liste
     "momentos_cantidad": 6,           # propuestas por video largo
     "momentos_auto": False,           # crear Shorts de las propuestas sin esperar a que el usuario elija
     "momentos_auto_solo_ia": True,    # automático solo si las propuestas vienen de Gemini (la heurística es débil)
@@ -131,7 +135,7 @@ LIMITES: dict = {
 }
 OPCIONES: dict = {
     "estilo": ("clasico", "completo", "dividido", "auto"), "whisper_dispositivo": ("auto", "cpu", "cuda"),
-    "proveedor_textos": ("auto", "gemini", "local"),
+    "proveedor_textos": ("auto", "gemini", "local"), "tema": ("", "gta6"),
 }
 COLORES = ("banner_color", "sub_color_resalte", "nombre_color")
 
