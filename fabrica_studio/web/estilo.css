@@ -28,9 +28,9 @@ p { margin: 0; } a { color: inherit; }
 svg.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------------------------------------------------------------- estructura */
-/* La barra lateral se pliega animando la columna de la rejilla (única animación de tamaño del panel).
-   Su contenido mide siempre 195 px: al plegar no se recoloca, solo queda oculto, y los iconos no se mueven. */
-.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100%; transition: grid-template-columns .22s var(--curva); }
+/* La columna de la barra lateral cambia de golpe; app.js (animarLateral) desliza la barra y el contenido con
+   clip-path y transform. Su contenido mide siempre 195 px: al plegar no se recoloca, solo queda oculto. */
+.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100%; }
 .lateral { background: var(--lateral); border-right: 1px solid var(--borde-suave); padding: 28px 14px 20px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow: hidden auto; z-index: 20; }
 .lateral > * { width: 195px; flex-shrink: 0; }
 .marca-texto, .nav-texto, .espacio > div:last-child, .tarjeta-pc, .perfil > div:last-child { animation: aparece .22s ease-out; }

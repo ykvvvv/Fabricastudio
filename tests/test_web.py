@@ -29,7 +29,9 @@ def test_pantallas_de_acceso_servidas_y_enlazadas(fabrica):
                   'autocomplete="current-password"', 'autocomplete="new-password"'):
         assert pieza in html, pieza
     js = _texto("app.js")
-    assert '<script src="editor.js">' in html and html.index('src="sondeo.js"') < html.index('src="app.js"')
+    assert html.index('src="sondeo.js"') < html.index('src="app.js"')
+    # El editor de tiempos no se carga al abrir el panel: app.js lo descarga al primer uso.
+    assert 'src="editor.js"' not in html and 's.src = "editor.js"' in js
     # Cada data-accion del HTML y del propio app.js tiene su función en `acciones`.
     definidas = set(re.findall(r'^  "?([a-z-]+)"?: ', js.split("const acciones = {")[1].split("\n};")[0], re.M))
     usadas = set(re.findall(r'data-accion="([a-z-]+)"', html + js))
@@ -75,8 +77,16 @@ def test_el_panel_se_revalida_tras_actualizar(fabrica):
         assert pc.get(ruta).headers["cache-control"] == "no-cache", ruta
 
 
-def test_texto_de_copia_en_curso_coincide_con_el_servidor():
-    """El sondeo sigue activo mientras un archivo se copia a la carpeta vigilada; lo reconoce por este texto."""
-    texto = "Esperando a que termine de copiarse"
-    assert texto in (WEB.parent / "pipeline.py").read_text(encoding="utf-8")
-    assert f'startsWith("{texto}")' in _texto("app.js")
+def test_sondeo_activo_mientras_se_copia_a_la_carpeta(fabrica):
+    """El panel usa el campo `copiando` de /api/estado (no compara el texto) y el servidor lo envía."""
+    from fabrica_studio.pipeline import MENSAJE_COPIANDO
+    js = _texto("app.js")
+    assert "pendientes.some((p) => p.copiando)" in js and MENSAJE_COPIANDO.rstrip("…") not in js
+    fabrica.carpeta_estado.update({"a.mp4": MENSAJE_COPIANDO, "b.mp4": "Este archivo ya se importó."})
+    pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765", client=("127.0.0.1", 1))
+    pendientes = {p["archivo"]: p["copiando"] for p in pc.get("/api/estado").json()["carpeta"]["pendientes"]}
+    assert pendientes == {"a.mp4": True, "b.mp4": False}
+
+
+def test_maqueta_del_resumen_pide_el_tamano_que_muestra():
+    assert "/api/diseno/vista?ancho=352" in _texto("app.js")      # se ve a 176×313 (352 para pantallas 2×)

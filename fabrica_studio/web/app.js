@@ -359,7 +359,21 @@ function alternarLateral() {
   }
   plegada = !plegada;
   try { localStorage.setItem("fabrica.lateral", plegada ? "plegada" : "abierta"); } catch (e) { /* no se recuerda entre visitas */ }
+  const antes = $("#lateral").offsetWidth;
   ponerLateral();
+  animarLateral(antes);
+}
+// Plegar/desplegar: la rejilla cambia una sola vez (un cálculo de maquetación) y lo que se ve se desliza con
+// transform y clip-path, que no recalculan la maquetación en cada cuadro (antes se animaba grid-template-columns).
+function animarLateral(antes) {
+  const lat = $("#lateral"), despues = lat.offsetWidth, ancho = Math.max(antes, despues);
+  if (calma.matches || antes === despues) return;
+  lat.getAnimations().forEach((a) => a.cancel()); $(".cuerpo").getAnimations().forEach((a) => a.cancel());
+  const tiempo = { duration: 220, easing: "cubic-bezier(.3, .7, .2, 1)" };        // --t-rapida y --curva
+  lat.style.width = `${ancho}px`;                 // al plegar, la barra sigue ancha (sobre el contenido) mientras se recorta
+  lat.animate({ clipPath: [`inset(0 ${ancho - antes}px 0 0)`, `inset(0 ${ancho - despues}px 0 0)`] }, tiempo)
+    .finished.catch(() => {}).finally(() => { lat.style.width = ""; });
+  $(".cuerpo").animate({ transform: [`translateX(${antes - despues}px)`, "none"] }, tiempo);
 }
 const cerrarMenu = () => ponerLateral();
 movil.addEventListener("change", cerrarMenu);
@@ -405,17 +419,22 @@ function anunciar(antes) {
 // (carpeta vigilada, otro dispositivo, sesión) y nada con la pestaña oculta.
 const SONDEO_ACTIVO = 2000, SONDEO_REPOSO = 15000;
 let detalleLeido = 0;
-// Una subida pedida no cuenta mientras la cuota de YouTube tenga las subidas en pausa (pueden ser horas).
-// shortcut: la copia en curso a la carpeta vigilada se reconoce por el texto del servidor (pipeline.revisar_carpeta);
-// cuando /api/estado exponga un campo propio, usarlo (tarea anotada en ESTADO.md).
-const copiando = (p) => p.motivo.startsWith("Esperando a que termine de copiarse");
-const algoAvanza = () => !S.conectado || S.estado.carpeta.pendientes.some(copiando)
+// Una subida pedida no cuenta mientras la cuota de YouTube tenga las subidas en pausa (pueden ser horas);
+// un archivo que aún se copia a la carpeta vigilada sí (carpeta.pendientes[].copiando).
+const algoAvanza = () => !S.conectado || S.estado.carpeta.pendientes.some((p) => p.copiando)
   || S.estado.trabajos.some((t) => enCola(t) || (t.subir_solicitado && !S.estado.subidas_pausadas_hasta));
+// Huella de lo que muestra el panel: si una consulta trae lo mismo, no se reconstruye nada (antes se repintaba en cada ciclo).
+let huellaPintada = "";
+const huellaDatos = () => JSON.stringify([S.estado, S.detalle, S.conectado, S.jid]);
 const sondeo = crearSondeo({        // web/sondeo.js
   consultar,
   // Lo recién completado se compara con lo último que se mostró, aunque se encadenen consultas; el primer pintado es completo.
   alEmpezar: () => ({ antes: S.estado, primera: !S.estado }),
-  alTerminar: ({ antes, primera }) => { anunciar(antes); pintar(primera); },
+  alTerminar: ({ antes, primera }) => {
+    const huella = huellaDatos();
+    if (!primera && huella === huellaPintada) { S.cambios = {}; return; }   // sin «recién completado» que repetir
+    anunciar(antes); pintar(primera); huellaPintada = huella;
+  },
   intervalo: () => (algoAvanza() ? SONDEO_ACTIVO : SONDEO_REPOSO),
   puede: () => !document.hidden && !$("#app").hidden && dentro,
 });
@@ -510,7 +529,7 @@ function pintarResumen(m, completo) {
           <div class="recientes" id="r-recientes"></div>
           <div class="panel-pie" id="r-pie"></div></div>
         <div class="panel formato"><div class="panel-titulo"><div><h2>Tu formato</h2><p id="r-estilo"></p></div><span class="pequeno tenue">9:16</span></div>
-          <div class="formato-escena"><img src="/api/diseno/vista?t=${Date.now()}" alt="Maqueta del diseño actual de tus Shorts" width="176" height="313"></div>
+          <div class="formato-escena"><img src="/api/diseno/vista?ancho=352&t=${Date.now()}" alt="Maqueta del diseño actual de tus Shorts" width="176" height="313"></div>
           <div class="panel-pie"><span>1080 × 1920</span><a class="enlace-fino" href="#plantilla">Personalizar${ic("flecha")}</a></div></div></div>
       <div class="dos-columnas"><div class="panel conexion" id="r-youtube"></div><div class="panel conexion" id="r-tablet"></div></div>`;
     $("#r-form").addEventListener("submit", async (ev) => {
@@ -779,6 +798,17 @@ const accionTrabajo = (nombre, mensaje) => intentar(async () => {
   await api(`/api/trabajos/${S.jid}/${nombre}`, { method: "POST" });
   S.sucio = false; if (mensaje) avisar(mensaje); refrescar();
 });
+// El editor de tiempos (web/editor.js, 24 KB) se descarga la primera vez que se abre, no al cargar el panel.
+let editorCargando = null;
+function cargarEditor() {
+  if (window.abrirEditorTiempos) return Promise.resolve();
+  return (editorCargando ||= new Promise((ok, mal) => {
+    const s = document.createElement("script");
+    s.src = "editor.js"; s.onload = ok;
+    s.onerror = () => { editorCargando = null; s.remove(); mal(new Error("No se pudo cargar el editor de tiempos. Revisa la conexión con el PC y vuelve a intentarlo.")); };
+    document.head.append(s);
+  }));
+}
 const acciones = {
   nuevo: (b) => nuevoClip(b.dataset.p),
   "cerrar-modal": () => cerrarModal(false),
@@ -830,7 +860,7 @@ const acciones = {
   }),
   "editar-tiempos": intentar(async (b) => {          // web/editor.js
     b.disabled = true; b.lastChild.textContent = "Preparando…";
-    try { await abrirEditorTiempos(S.detalle); } finally { b.disabled = false; b.lastChild.textContent = "Editar tiempos"; }
+    try { await cargarEditor(); await abrirEditorTiempos(S.detalle); } finally { b.disabled = false; b.lastChild.textContent = "Editar tiempos"; }
   }),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
   retranscribir: intentar(async () => {

@@ -786,3 +786,30 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   (bool); `pipeline.MENSAJE_COPIANDO` es el texto. El panel puede dejar de comparar el texto. (d) `/api/diseno/vista?ancho=`
   (180–1080, por defecto 540) para pedir una maqueta pequeña en el Resumen. 117 pruebas.
   **Para el panel (PC):** usar `copiando` en vez del texto y pedir `ancho=352` en la tarjeta «Tu formato».
+- **2026-11-18 · Claude Code (PC Windows)** — **Rendimiento del panel, fase 2** (`web/app.js`, `web/estilo.css`,
+  `web/index.html`, `tests/test_web.py`). **Sin revisión de Codex:** el cupo de ChatGPT sigue agotado (el plugin respondió
+  «You've hit your usage limit… try again at Nov 20th, 2026 4:56 PM»).
+  - **Cambios del servidor aplicados en el panel:** el sondeo usa `carpeta.pendientes[].copiando` (ya no compara el texto) y
+    la maqueta de «Tu formato» se pide con `ancho=352` (se ve a 176×313).
+  - **Barra lateral:** ya no anima `grid-template-columns` (recalculaba la maquetación de todo el panel en cada cuadro). La
+    rejilla cambia una vez y `animarLateral()` desliza la barra con `clip-path` y el contenido con `transform` (Web
+    Animations, 220 ms, curva de `--curva`; nada con «reducir movimiento»). Sin cambios en el menú móvil (≤680 px) ni en las
+    etiquetas de la barra plegada.
+  - **Repintado:** si una consulta trae los mismos datos que se muestran (huella de estado, ficha, conexión y clip), no se
+    reconstruye nada (0 mutaciones medidas); al cambiar un clip se repinta como antes.
+  - **Editor de tiempos al primer uso:** `editor.js` ya no está en `index.html`; `cargarEditor()` lo descarga al pulsar
+    «Editar tiempos» (una vez); si falla, aviso y se puede reintentar.
+  - **Mediciones** (A/B intercalado en la misma sesión, `HEAD` 2e81dd4 vs. nuevo, mismos datos; tablet emulada 800×1280 con
+    CPU 4× más lenta). Carga en frío 122,4→99,9 KB y una petición menos; recarga 35,4→20,7 KB. Hilo principal en reposo:
+    cola 94→43 ms/min (escritorio) y 425→135 ms/min (tablet); Resumen 73→31 ms/min (escritorio). Barra lateral en tablet
+    (15 repeticiones, plegar y desplegar): peor cuadro (mediana) 20,9→7,1 ms y cuadros de más de 25 ms 10→1 en 30
+    animaciones. Tiempo de carga sin cambio apreciable (FCP 476 vs. 468 ms; panel con datos 963 vs. 951 ms en la tablet).
+  - **Pruebas:** 118 con pytest (nuevas en `test_web.py`: campo `copiando` servido y usado, maqueta a 352, editor no incluido
+    en `index.html`). Playwright funcional: fase 2 en escritorio, tablet y móvil 390 px (36 comprobaciones, todas bien:
+    plegar/desplegar, Ctrl+B, doble pulsación rápida, etiqueta al enfocar con la barra plegada, menú móvil, repintado,
+    carga del editor con fallo y reintento) y fase 1 repetida (38, todas bien). Las comprobaciones de la fase 2 fallan
+    contra el código anterior, como se esperaba. Capturas en `docs/diseno/capturas-rendimiento/`.
+    **No probado** en la MatePad real ni en el navegador de HarmonyOS.
+  - **Pendiente:** revisión de Codex de esta fase cuando se renueve el cupo; del resto de la auditoría siguen áreas
+    táctiles pequeñas, foco tras entrar sin GSAP, cambio de «reducir movimiento» en curso, URLs de objeto de Plantilla,
+    GSAP fuera del arranque, contraste de bordes, `dvh` en Plantilla y el escalonado de 30 ms frente a 50–60 ms del plan.
