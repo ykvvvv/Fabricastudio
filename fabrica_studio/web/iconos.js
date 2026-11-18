@@ -29,5 +29,7 @@ const ICONOS = {
   acercar: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/>',
   alejar: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/>',
   papelera:'<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/>',
+  perfil: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.2 4-6.5 8-6.5s7.2 2.3 8 6.5"/>',
+  abajo: '<path d="m6 9 6 6 6-6"/>',
 };
 const icono = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ICONOS.pelicula}</svg>`;

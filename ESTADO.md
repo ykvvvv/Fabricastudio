@@ -985,3 +985,41 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
        sesión, o que Cristóbal descargue el artefacto desde el navegador.
   - **Codex:** según el último registro, el cupo de ChatGPT estaba agotado hasta el 2026-11-20 16:56; se comprueba antes
     del commit de cada fase y, si no hay cupo, la revisión queda pendiente aquí.
+- **2026-11-18 · Claude Code (PC Windows)** — **Encargo, fase 1: perfiles de creador** (`config.py`, `db.py`, `pipeline.py`,
+  `server.py`, `mcp_servidor.py`, `web/{index.html,app.js,estilo.css,iconos.js}`, `tests/test_perfiles.py` nuevo,
+  `tests/{test_chilenismos,test_mcp,test_web}.py`, `CLAUDE.md`).
+  - **Servidor:** tabla `perfiles` (nombre, firma, contexto_transcripcion, correcciones, tema, hashtags_fijos, estilo
+    preferido) y logo propio opcional en `datos/recursos/perfiles/<id>/logo.png`; si no tiene, el logo general. Un perfil
+    activo (`ajustes.perfil_activo`, solo cambia con «activar»). Cada clip guarda `datos.perfil` al importarse (archivo,
+    enlace, carpeta vigilada, MCP; los momentos heredan el del video largo) y se transcribe, se titula y se renderiza con
+    él aunque luego se active otro. **Migración:** al arrancar por primera vez se crea el perfil inicial con los valores
+    en uso (también los que vienen por defecto y nunca se guardaron) y los clips existentes quedan con él; la huella del
+    render no cambia, así que no se rehace ningún Short. Probada con una **copia** de la base real: perfil «rdjavi»
+    (`@rdjavi`, GTA 6), 29/29 clips asignados, estilo general `dividido` intacto.
+  - **API:** `GET/POST /api/perfiles`, `PUT/DELETE /api/perfiles/<id>` (no el activo; uno con clips responde 409
+    `confirmar` y con `?confirmar=true` cada clip guarda una copia de los valores del perfil; no mientras haya clips suyos en
+    proceso), `POST …/duplicar`, `POST …/activar`, `GET/POST/DELETE …/logo`; importar acepta `perfil`;
+    `PUT /api/trabajos/<id>/perfil {perfil, retranscribir}` rehace textos y render (y la transcripción solo si se pide).
+    `/api/estado` trae `perfil_activo` y la lista corta; cada clip, `perfil` (y `perfil_copia` si se eliminó).
+  - **MCP:** `listar_perfiles` y `activar_perfil` (por id o nombre). `cambiar_ajustes` ahora edita el perfil activo para
+    creador, firma, tema, contexto y hashtags (antes cambiaba ajustes globales que ya no usaría ningún clip).
+  - **Panel:** selector «Creador: Nombre ▾» en la barra superior (menú con flechas, Esc y clic fuera; en móvil, solo el
+    avatar y el menú a lo ancho); vista **Perfiles** con tarjetas (avatar con iniciales o logo, tema, hashtags, estilo, clips)
+    y editor (crear, editar, logo con vista previa, duplicar, eliminar con el aviso de cuántos clips lo usan); perfil al
+    importar («Nuevo clip» y enlace rápido del Resumen); en el detalle del clip, su perfil y un selector para cambiarlo que,
+    si el contexto de transcripción cambia, ofrece «Volver a transcribir» en la misma ventana. Contexto, correcciones, tema
+    y hashtags salen de Ajustes → Proveedores y nombre/firma de Plantilla (allí hay un enlace y una nota con el perfil
+    activo); la vista previa de Plantilla usa la firma y el logo del perfil activo.
+  - **Decisiones tomadas (avisar si no convencen):** el diseño (Plantilla) sigue siendo general; editar un perfil afecta a
+    sus clips la próxima vez que se procesen o rendericen; el contexto de Whisper de tu perfil «rdjavi» es la frase por
+    defecto («Stream de Jongottii en Kick…»), porque nunca se guardó otra: conviene escribir la suya en Perfiles.
+  - **Pruebas:** 143 con pytest (2 omitidas, POSIX); nuevas: `test_perfiles.py` (8: migración, dos perfiles → textos y
+    render distintos, cambiar el activo no altera clips ya importados, perfil al importar y heredado, eliminar con copia,
+    validación, API completa con logo, vista previa de Plantilla) y en `test_mcp.py` y `test_web.py`. Playwright con datos
+    temporales en escritorio 1440×900 y tablet emulada 800×1280 (CPU 4×) y un vistazo a 390 px: **65 comprobaciones bien**.
+    Capturas en `docs/diseno/capturas-perfiles/`.
+  - **Revisión de Codex: pendiente.** El cupo de ChatGPT sigue agotado (la CLI respondió «You've hit your usage limit…
+    try again at Nov 20th, 2026 4:56 PM»). Revisión propia con la lista de AGENTS.md: no toca privacidad, canal ni
+    subidas; ningún secreto en las respuestas nuevas; las rutas con `<id>` comprueban que el perfil exista antes de leer,
+    escribir o borrar archivos.
+  - **No probado** en la MatePad real ni con un render real de Whisper (pytest usa una transcripción fija).

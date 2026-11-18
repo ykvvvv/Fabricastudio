@@ -18,12 +18,13 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__, acceso, cuentas, media, render, textos
 from .config import AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
+from .db import perfil_como_ajustes
 from .errores import ErrorEtapa, sin_secretos
 from .pipeline import MENSAJE_COPIANDO, Fabrica
 
 log = logging.getLogger("fabrica.server")
-_CODIGOS = {"duplicado": 409, "configuracion": 409, "autenticacion": 502, "cuota": 502, "temporal": 502,
-            "modelo": 502, "herramienta": 500, "interno": 500}
+_CODIGOS = {"duplicado": 409, "configuracion": 409, "confirmar": 409, "autenticacion": 502, "cuota": 502,
+            "temporal": 502, "modelo": 502, "herramienta": 500, "interno": 500}
 
 
 def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> FastAPI:
@@ -221,6 +222,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 "origen_ref": t["origen_ref"] if t["origen_tipo"] == "enlace" else Path(t["origen_ref"]).name,
                 "salida": t["datos"].get("salida"), "copia": t["datos"].get("copia", ""),
                 "estilo": t["datos"].get("estilo", ""), "duracion": _duracion(t),
+                "perfil": t["datos"].get("perfil", ""),     # si ya no existe, perfil_copia lleva el nombre que tenía
+                "perfil_copia": (t["datos"].get("perfil_copia") or {}).get("nombre", ""),
                 "tiene_video": (fab.rutas.trabajo(t["id"]) / "short.mp4").exists(),
                 "subida": {k: s[k] for k in ("canal_id", "terminado", "privacidad") if k in s},
                 "progreso": fab.progreso.get(t["id"], "")}
@@ -261,25 +264,87 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                             "canal_nombre": a["youtube_canal_nombre"]},
                 "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"],
                 "subidas_pausadas_hasta": a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0,
-                "proxima_subida": (lambda x: x if x > time.time() else 0)(fab.db.proxima_subida())}
+                "proxima_subida": (lambda x: x if x > time.time() else 0)(fab.db.proxima_subida()),
+                # Lo justo para el selector de la barra superior y los nombres en la cola; el detalle, en /api/perfiles.
+                "perfil_activo": fab.db.perfil_activo()["id"],
+                "perfiles": [{**{k: p[k] for k in ("id", "nombre", "firma", "tema", "estilo")},
+                              "logo": (fab.rutas.perfiles / p["id"] / "logo.png").exists(), "v": p["actualizado"]}
+                             for p in fab.db.perfiles()]}
 
     # ------------------------------------------------------------ importación
     @app.post("/api/importar/archivo")
-    def importar_archivo(archivo: UploadFile = File(...), publicar: bool = Form(True), modo: str = Form("clip")):
+    def importar_archivo(archivo: UploadFile = File(...), publicar: bool = Form(True), modo: str = Form("clip"),
+                         perfil: str = Form("")):
         nombre = Path(archivo.filename or "clip.mp4").name
         with tempfile.NamedTemporaryFile(delete=False, dir=fab.rutas.trabajos, suffix=".subiendo") as tmp:
             shutil.copyfileobj(archivo.file, tmp, 1 << 20)
             ruta_tmp = Path(tmp.name)
         try:
-            return _publico(fab.importar_archivo(ruta_tmp, nombre, "archivo", publicar=publicar, mover=True, modo=modo))
+            return _publico(fab.importar_archivo(ruta_tmp, nombre, "archivo", publicar=publicar, mover=True, modo=modo,
+                                                 perfil=perfil or None))
         finally:
             ruta_tmp.unlink(missing_ok=True)
 
     @app.post("/api/importar/enlace")
     async def importar_enlace(request: Request):
-        c = await request.json()
+        c = await _objeto(request)
         return _publico(fab.importar_enlace(str(c.get("url", "")), publicar=bool(c.get("publicar", True)),
-                                            modo=str(c.get("modo", "clip"))))
+                                            modo=str(c.get("modo", "clip")), perfil=str(c.get("perfil") or "") or None))
+
+    async def _objeto(request: Request) -> dict:
+        c = await request.json()
+        if not isinstance(c, dict):
+            raise ErrorEtapa("Datos no válidos.", "entrada")
+        return c
+
+    # ------------------------------------------------------------ perfiles de creador
+    @app.get("/api/perfiles")
+    def perfiles():
+        return {"perfiles": fab.perfiles(), "activo": fab.db.perfil_activo()["id"]}
+
+    @app.post("/api/perfiles")
+    async def crear_perfil(request: Request):
+        return fab.db.crear_perfil(await _objeto(request))
+
+    @app.put("/api/perfiles/{pid}")
+    async def editar_perfil(pid: str, request: Request):
+        return fab.db.editar_perfil(pid, await _objeto(request))
+
+    @app.delete("/api/perfiles/{pid}")
+    def eliminar_perfil(pid: str, confirmar: bool = False):
+        fab.eliminar_perfil(pid, confirmar)
+        return {"ok": True}
+
+    @app.post("/api/perfiles/{pid}/duplicar")
+    def duplicar_perfil(pid: str):
+        return fab.duplicar_perfil(pid)
+
+    @app.post("/api/perfiles/{pid}/activar")
+    def activar_perfil(pid: str):
+        return {"ok": True, "activo": fab.activar_perfil(pid)["id"]}
+
+    @app.get("/api/perfiles/{pid}/logo")
+    def logo_perfil(pid: str):
+        ruta = fab.rutas.perfiles / pid / "logo.png"
+        if not fab.db.perfil(pid) or not ruta.exists():
+            return JSONResponse({"error": "Este perfil no tiene logo propio."}, status_code=404)
+        return FileResponse(ruta, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/perfiles/{pid}/logo")
+    def subir_logo_perfil(pid: str, archivo: UploadFile = File(...)):
+        if not fab.db.perfil(pid):
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        img = _imagen_logo(archivo)
+        (fab.rutas.perfiles / pid).mkdir(parents=True, exist_ok=True)
+        img.save(fab.rutas.perfiles / pid / "logo.png")
+        return fab.db.editar_perfil(pid, {})          # cambia «actualizado»: el panel vuelve a pedir la imagen
+
+    @app.delete("/api/perfiles/{pid}/logo")
+    def quitar_logo_perfil(pid: str):
+        if not fab.db.perfil(pid):
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        (fab.rutas.perfiles / pid / "logo.png").unlink(missing_ok=True)
+        return fab.db.editar_perfil(pid, {})
 
     # ------------------------------------------------------------ trabajos
     @app.get("/api/trabajos/{jid}")
@@ -308,6 +373,12 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     @app.put("/api/trabajos/{jid}/estilo")
     async def estilo_trabajo(jid: str, request: Request):
         return _publico(fab.cambiar_estilo(jid, str((await request.json()).get("estilo", ""))))
+
+    @app.put("/api/trabajos/{jid}/perfil")
+    async def perfil_trabajo(jid: str, request: Request):
+        c = await _objeto(request)
+        r = fab.cambiar_perfil(jid, str(c.get("perfil", "")), bool(c.get("retranscribir", False)))
+        return {"trabajo": _publico(r["trabajo"]), "contexto_cambia": r["contexto_cambia"]}
 
     @app.get("/api/trabajos/{jid}/linea")
     def linea_tiempo(jid: str):
@@ -357,20 +428,24 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     @app.put("/api/ajustes")
     async def guardar_ajustes(request: Request):
         cambios = await request.json()
-        # El canal de destino solo se cambia con la confirmación explícita de /api/youtube/canal.
-        for k in ("youtube_canal_id", "youtube_canal_nombre", "subidas_pausadas_hasta"):
+        # El canal de destino solo se cambia con la confirmación explícita de /api/youtube/canal,
+        # y el perfil activo con /api/perfiles/<id>/activar.
+        for k in ("youtube_canal_id", "youtube_canal_nombre", "subidas_pausadas_hasta", "perfil_activo"):
             cambios.pop(k, None)
         return {"valores": fab.db.guardar_ajustes(cambios)}
 
-    @app.post("/api/logo")
-    def subir_logo(archivo: UploadFile = File(...)):
+    def _imagen_logo(archivo: UploadFile):
         from PIL import Image
         try:
             img = Image.open(io.BytesIO(archivo.file.read(20 << 20)))
             img.load()
         except Exception:
             raise ErrorEtapa("El logo debe ser una imagen (PNG con fondo transparente, de preferencia).", "entrada")
-        img.convert("RGBA").save(fab.rutas.recursos / "logo.png")
+        return img.convert("RGBA")
+
+    @app.post("/api/logo")
+    def subir_logo(archivo: UploadFile = File(...)):
+        _imagen_logo(archivo).save(fab.rutas.recursos / "logo.png")
         return {"ok": True}
 
     @app.delete("/api/logo")
@@ -379,8 +454,10 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         return {"ok": True}
 
     def _maqueta(request: Request, banner: str):
-        """Ajustes guardados + los que lleguen por parámetro (sin guardarlos) y su disposición."""
-        a = fab.db.ajustes()
+        """Ajustes guardados con el perfil activo encima (nombre, firma, logo) + los que lleguen por parámetro
+        (sin guardarlos) y su disposición."""
+        perfil = fab.db.perfil_activo()
+        a = {**fab.db.ajustes(), **perfil_como_ajustes(perfil)}
         from .db import validar_ajustes
         validar_ajustes({k: v for k, v in request.query_params.items() if k in AJUSTES_POR_DEFECTO})
         for k, v in request.query_params.items():
@@ -402,22 +479,22 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 d = render.calcular_disposicion(1920, 1080, a, b)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
-        return a, b, d, completo
+        return a, b, d, completo, fab.carpeta_logo(perfil)
 
     @app.get("/api/diseno/disposicion")
     def disposicion_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
         """Cajas de cada elemento (lienzo 1080×1920) para el editor visual de la Plantilla."""
-        a, _, d, completo = _maqueta(request, banner)
+        a, _, d, completo, recursos = _maqueta(request, banner)
         return {"lienzo": {"w": LIENZO_ANCHO, "h": LIENZO_ALTO}, "estilo": a["estilo"] if a["estilo"] in ("completo", "dividido") else "clasico",
-                "elementos": render.elementos_editables(d, a, fab.rutas.recursos), "avisos": d["avisos"]}
+                "elementos": render.elementos_editables(d, a, recursos), "avisos": d["avisos"]}
 
     @app.get("/api/diseno/vista")
     def vista_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER", ancho: int = 540):
         """Maqueta rápida del diseño con los ajustes actuales (o los que lleguen por parámetro)."""
         from PIL import Image, ImageDraw
-        a, b, d, completo = _maqueta(request, banner)
+        a, b, d, completo, recursos = _maqueta(request, banner)
         try:
-            capa = render.dibujar_capa(d, b, a, fab.rutas.recursos)
+            capa = render.dibujar_capa(d, b, a, recursos)
         except Exception as e:
             raise ErrorEtapa(f"Ajustes de diseño no válidos: {e}", "entrada")
         lienzo = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), "black")

@@ -598,3 +598,49 @@ input[type=checkbox]:disabled { opacity: .45; cursor: not-allowed; }
 .logro::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: #d8aa9112; box-shadow: inset 0 0 0 1px #d8aa9166; opacity: 0; animation: brillo 1.4s var(--curva) .1s; }
 .galeria > .logro::after { border-radius: var(--radio); }
 @keyframes brillo { 22% { opacity: 1; } }
+
+/* ---------------------------------------------------------------- perfiles de creador */
+.avatar { overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: contain; padding: 3px; display: block; }
+.avatar.mini { width: 26px; height: 26px; border-radius: 6px; font-size: 11px; }
+.avatar.grande { width: 52px; height: 52px; border-radius: 12px; font-size: 18px; }
+/* Selector de la barra superior: «Creador: Nombre ▾». El menú cae hacia abajo, alineado a la derecha. */
+.selector-perfil { position: relative; margin-left: auto; min-width: 0; }
+.selector-perfil + .buscar { margin-left: 0; }
+.boton-perfil { gap: 8px; padding: 4px 10px 4px 5px; background: #151517; border-color: var(--borde); max-width: 100%; }
+.boton-perfil .perfil-etiqueta { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.boton-perfil .perfil-etiqueta b { font-weight: 600; color: var(--texto); }
+.boton-perfil .ic { width: 14px; height: 14px; color: var(--apagado); transition: transform .2s var(--curva); }
+.boton-perfil[aria-expanded=true] .ic { transform: rotate(180deg); }
+.menu.menu-perfiles { top: calc(100% + 8px); bottom: auto; left: auto; right: 0; min-width: 270px; max-height: 70vh; overflow: auto; transform-origin: top right; z-index: 35; }
+.menu-perfiles button > span:not(.avatar) { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.menu-perfiles b { font-weight: 500; }
+.menu-perfiles small { color: var(--apagado); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-perfiles [aria-checked=true] { background: #232326; }
+.menu-perfiles button > .ic { margin-left: auto; color: var(--acento); }
+.menu-perfiles a { border-top: 1px solid var(--borde); border-radius: 0 0 6px 6px; margin-top: 3px; }
+/* Vista Perfiles */
+.perfiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; align-items: start; }
+.perfil-tarjeta { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.perfil-tarjeta.activo { border-color: #4a3f35; box-shadow: inset 0 0 0 1px #d8aa9126; }
+.perfil-cabeza { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.perfil-cabeza > div { min-width: 0; }
+.perfil-cabeza h2 { font-size: 15px; overflow-wrap: anywhere; }
+.perfil-cabeza p { font-size: 12px; color: var(--apagado); margin-top: 2px; overflow-wrap: anywhere; }
+.perfil-cabeza .pastilla { margin-left: auto; }
+.perfil-tarjeta .ficha dd { overflow-wrap: anywhere; }
+.perfil-tarjeta .fila .peligro { margin-left: auto; }        /* eliminar, siempre al final y a la derecha */
+.logo-perfil { display: flex; gap: 14px; align-items: center; border: 1px solid var(--borde); border-radius: 9px; padding: 12px; }
+.boton:focus-within { outline: 2px solid var(--acento); outline-offset: 2px; }     /* «Elegir imagen»: el input real está oculto */
+.perfil-rapido { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; color: var(--apagado); }
+.perfil-rapido select { width: auto; max-width: 180px; min-height: 30px; padding: 3px 8px; font-size: 12px; }
+@media (max-width: 680px) {
+  .boton-perfil .perfil-etiqueta { max-width: 110px; }
+  .boton-perfil .perfil-etiqueta .tenue { display: none; }
+  /* El botón queda en medio de la barra: el menú ocupa el ancho de la pantalla, bajo la barra (60 px). */
+  .menu.menu-perfiles { position: fixed; top: 64px; left: 12px; right: 12px; min-width: 0; transform-origin: top center; }
+}
+@media (max-width: 480px) {
+  /* Solo el avatar: el nombre sigue ahí para lectores de pantalla. */
+  .boton-perfil .perfil-etiqueta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

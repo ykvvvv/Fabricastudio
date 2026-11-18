@@ -27,7 +27,9 @@ def test_contexto_por_defecto_es_una_frase_con_jerga_y_creador():
 
 
 def test_el_vocabulario_llega_a_whisper_y_las_correcciones_a_subtitulos(fabrica, clip):
-    fabrica.db.guardar_ajustes({"vocabulario": "cachai, altiro", "correcciones": "chat => CHAT"})
+    # Contexto y correcciones son del perfil de creador (el activo, con el que se importa el clip).
+    fabrica.db.editar_perfil(fabrica.db.perfil_activo()["id"],
+                             {"contexto_transcripcion": "cachai, altiro", "correcciones": "chat => CHAT"})
     t = fabrica.importar_archivo(clip, "a.mp4")
     fabrica._ejecutar(t)
     assert fabrica.transcripciones["vocabulario"] == "cachai, altiro"
@@ -53,6 +55,6 @@ def test_modo_gta6_suma_vocabulario_del_juego_a_whisper(fabrica, clip):
     from fabrica_studio.pipeline import CONTEXTO_GTA6, contexto_transcripcion
     assert contexto_transcripcion({"vocabulario": "Hola.", "tema": ""}) == "Hola."
     assert contexto_transcripcion({"vocabulario": "Hola.", "tema": "gta6"}) == f"Hola. {CONTEXTO_GTA6}"
-    fabrica.db.guardar_ajustes({"tema": "gta6"})
+    fabrica.db.editar_perfil(fabrica.db.perfil_activo()["id"], {"tema": "gta6"})
     fabrica._ejecutar(fabrica.importar_archivo(clip, "a.mp4"))
     assert "Vice City" in fabrica.transcripciones["vocabulario"] and "GTA 5" in fabrica.transcripciones["vocabulario"]

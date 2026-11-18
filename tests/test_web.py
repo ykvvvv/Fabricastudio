@@ -75,14 +75,33 @@ def test_campos_de_la_plantilla_son_ajustes_reales():
 
 
 def test_campos_de_proveedores_son_ajustes_reales():
-    """Incluye «Contexto de transcripción» (vocabulario) y «Correcciones de escritura» (correcciones)."""
+    """Contexto, correcciones, tema y hashtags ya no están en Proveedores: son de cada perfil de creador."""
     from fabrica_studio.config import AJUSTES_POR_DEFECTO
     bloque = _texto("app.js").split('id="form-prov"')[1].split("</form>")[0]
     nombres = set(re.findall(r'name="([a-z_]+)"', bloque))
-    assert {"vocabulario", "correcciones", "tema", "hashtags_fijos"} <= nombres
-    from fabrica_studio.config import OPCIONES
-    assert set(re.findall(r'<option value="([a-z0-9]*)" \$\{v\.tema', bloque)) == set(OPCIONES["tema"])
+    assert not nombres & {"vocabulario", "correcciones", "tema", "hashtags_fijos"}
     assert nombres <= set(AJUSTES_POR_DEFECTO), nombres - set(AJUSTES_POR_DEFECTO)
+    assert 'href="#perfiles"' in bloque
+
+
+def test_editor_de_perfiles_usa_los_campos_y_opciones_del_servidor():
+    """El formulario del perfil envía exactamente los campos que acepta el servidor, con sus opciones y largos."""
+    from fabrica_studio.config import CAMPOS_PERFIL, OPCIONES
+    js = _texto("app.js")
+    bloque = js.split('<form id="form-perfil"')[1].split("</form>")[0]
+    assert set(re.findall(r'name="([a-z_]+)"', bloque)) == set(CAMPOS_PERFIL)
+    for campo, (_, largo) in CAMPOS_PERFIL.items():
+        if largo:
+            assert f'name="{campo}" rows="3" maxlength="{largo}"' in bloque or f'name="{campo}" maxlength="{largo}"' in bloque, campo
+    temas = re.search(r"const TEMAS = \{([^}]*)\}", js).group(1)
+    assert set(re.findall(r'"?([a-z0-9]*)"?: "', temas)) == set(OPCIONES["tema"])
+    estilos = re.search(r"const ESTILO_CORTO = \{([^}]*)\}", js).group(1)
+    assert set(re.findall(r'"?([a-z]*)"?: "', estilos)) == {""} | set(OPCIONES["estilo"])
+    # La plantilla ya no edita el nombre ni la firma (son del perfil).
+    plantilla = js.split("const SECCIONES_PLANTILLA = [")[1].split("\n];")[0]
+    assert '["creador"' not in plantilla and '["firma"' not in plantilla
+    html = _texto("index.html")
+    assert 'id="boton-perfil"' in html and 'aria-haspopup="menu"' in html and 'href="#perfiles"' in html
 
 
 def test_campos_de_publicacion_son_ajustes_reales():

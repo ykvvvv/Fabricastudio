@@ -49,10 +49,25 @@ def test_importar_procesar_exportar_y_subir_por_mcp(fab_mcp, clip, tmp_path):
 
 def test_ajustes_por_mcp_validados_y_sin_acciones_sensibles(fab_mcp):
     assert _llamar("cambiar_ajustes", creador="Chetalonso", tema="gta6")["aplicados"] == {"creador": "Chetalonso", "tema": "gta6"}
-    assert _llamar("cambiar_ajustes", estilo="inventado")["ok"] is False
+    assert fab_mcp.db.perfil_activo()["nombre"] == "Chetalonso"        # nombre y tema son del perfil activo
+    antes = fab_mcp.db.perfil_activo()
+    assert _llamar("cambiar_ajustes", estilo="inventado", firma="@no_se_aplica")["ok"] is False
+    assert fab_mcp.db.perfil_activo()["firma"] == antes["firma"]       # todo o nada
     nombres = {t.name for t in asyncio.run(m.servidor.list_tools())}
     for prohibida in ("youtube_canal", "eliminar", "secreto", "contrasena", "dispositivo"):
         assert not any(prohibida in n for n in nombres)
+
+
+def test_perfiles_por_mcp(fab_mcp, clip):
+    beto = fab_mcp.db.crear_perfil({"nombre": "Beto", "tema": "gta6"})
+    r = _llamar("listar_perfiles")
+    assert r["activo"] != beto["id"] and {p["nombre"] for p in r["perfiles"]} >= {"Beto"}
+    assert _llamar("activar_perfil", perfil="beto")["activo"] == {"id": beto["id"], "nombre": "Beto"}   # por nombre
+    assert _llamar("activar_perfil", perfil="nadie")["ok"] is False
+    assert _llamar("estado")["perfil_activo"]["nombre"] == "Beto" and _llamar("estado")["tema"] == "gta6"
+    jid = _llamar("importar_archivos", rutas=[str(clip)])["resultados"][0]["id"]
+    assert fab_mcp.db.trabajo(jid)["datos"]["perfil"] == beto["id"]         # se importa con el activo
+    assert next(p for p in _llamar("listar_perfiles")["perfiles"] if p["id"] == beto["id"])["clips"] == 1
 
 
 def test_protocolo_mcp_real_por_stdio(tmp_path):

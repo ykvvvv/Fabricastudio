@@ -13,7 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .config import AJUSTES_POR_DEFECTO, COLORES, LIMITES, OPCIONES
+from .config import AJUSTES_POR_DEFECTO, CAMPOS_PERFIL, COLORES, LIMITES, OPCIONES
+from .errores import ErrorEtapa
 
 ETAPAS = ["importar", "comprobar", "transcribir", "textos", "subtitulos", "render", "subir"]
 ESTADOS = ["pendiente", "procesando", "propuestas", "renderizado", "subiendo", "publicado", "error"]
@@ -54,6 +55,10 @@ CREATE TABLE IF NOT EXISTS dispositivos (
     id TEXT PRIMARY KEY, nombre TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
     creado REAL NOT NULL, visto REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS perfiles (
+    id TEXT PRIMARY KEY, creado REAL NOT NULL, actualizado REAL NOT NULL,
+    nombre TEXT NOT NULL, valores TEXT NOT NULL DEFAULT '{}'
+);
 """
 _JSON = {"etapas", "avisos", "textos", "datos", "subida"}
 
@@ -65,10 +70,48 @@ NOMBRES_AJUSTES = {
 }
 
 
+NOMBRES_CAMPO_PERFIL = {"nombre": "Nombre", "firma": "Firma", "contexto_transcripcion": "Contexto de transcripción",
+                        "correcciones": "Correcciones de escritura", "hashtags_fijos": "Hashtags fijos"}
+
+
+def validar_perfil(campos: dict, otros: list[dict]) -> dict:
+    """Normaliza los campos conocidos de un perfil (los demás se ignoran). Un valor que no vale rechaza todo el
+    cambio. `otros`: los demás perfiles, para no repetir nombres."""
+    if not isinstance(campos, dict):
+        raise ErrorEtapa("Datos del perfil no válidos.", "entrada")
+    limpio = {}
+    for k, v in campos.items():
+        if k not in CAMPOS_PERFIL:
+            continue
+        v = str(v if v is not None else "").strip()
+        largo = CAMPOS_PERFIL[k][1]
+        if k == "tema" and v not in OPCIONES["tema"]:
+            raise ErrorEtapa(f"Tema no válido: {v}.", "entrada")
+        if k == "estilo" and v and v not in OPCIONES["estilo"]:
+            raise ErrorEtapa(f"Estilo no válido: {v}.", "entrada")
+        if largo and len(v) > largo:
+            raise ErrorEtapa(f"«{NOMBRES_CAMPO_PERFIL[k]}» admite hasta {largo} caracteres (tiene {len(v)}).", "entrada")
+        limpio[k] = v
+    if "nombre" in limpio:
+        if not limpio["nombre"]:
+            raise ErrorEtapa("El perfil necesita un nombre.", "entrada")
+        if any(p["nombre"].casefold() == limpio["nombre"].casefold() for p in otros):
+            raise ErrorEtapa(f"Ya hay un perfil llamado «{limpio['nombre']}».", "duplicado")
+    return limpio
+
+
+def perfil_como_ajustes(p: dict) -> dict:
+    """Valores de un perfil con el nombre del ajuste que sustituyen al procesar un clip (nombre → creador,
+    contexto_transcripcion → vocabulario…). Un estilo vacío no sustituye nada: vale el general."""
+    a = {clave: p.get(campo, "") for campo, (clave, _) in CAMPOS_PERFIL.items()}
+    if not a["estilo"]:
+        a.pop("estilo")
+    return a
+
+
 def validar_ajustes(cambios: dict) -> None:
     import re
 
-    from .errores import ErrorEtapa
     for k, v in cambios.items():
         nombre = NOMBRES_AJUSTES.get(k, k.replace("_", " "))
         if k in LIMITES:
@@ -92,6 +135,7 @@ class DB:
         self._c.row_factory = sqlite3.Row
         self._c.execute("PRAGMA journal_mode=WAL")
         self._c.executescript(_ESQUEMA)
+        self._migrar_perfiles()
 
     # ---------- trabajos ----------
     def _fila(self, r: sqlite3.Row | None) -> dict | None:
@@ -234,6 +278,81 @@ class DB:
                                 " ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",
                                 (k, json.dumps(v)))
         return self.ajustes()
+
+    # ---------- perfiles de creador ----------
+    def _migrar_perfiles(self) -> None:
+        """La primera vez, el perfil inicial copia los valores que se usan hoy (también los que vienen por defecto
+        y nunca se guardaron) y los clips ya importados quedan con él: para ellos nada cambia. Un único INSERT
+        condicional: si el panel y el servidor MCP arrancan a la vez, solo uno lo crea."""
+        a = self.ajustes()
+        valores = {campo: a[clave] for campo, (clave, _) in CAMPOS_PERFIL.items() if campo != "nombre"}
+        valores["estilo"] = ""                      # sigue al estilo general de la Plantilla, como hasta ahora
+        pid, ahora = uuid.uuid4().hex[:8], time.time()
+        with self._lock:
+            creado = self._c.execute(
+                "INSERT INTO perfiles SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM perfiles)",
+                (pid, ahora, ahora, (a["creador"] or "Mi canal").strip()[:40] or "Mi canal",
+                 json.dumps(valores, ensure_ascii=False))).rowcount
+            if creado:
+                self._c.execute("UPDATE trabajos SET datos=json_set(datos, '$.perfil', ?) "
+                                "WHERE json_extract(datos, '$.perfil') IS NULL", (pid,))
+        if creado or not self.perfil(a["perfil_activo"]):
+            self.guardar_ajustes({"perfil_activo": pid if creado else self.perfiles()[0]["id"]})
+
+    def _perfil(self, r: sqlite3.Row) -> dict:
+        vacios = {k: "" for k in CAMPOS_PERFIL if k != "nombre"}
+        return {"id": r["id"], "nombre": r["nombre"], "creado": r["creado"], "actualizado": r["actualizado"],
+                **vacios, **{k: v for k, v in json.loads(r["valores"]).items() if k in vacios}}
+
+    def perfiles(self) -> list[dict]:
+        with self._lock:
+            filas = self._c.execute("SELECT * FROM perfiles ORDER BY creado, nombre").fetchall()
+        return [self._perfil(r) for r in filas]
+
+    def perfil(self, pid: str | None) -> dict | None:
+        if not pid:
+            return None
+        with self._lock:
+            r = self._c.execute("SELECT * FROM perfiles WHERE id=?", (pid,)).fetchone()
+        return self._perfil(r) if r else None
+
+    def perfil_activo(self) -> dict:
+        """El que reciben los clips nuevos. Siempre existe: el activo no se puede eliminar."""
+        return self.perfil(self.ajustes()["perfil_activo"]) or self.perfiles()[0]
+
+    def crear_perfil(self, campos: dict) -> dict:
+        limpio = validar_perfil(campos, self.perfiles())
+        if not limpio.get("nombre"):
+            raise ErrorEtapa("El perfil necesita un nombre.", "entrada")
+        valores = {k: limpio.get(k, "") for k in CAMPOS_PERFIL if k != "nombre"}
+        pid, ahora = uuid.uuid4().hex[:8], time.time()
+        with self._lock:
+            self._c.execute("INSERT INTO perfiles VALUES (?,?,?,?,?)",
+                            (pid, ahora, ahora, limpio["nombre"], json.dumps(valores, ensure_ascii=False)))
+        return self.perfil(pid)
+
+    def editar_perfil(self, pid: str, campos: dict) -> dict:
+        """Cambia solo los campos indicados. Sin campos, solo marca el perfil como actualizado (p. ej. logo nuevo)."""
+        p = self.perfil(pid)
+        if not p:
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        nuevo = {**p, **validar_perfil(campos, [x for x in self.perfiles() if x["id"] != pid])}
+        valores = {k: nuevo[k] for k in CAMPOS_PERFIL if k != "nombre"}
+        with self._lock:
+            self._c.execute("UPDATE perfiles SET nombre=?, valores=?, actualizado=? WHERE id=?",
+                            (nuevo["nombre"], json.dumps(valores, ensure_ascii=False), time.time(), pid))
+        return self.perfil(pid)
+
+    def borrar_perfil(self, pid: str) -> None:
+        with self._lock:
+            self._c.execute("DELETE FROM perfiles WHERE id=?", (pid,))
+
+    def uso_perfiles(self) -> dict[str, int]:
+        """Cuántos clips guardan cada perfil."""
+        with self._lock:
+            filas = self._c.execute("SELECT json_extract(datos, '$.perfil') AS p, count(*) AS n "
+                                    "FROM trabajos GROUP BY p").fetchall()
+        return {r["p"]: r["n"] for r in filas if r["p"]}
 
     # ---------- dispositivos ----------
     def crear_dispositivo(self, nombre: str, token_hash: str) -> str:

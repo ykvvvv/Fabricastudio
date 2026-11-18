@@ -52,11 +52,21 @@ const CLASE_ESTADO = { pendiente: "", procesando: "proceso", subiendo: "proceso"
 const FILTROS = [["todos", "Todos", () => true], ["espera", "En espera", (t) => t.estado === "pendiente"],
   ["generando", "Generando", (t) => ["procesando", "subiendo"].includes(t.estado)],
   ["listos", "Listos", (t) => ["renderizado", "propuestas", "publicado"].includes(t.estado)], ["error", "Con error", (t) => t.estado === "error"]];
-const NOMBRES_VISTA = { resumen: "Resumen", cola: "Cola de clips", biblioteca: "Biblioteca", plantilla: "Plantilla", ajustes: "Ajustes", trabajo: "Clip" };
+const NOMBRES_VISTA = { resumen: "Resumen", cola: "Cola de clips", biblioteca: "Biblioteca", perfiles: "Perfiles", plantilla: "Plantilla",ajustes: "Ajustes", trabajo: "Clip" };
 const enCola = (t) => ["pendiente", "procesando", "subiendo"].includes(t.estado);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const coincide = (t) => !S.busca || `${t.nombre} ${t.textos.titulo || ""}`.toLowerCase().includes(S.busca);
 const etiquetaOrigen = (t) => ({ archivo: "Archivo importado", carpeta: "Carpeta 1_clips_crudos", enlace: "Enlace de Kick", momento: "Momento de un video largo" }[t.origen_tipo]) + (t.modo === "largo" ? " · video largo" : "");
+// Perfiles de creador: /api/estado trae la lista corta (id, nombre, firma, tema, estilo, logo, v) y el activo.
+const perfilPorId = (id) => S.estado?.perfiles.find((p) => p.id === id);
+const perfilActivo = () => perfilPorId(S.estado?.perfil_activo);
+const TEMAS = { "": "Detectar en cada clip", gta6: "GTA 6" };
+const iniciales = (n) => (String(n || "?").replace(/^@/, "").trim().slice(0, 2) || "?").toUpperCase();
+const avatarPerfil = (p, clase = "") => (p?.logo ? h`<span class="avatar ${clase}" aria-hidden="true"><img src="/api/perfiles/${p.id}/logo?v=${p.v}" alt=""></span>`
+  : h`<span class="avatar ${clase}" aria-hidden="true">${iniciales(p?.nombre)}</span>`);
+const opcionesPerfil = (elegido) => S.estado.perfiles.map((p) => h`<option value="${p.id}" ${p.id === elegido ? "selected" : ""}>${p.nombre}${p.tema === "gta6" ? " · GTA 6" : ""}</option>`).join("");
+// Nombre del perfil de un clip; si se eliminó, el que tenía (el clip conserva una copia de sus valores).
+const nombrePerfil = (t) => perfilPorId(t.perfil)?.nombre || (t.perfil_copia ? `${t.perfil_copia} (perfil eliminado)` : "—");
 
 // Cambia el contenido solo si es distinto (no reinicia animaciones) y conserva el foco del teclado.
 function poner(el, html) {
@@ -174,7 +184,7 @@ function confirmar(titulo, texto, etiqueta, peligro = false) {
 $("#modal-fondo").addEventListener("mousedown", (e) => { if (e.target.id === "modal-fondo") cerrarModal(); });
 document.addEventListener("keydown", (e) => {
   const abierto = !$("#modal-fondo").hidden;
-  if (e.key === "Escape") { cerrarModal(); cerrarMenu(); }
+  if (e.key === "Escape") { cerrarModal(); cerrarMenu(); cerrarMenuPerfiles(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !abierto) { e.preventDefault(); $("#buscar").focus(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b" && !abierto) { e.preventDefault(); alternarLateral(); }
   if (e.key === "Tab" && abierto) {      // el foco no sale de la ventana
@@ -192,8 +202,10 @@ function nuevoClip(pestana = "enlace") {
       <span>Puedes pegar varios, uno por línea. Si Kick bloquea la descarga, se indicará el motivo.</span></label></div>
     <div id="nc-archivo" role="tabpanel" aria-labelledby="np-archivo"><label class="soltar" id="nc-soltar">${ic("subir")}<span id="nc-elegidos">Arrastra videos aquí o pulsa para elegirlos</span><small>MP4, MOV, MKV o WebM</small>
       <input type="file" id="nc-archivos" class="solo-lector" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm,.m4v" multiple></label></div>
-    <label>Tipo de video<select id="nc-modo"><option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
-      <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label>
+    <div class="campos"><label>Perfil de creador<select id="nc-perfil" aria-describedby="nc-perfil-ayuda">${crudo(opcionesPerfil(S.estado.perfil_activo))}</select></label>
+      <label>Tipo de video<select id="nc-modo"><option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
+      <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label></div>
+    <p class="pequeno tenue" id="nc-perfil-ayuda">El perfil decide el nombre, la firma, el contexto de transcripción y el tema de estos clips.</p>
     <label class="linea"><input type="checkbox" id="nc-publicar" checked> Destinar a YouTube (siempre en privado)</label>
     <p class="error" id="nc-error" role="alert" hidden></p>`,
   h`<span class="pequeno tenue" id="nc-progreso" style="margin-right:auto"></span><button data-accion="cerrar-modal">Cancelar</button><button class="primario" id="nc-anadir">${ic("mas")}Añadir a la cola</button>`);
@@ -212,14 +224,14 @@ function nuevoClip(pestana = "enlace") {
     const cosas = modo === "enlace" ? urls : archivos, fallos = [];
     const error = $("#nc-error"); error.hidden = true;
     if (!cosas.length) { error.textContent = modo === "enlace" ? "Pega al menos un enlace." : "Elige al menos un archivo de video."; error.hidden = false; return; }
-    const publicar = $("#nc-publicar").checked, tipo = $("#nc-modo").value, boton = $("#nc-anadir");
+    const publicar = $("#nc-publicar").checked, tipo = $("#nc-modo").value, perfil = $("#nc-perfil").value, boton = $("#nc-anadir");
     boton.disabled = true;
     let bien = 0;
     for (const [i, c] of cosas.entries()) {
       $("#nc-progreso").textContent = `Enviando ${i + 1} de ${cosas.length}…`;
       try {
-        if (modo === "enlace") await api("/api/importar/enlace", { method: "POST", json: { url: c, publicar, modo: tipo } });
-        else { const d = new FormData(); d.append("archivo", c); d.append("publicar", publicar); d.append("modo", tipo); await api("/api/importar/archivo", { method: "POST", body: d }); }
+        if (modo === "enlace") await api("/api/importar/enlace", { method: "POST", json: { url: c, publicar, modo: tipo, perfil } });
+        else { const d = new FormData(); d.append("archivo", c); d.append("publicar", publicar); d.append("modo", tipo); d.append("perfil", perfil); await api("/api/importar/archivo", { method: "POST", body: d }); }
         bien++;
       } catch (e) { fallos.push(`${c.name || c}: ${e.message}`); }
     }
@@ -369,6 +381,32 @@ $("#vincular").addEventListener("submit", async (e) => {
 });
 // El menú de usuario se cierra al pulsar fuera de él o al elegir una opción.
 document.addEventListener("click", (e) => { if (!e.target.closest("#perfil")) $("#menu-usuario").open = false; });
+
+// Selector de perfil de la barra superior: un clic abre la lista y otro activa el perfil (menú con flechas y Esc).
+function abrirMenuPerfiles() {
+  const menu = $("#menu-perfiles"), activo = S.estado.perfil_activo;
+  menu.innerHTML = S.estado.perfiles.map((p) => h`<button type="button" role="menuitemradio" aria-checked="${p.id === activo}" data-accion="activar-perfil" data-id="${p.id}">
+      ${crudo(avatarPerfil(p, "mini"))}<span><b>${p.nombre}</b><small>${p.firma || "Sin firma"} · ${TEMAS[p.tema] || p.tema}</small></span>${p.id === activo ? ic("check") : ""}</button>`).join("")
+    + h`<a href="#perfiles" role="menuitem" data-accion="cerrar-perfiles">${ic("ajustes")}Gestionar perfiles</a>`;
+  menu.hidden = false;
+  $("#boton-perfil").setAttribute("aria-expanded", "true");
+  (menu.querySelector('[aria-checked="true"]') || menu.firstElementChild).focus();
+}
+function cerrarMenuPerfiles(devolverFoco = false) {
+  if ($("#menu-perfiles").hidden) return;
+  $("#menu-perfiles").hidden = true;
+  $("#boton-perfil").setAttribute("aria-expanded", "false");
+  if (devolverFoco) $("#boton-perfil").focus();
+}
+$("#boton-perfil").addEventListener("click", () => ($("#menu-perfiles").hidden ? abrirMenuPerfiles() : cerrarMenuPerfiles()));
+$("#menu-perfiles").addEventListener("keydown", (e) => {
+  const opciones = [...$("#menu-perfiles").querySelectorAll('[role^="menuitem"]')], i = opciones.indexOf(document.activeElement);
+  const ir = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: opciones.length - 1 }[e.key];
+  if (ir !== undefined) { e.preventDefault(); opciones[(ir + opciones.length) % opciones.length].focus(); }
+  else if (e.key === "Escape") { e.stopPropagation(); cerrarMenuPerfiles(true); }
+  else if (e.key === "Tab") cerrarMenuPerfiles();
+});
+document.addEventListener("click", (e) => { if (!e.target.closest("#selector-perfil")) cerrarMenuPerfiles(); });
 
 // Barra lateral: plegada (72 px, solo iconos) o desplegada (224 px). Bajo 680 px es un menú que se desliza.
 const movil = matchMedia("(max-width: 680px)");
@@ -524,6 +562,7 @@ function pintar(completo) {
   if (S.vista === "resumen") pintarResumen(m, completo);
   else if (S.vista === "cola") pintarCola(m, completo);
   else if (S.vista === "biblioteca") pintarBiblioteca(m, completo);
+  else if (S.vista === "perfiles") pintarPerfiles(m, completo);
   else if (S.vista === "trabajo") pintarTrabajo(m, completo);
   else if (S.vista === "plantilla" && completo) { esqueleto(m); pintarPlantilla(m); }
   else if (S.vista === "ajustes" && completo) { esqueleto(m); pintarAjustes(m); }
@@ -533,8 +572,9 @@ function pintarLateral() {
   const e = S.estado, yt = e.youtube, p = e.proveedores, n = e.trabajos.filter(enCola).length;
   $("#nav-cuenta").hidden = !n; $("#nav-cuenta").textContent = n;
   $("#nav-cuenta").setAttribute("aria-label", plural(n, "clip en cola", "clips en cola"));
-  const creador = S.ajustes?.valores.creador || "Fábrica Studio";
-  poner($("#espacio"), h`<div class="avatar" aria-hidden="true">${creador.slice(0, 2).toUpperCase()}</div><div><strong>${creador}</strong><small>${yt.canal_id ? `Canal: ${yt.canal_nombre}` : "Sin canal de YouTube confirmado"}</small></div>`);
+  const activo = perfilActivo();
+  poner($("#espacio"), h`${crudo(avatarPerfil(activo))}<div><strong>${activo?.nombre || "Fábrica Studio"}</strong><small>${yt.canal_id ? `Canal: ${yt.canal_nombre}` : "Sin canal de YouTube confirmado"}</small></div>`);
+  poner($("#boton-perfil"), h`${crudo(avatarPerfil(activo, "mini"))}<span class="perfil-etiqueta"><span class="tenue">Creador:</span> <b>${activo?.nombre || "—"}</b></span>${ic("abajo")}`);
   poner($("#tarjeta-pc"), h`<b>${ic("monitor")}PC anfitrión<span class="punto ${S.conectado ? "bien" : "mal"}"></span></b>
     ${S.conectado ? crudo(h`${p.ffmpeg && p.ffprobe ? "FFmpeg disponible" : "FFmpeg no encontrado"}<br>Whisper ${p.whisper.modelo}<br>Carpeta vigilada ${e.carpeta.activa ? "activa" : "desactivada"}`) : "Sin conexión con el PC. Se reintenta cada 2 s."}`);
   const s = S.sesion, donde = s.local ? "Este PC" : s.sesion_iniciada ? "Sesión iniciada" : "Dispositivo vinculado";
@@ -558,7 +598,8 @@ function pintarResumen(m, completo) {
           <div class="panel-titulo"><div><h2>Un enlace. Un nuevo clip.</h2><p>Añade un momento de tu stream a la cola.</p></div></div>
           <form class="entrada" id="r-form"><div class="entrada-caja">${ic("enlace")}<input id="r-url" type="url" aria-label="Enlace del clip de Kick" placeholder="Pega un enlace de Kick…" autocomplete="off" required>
             <button class="primario">Añadir${ic("flecha")}</button></div>
-            <div class="entrada-pie"><span>Se procesa en tu PC y se destina a YouTube en privado.</span><button type="button" class="enlace-fino" data-accion="nuevo" data-p="archivo">${ic("subir")}O elige un archivo</button></div>
+            <div class="entrada-pie"><label class="perfil-rapido">Perfil<select id="r-perfil" aria-label="Perfil de creador para este enlace"></select></label>
+              <span>Se procesa en tu PC y se destina a YouTube en privado.</span><button type="button" class="enlace-fino" data-accion="nuevo" data-p="archivo">${ic("subir")}O elige un archivo</button></div>
             <p class="error" id="r-error" role="alert" hidden></p></form>
           <div class="franja"><h3>Actividad reciente</h3><a class="enlace-fino" href="#cola">Ver la cola${ic("flecha")}</a></div>
           <div class="recientes" id="r-recientes"></div>
@@ -571,7 +612,7 @@ function pintarResumen(m, completo) {
       ev.preventDefault();
       const error = $("#r-error"); error.hidden = true;
       try {
-        await api("/api/importar/enlace", { method: "POST", json: { url: $("#r-url").value, publicar: true, modo: "clip" } });
+        await api("/api/importar/enlace", { method: "POST", json: { url: $("#r-url").value, publicar: true, modo: "clip", perfil: $("#r-perfil").value } });
         $("#r-url").value = ""; avisar("1 clip añadido a la cola."); refrescar();
       } catch (err) { error.textContent = err.message; error.hidden = false; }
     });
@@ -593,6 +634,7 @@ function pintarResumen(m, completo) {
   if (recientes.length) ponerLista($("#r-recientes"), recientes, "div", (t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`);
   else poner($("#r-recientes"), `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
   poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
+  poner($("#r-perfil"), opcionesPerfil(e.perfil_activo));      // se rehace solo si cambian los perfiles o el activo
   $("#r-estilo").textContent = NOMBRE_ESTILO[e.estilo] || NOMBRE_ESTILO.clasico;
   poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
       <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}${e.proxima_subida > 0 ? ` Próxima subida: ${horaSubida(e.proxima_subida)}.` : ""}</p></div>
@@ -687,12 +729,148 @@ document.addEventListener("pointercancel", soltarPieza);     // al desplazar la 
 document.addEventListener("contextmenu", (e) => { if (tocando && piezaDe(e)) e.preventDefault(); });
 document.addEventListener("click", (e) => { if (mantenida && piezaDe(e)) { e.preventDefault(); e.stopPropagation(); } mantenida = false; }, true);
 
+// ---------------------------------------------------------------- perfiles de creador
+// La lista completa (contexto, correcciones, hashtags) se pide a /api/perfiles al abrir la vista y cuando /api/estado
+// avisa de un cambio (otro perfil, otra versión); el activo y cuántos clips usan cada uno salen siempre de /api/estado.
+let perfilesPedidos = null;
+const cargarPerfiles = () => (perfilesPedidos ||= api("/api/perfiles")
+  .then((r) => { S.perfiles = r.perfiles; return r.perfiles; }).finally(() => { perfilesPedidos = null; }));
+const huellaPerfiles = (lista, v) => lista.map((p) => p.id + p[v]).join();
+const ESTILO_CORTO = { "": "El de la Plantilla", auto: "Automático", clasico: "Clásico", completo: "Pantalla completa", dividido: "Vista dividida" };
+
+async function pintarPerfiles(m, completo) {
+  if (completo || !$("#pf-rejilla")) {
+    m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">Tus creadores</div><h1>Perfiles</h1>
+        <p>Cada streamer con su nombre, firma, contexto de transcripción, tema y logo. Los clips nuevos usan el perfil activo.</p></div>
+        <button class="primario" data-accion="nuevo-perfil">${ic("mas")}Nuevo perfil</button></div>
+      <div class="perfiles" id="pf-rejilla"></div>`;
+  }
+  if (completo || !S.perfiles || huellaPerfiles(S.perfiles, "actualizado") !== huellaPerfiles(S.estado.perfiles, "v")) {
+    try { await cargarPerfiles(); } catch (e) {
+      if (!S.perfiles) $("#pf-rejilla").innerHTML = `<div class="panel sin-nada" role="alert">No se pudieron cargar los perfiles. Vuelve a entrar en Perfiles para reintentar.</div>`;
+      return avisar(e.message, true);
+    }
+  }
+  if (S.vista !== "perfiles" || !$("#pf-rejilla")) return;   // se cambió de vista mientras llegaban los datos
+  ponerLista($("#pf-rejilla"), S.perfiles, "div", tarjetaPerfil);
+}
+function tarjetaPerfil(p) {
+  const activo = p.id === S.estado.perfil_activo, clips = S.estado.trabajos.filter((t) => t.perfil === p.id).length;
+  const corto = { ...p, v: p.actualizado };
+  return h`<article class="tarjeta perfil-tarjeta ${activo ? "activo" : ""}" aria-labelledby="pf-n-${p.id}">
+    <div class="perfil-cabeza">${crudo(avatarPerfil(corto, "grande"))}<div><h2 id="pf-n-${p.id}">${p.nombre}</h2><p>${p.firma || "Sin firma: se usa el nombre"}</p></div>
+      ${activo ? crudo(`<span class="pastilla subido">${icono("check")}Activo</span>`) : ""}</div>
+    <dl class="ficha"><dt>Tema</dt><dd>${TEMAS[p.tema] || p.tema}</dd>
+      ${p.tema === "gta6" ? crudo(h`<dt>Hashtags</dt><dd>${p.hashtags_fijos || "—"}</dd>`) : ""}
+      <dt>Estilo</dt><dd>${ESTILO_CORTO[p.estilo] || p.estilo}</dd>
+      <dt>Logo</dt><dd>${p.logo ? "Propio" : "El general de la Plantilla"}</dd>
+      <dt>Clips</dt><dd>${clips}</dd></dl>
+    <div class="fila">${activo ? "" : crudo(h`<button class="primario" data-accion="activar-perfil" data-id="${p.id}" data-foco="pa-${p.id}">Usar este perfil</button>`)}
+      <button data-accion="editar-perfil" data-id="${p.id}" data-foco="pe-${p.id}">Editar</button>
+      <button data-accion="duplicar-perfil" data-id="${p.id}" data-foco="pd-${p.id}">Duplicar</button>
+      <button class="texto peligro" data-accion="eliminar-perfil" data-id="${p.id}" data-foco="px-${p.id}" ${crudo(activo ? `disabled aria-describedby="pf-motivo-${p.id}"` : "")}>Eliminar</button></div>
+    ${activo ? crudo(h`<p class="pequeno tenue" id="pf-motivo-${p.id}">Es el perfil activo: para eliminarlo, activa otro.</p>`) : ""}</article>`;
+}
+
+// Editor de un perfil (nuevo si p es null). El logo se sube después de guardar, porque necesita el id del perfil.
+function editarPerfil(p) {
+  const nuevo = !p;
+  p = p || { nombre: "", firma: "", contexto_transcripcion: "", correcciones: "", tema: "", hashtags_fijos: "#GTA6 #GTAVI #GTA #Gaming", estilo: "", logo: false };
+  let archivoLogo = null, quitarLogo = false, url = null;
+  const general = ESTILO_CORTO[S.estado.estilo] || S.estado.estilo;
+  abrirModal(nuevo ? "Nuevo perfil" : `Editar «${p.nombre}»`, h`<form id="form-perfil" class="pila" novalidate>
+      <div class="campos"><label>Nombre del creador<input name="nombre" maxlength="40" required value="${p.nombre}" autocomplete="off"></label>
+        <label>Firma bajo el logo<input name="firma" maxlength="40" value="${p.firma}" placeholder="@usuario" autocomplete="off"></label></div>
+      <p class="pequeno tenue">El nombre aparece en títulos y descripciones; la firma, bajo el logo (vacía = el nombre).</p>
+      <label>Contexto de transcripción<textarea name="contexto_transcripcion" rows="3" maxlength="600" aria-describedby="pf-ayuda-contexto">${p.contexto_transcripcion}</textarea></label>
+      <p class="pequeno tenue" id="pf-ayuda-contexto">Escríbelo como se habla, con puntuación: «Stream de Chetalonso en Kick. ¿Cachai? Ya po, altiro.» Una lista de palabras sueltas empeora la transcripción. Solo orienta a Whisper; no agrega nada al texto.</p>
+      <label>Correcciones de escritura<textarea name="correcciones" rows="3" maxlength="4000" placeholder="cachay => cachai" aria-describedby="pf-ayuda-correcciones">${p.correcciones}</textarea></label>
+      <p class="pequeno tenue" id="pf-ayuda-correcciones">Una por línea: como sale => como debe verse. Corrigen subtítulos y títulos; la transcripción literal no cambia.</p>
+      <div class="campos"><label>Tema<select name="tema">${Object.entries(TEMAS).map(([k, n]) => crudo(h`<option value="${k}" ${k === p.tema ? "selected" : ""}>${k === "gta6" ? "GTA 6: todo es de GTA 6" : n}</option>`))}</select></label>
+        <label>Estilo preferido<select name="estilo">${Object.entries(ESTILO_CORTO).map(([k, n]) => crudo(h`<option value="${k}" ${k === p.estilo ? "selected" : ""}>${k ? n : `${n} (ahora: ${general})`}</option>`))}</select></label></div>
+      <div class="pila" id="pf-hashtags" ${p.tema === "gta6" ? "" : crudo("hidden")}><label>Hashtags fijos<input name="hashtags_fijos" maxlength="200" value="${p.hashtags_fijos}" placeholder="#GTA6 #GTAVI #GTA #Gaming"></label>
+        <p class="pequeno tenue">Con GTA 6 cada título menciona «GTA 6», la categoría es Gaming y estos hashtags van en la descripción.</p></div>
+      <div class="logo-perfil"><span id="pf-logo-vista">${crudo(avatarPerfil({ ...p, v: p.actualizado }, "grande"))}</span>
+        <div class="pila" style="gap:8px"><b>Logo propio (opcional)</b><p class="pequeno tenue" id="pf-logo-texto">${p.logo ? "Este perfil tiene su propio logo." : "Sin logo propio: se usa el logo general de la Plantilla."}</p>
+          <div class="fila"><label class="boton">${ic("subir")}Elegir imagen<input type="file" id="pf-logo" class="solo-lector" accept="image/png,image/webp,image/jpeg"></label>
+          <button type="button" id="pf-logo-quitar" ${p.logo ? "" : crudo("hidden")}>Quitar logo</button></div></div></div>
+      <p class="error" id="pf-error" role="alert" hidden></p></form>`,
+  h`<button data-accion="cerrar-modal">Cancelar</button><button class="primario" id="pf-guardar">${nuevo ? "Crear perfil" : "Guardar cambios"}</button>`);
+  const f = $("#form-perfil"), error = $("#pf-error");
+  const soltarUrl = () => { if (url) URL.revokeObjectURL(url); url = null; };
+  modalResuelve = soltarUrl;                  // al cerrar la ventana de cualquier forma, se libera la vista previa del logo
+  f.tema.addEventListener("change", () => { $("#pf-hashtags").hidden = f.tema.value !== "gta6"; });
+  $("#pf-logo").addEventListener("change", (e) => {
+    archivoLogo = e.target.files[0] || null; quitarLogo = false; soltarUrl();
+    if (!archivoLogo) return;
+    url = URL.createObjectURL(archivoLogo);
+    $("#pf-logo-vista").innerHTML = h`<span class="avatar grande" aria-hidden="true"><img src="${url}" alt=""></span>`;
+    $("#pf-logo-texto").textContent = `Se usará ${archivoLogo.name} al guardar.`; $("#pf-logo-quitar").hidden = false;
+  });
+  $("#pf-logo-quitar").addEventListener("click", () => {
+    archivoLogo = null; quitarLogo = p.logo; soltarUrl(); $("#pf-logo").value = "";
+    $("#pf-logo-vista").innerHTML = avatarPerfil({ nombre: f.nombre.value || p.nombre }, "grande");
+    $("#pf-logo-texto").textContent = "Sin logo propio: se usará el logo general de la Plantilla."; $("#pf-logo-quitar").hidden = true;
+  });
+  f.addEventListener("submit", (e) => { e.preventDefault(); $("#pf-guardar").click(); });
+  $("#pf-guardar").onclick = async () => {
+    const campos = Object.fromEntries([...f.querySelectorAll("[name]")].map((i) => [i.name, i.value]));
+    if (!campos.nombre.trim()) { error.textContent = "Escribe el nombre del creador."; error.hidden = false; return f.nombre.focus(); }
+    const boton = $("#pf-guardar"); boton.disabled = true; error.hidden = true;
+    try {
+      const r = await api(nuevo ? "/api/perfiles" : `/api/perfiles/${p.id}`, { method: nuevo ? "POST" : "PUT", json: campos });
+      if (archivoLogo) { const d = new FormData(); d.append("archivo", archivoLogo); await api(`/api/perfiles/${r.id}/logo`, { method: "POST", body: d }); }
+      else if (quitarLogo) await api(`/api/perfiles/${r.id}/logo`, { method: "DELETE" });
+      soltarUrl(); cerrarModal();
+      avisar(nuevo ? `Perfil «${r.nombre}» creado.` : `Perfil «${r.nombre}» guardado. Se aplica a sus clips cuando se procesen o se rendericen de nuevo.`);
+      await recargarPerfiles();
+    } catch (err) {
+      if (!$("#form-perfil")) return avisar(err.message, true);       // la ventana se cerró mientras se guardaba
+      error.textContent = err.message; error.hidden = false; boton.disabled = false;
+    }
+  };
+}
+async function recargarPerfiles() {
+  S.perfiles = null;
+  await refrescar();
+  if (S.vista === "perfiles") await pintarPerfiles($("#principal"), false);
+}
+
 document.addEventListener("change", intentar(async (e) => {
+  if (e.target.closest("[data-perfil-trabajo]")) return cambiarPerfilClip(e.target);
   const sel = e.target.closest("[data-estilo-trabajo]");
   if (!sel) return;
   await api(`/api/trabajos/${S.jid}/estilo`, { method: "PUT", json: { estilo: sel.value } });
   avisar("Estilo cambiado: se renderiza de nuevo (no se repite la transcripción)."); refrescar();
 }));
+
+// Cambiar el perfil de un clip rehace textos y render. Si el contexto que recibiría Whisper es otro, la misma ventana
+// ofrece volver a transcribir (si no, se conserva la transcripción actual).
+async function cambiarPerfilClip(sel) {
+  const t = S.detalle, nuevo = perfilPorId(sel.value);
+  const volver = () => { sel.value = perfilPorId(t.perfil) ? t.perfil : ""; };
+  let lista;
+  try { lista = await cargarPerfiles(); } catch (err) { volver(); throw err; }
+  const contexto = (id) => lista.find((p) => p.id === id)?.contexto_efectivo;
+  const cambia = contexto(t.perfil) !== contexto(sel.value);
+  const motivo = t.editado ? "tiene una edición de tiempos (quítala antes con «Volver al clip completo»)"
+    : t.origen_tipo === "momento" ? "usa la transcripción de su video largo" : "";
+  const ok = await new Promise((resolver) => {
+    abrirModal("Cambiar el perfil del clip", h`<p>«${t.nombre}» pasará a usar el perfil «${nuevo.nombre}»: se vuelven a generar el banner, el título y la descripción (se pierden los cambios hechos a mano) y se renderiza de nuevo.</p>
+      ${!cambia ? "" : motivo ? crudo(h`<p class="nota">El contexto de transcripción de «${nuevo.nombre}» es distinto, pero este clip no se puede volver a transcribir porque ${motivo}. Se conserva la transcripción actual.</p>`)
+        : crudo(h`<label class="linea"><input type="checkbox" id="cp-retranscribir"> Volver a transcribir con el contexto de «${nuevo.nombre}»</label>
+          <p class="pequeno tenue">El contexto de transcripción de este perfil es distinto. Volver a transcribir tarda unos minutos y rehace los subtítulos; si no, se conserva la transcripción actual.</p>`)}`,
+    h`<button data-accion="cerrar-modal">Cancelar</button><button class="primario" id="modal-si">Cambiar perfil</button>`);
+    modalResuelve = resolver;
+    $("#modal-si").onclick = () => cerrarModal({ retranscribir: !!$("#cp-retranscribir")?.checked });
+  });
+  if (!ok) return volver();
+  try {
+    await api(`/api/trabajos/${t.id}/perfil`, { method: "PUT", json: { perfil: nuevo.id, retranscribir: ok.retranscribir } });
+  } catch (err) { volver(); throw err; }
+  avisar(ok.retranscribir ? `Perfil «${nuevo.nombre}»: se vuelve a transcribir y a renderizar.` : `Perfil «${nuevo.nombre}»: se regeneran los textos y el render.`);
+  S.sucio = false; refrescar();
+}
 
 document.addEventListener("click", (e) => {
   const acc = e.target.closest("[data-accion]");
@@ -739,6 +917,8 @@ function pintarTrabajo(m, completo) {
     if (!t.youtube_id) botones += h`<button data-accion="editar-tiempos" data-foco="b-tiempos">${ic("tijera")}Editar tiempos</button>`;
   }
   if (["renderizado", "error"].includes(t.estado) && !t.subir_solicitado && !t.youtube_id) {
+    botones += h`<label class="estilo-trabajo">Perfil<select data-perfil-trabajo data-foco="b-perfil">${crudo(opcionesPerfil(t.perfil))}
+      ${perfilPorId(t.perfil) ? "" : crudo(h`<option value="" selected disabled>${nombrePerfil(t)}</option>`)}</select></label>`;
     const general = { auto: "automático", completo: "pantalla completa", dividido: "vista dividida" }[S.estado.estilo] || "clásico";
     botones += h`<label class="estilo-trabajo">Estilo<select data-estilo-trabajo data-foco="b-estilo">
       <option value="auto" ${t.estilo === "auto" ? "selected" : ""}>Automático (recomendado): elige el mejor encuadre</option>
@@ -765,6 +945,7 @@ function pintarTrabajo(m, completo) {
     ${t.youtube_id ? crudo(h`<p class="nota bien">Subido en privado. ID de YouTube: <code>${t.youtube_id}</code> ·
       <a href="https://studio.youtube.com/video/${t.youtube_id}/edit" target="_blank" rel="noopener">Abrir en YouTube Studio</a></p>`) : ""}
     <dl class="ficha"><dt>Origen</dt><dd>${etiquetaOrigen(t)}</dd>
+      <dt>Perfil</dt><dd>${nombrePerfil(t)}</dd>
       <dt>Duración</dt><dd>${t.duracion ? reloj(t.duracion) : "—"}</dd>
       <dt>Resultado</dt><dd>${sal ? `${sal.ancho} × ${sal.alto} · ${sal.codec_video}/${sal.codec_audio || "sin audio"} · ${(sal.tamano_bytes / 1048576).toFixed(1)} MB` : "Aún sin renderizar"}</dd>
       ${sal && t.copia ? crudo(h`<dt>Copia</dt><dd>2_shorts_renderizados/${t.copia}</dd>`) : ""}
@@ -986,7 +1167,7 @@ const acciones = {
   exportar: () => exportarClip(S.detalle),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
   retranscribir: intentar(async () => {
-    if (!await confirmar("Volver a transcribir", "Whisper transcribirá de nuevo el audio con el contexto de Ajustes → Proveedores. Los subtítulos se rehacen (se pierden los cambios hechos a mano); el banner, el título y la descripción se conservan. Puede tardar unos minutos.", "Volver a transcribir")) return;
+    if (!await confirmar("Volver a transcribir", `Whisper transcribirá de nuevo el audio con el contexto de transcripción del perfil «${nombrePerfil(S.detalle)}». Los subtítulos se rehacen (se pierden los cambios hechos a mano); el banner, el título y la descripción se conservan. Puede tardar unos minutos.`, "Volver a transcribir")) return;
     await accionTrabajo("retranscribir", "En cola para transcribir de nuevo.")();
   }),
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),
@@ -1000,6 +1181,31 @@ const acciones = {
     await api(`/api/trabajos/${S.jid}`, { method: "DELETE" }); location.hash = S.desde;
   }),
   pestana: (b) => { S.pestana = b.dataset.p; pintarAjustes($("#principal")); },
+  "activar-perfil": intentar(async (b) => {
+    cerrarMenuPerfiles(b.closest("#menu-perfiles") !== null);
+    if (b.dataset.id === S.estado.perfil_activo) return;
+    await api(`/api/perfiles/${b.dataset.id}/activar`, { method: "POST" });
+    avisar(`Perfil activo: «${perfilPorId(b.dataset.id)?.nombre}». Los clips que importes desde ahora lo usarán; los ya importados conservan el suyo.`);
+    await refrescar();
+    if (S.vista === "plantilla") pintar(true);       // la vista previa muestra la firma y el logo del perfil activo
+  }),
+  "cerrar-perfiles": () => cerrarMenuPerfiles(),
+  "nuevo-perfil": () => editarPerfil(null),
+  "editar-perfil": (b) => editarPerfil(S.perfiles.find((p) => p.id === b.dataset.id)),
+  "duplicar-perfil": intentar(async (b) => {
+    const r = await api(`/api/perfiles/${b.dataset.id}/duplicar`, { method: "POST" });
+    avisar(`Creado «${r.nombre}». Edítalo para cambiar el nombre, la firma o el tema.`); await recargarPerfiles();
+  }),
+  "eliminar-perfil": intentar(async (b) => {
+    const p = S.perfiles.find((x) => x.id === b.dataset.id), suyos = S.estado.trabajos.filter((t) => t.perfil === p.id), clips = suyos.length;
+    const enProceso = suyos.filter((t) => ["procesando", "subiendo"].includes(t.estado)).length;
+    if (enProceso) return avisar(`Hay ${plural(enProceso, "clip", "clips")} de «${p.nombre}» en proceso: espera a que terminen para eliminar el perfil.`, true);
+    const texto = clips ? `Lo usan ${plural(clips, "clip", "clips")}. Esos clips guardan una copia de su nombre, firma, contexto y tema, así que no cambian; su logo propio se borra (si se renderizan de nuevo, usarán el logo general).`
+      : "Ningún clip usa este perfil.";
+    if (!await confirmar(`Eliminar «${p.nombre}»`, texto, "Eliminar perfil", true)) return;
+    await api(`/api/perfiles/${p.id}${clips ? "?confirmar=true" : ""}`, { method: "DELETE" });
+    avisar(`Perfil «${p.nombre}» eliminado.`); await recargarPerfiles();
+  }),
   "codigo": intentar(async () => {
     const c = await api("/api/vincular/codigo", { method: "POST" });
     $("#zona-codigo").innerHTML = h`<p class="codigo">${c.codigo}</p><p class="pequeno tenue">Válido 10 minutos y para un solo dispositivo. En la tablet abre <code>${c.direccion || "http://IP-del-PC:8765"}</code> en el navegador, conectada al mismo wifi.</p>`;
@@ -1049,8 +1255,8 @@ const SECCIONES_PLANTILLA = [
     ["sub_tamano", "Tamaño"], ["sub_desplazamiento", "Distancia bajo el video"], ["sub_palabras_max", "Palabras por bloque"],
     ["sub_caracteres_max", "Caracteres por bloque"], ["sub_color_resalte", "Color de la palabra activa", "color"],
     ["sub_resaltar", "Resaltar en color la palabra que se está diciendo", "check"]]],
-  ["Marca y nombre", [
-    ["creador", "Nombre del creador (títulos)", "text"], ["firma", "Firma bajo el logo", "text"], ["nombre_tamano", "Firma: tamaño"],
+  ["Marca y nombre", [      // el nombre y la firma son del perfil de creador (vista Perfiles)
+    ["nombre_tamano", "Firma: tamaño"],
     ["nombre_color", "Firma: color", "color"], ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"],
     ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
 ];
@@ -1083,8 +1289,9 @@ async function pintarPlantilla(m) {
     return h`<fieldset ${id ? crudo(`id="${id}"${seVeSeccion(v.estilo, e) ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
       ${titulo === "Banner superior" ? crudo(`<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`) : ""}
       ${de("select")}${titulo === "Encuadre" ? crudo(h`<p class="pequeno tenue" id="pl-auto-nota" ${v.estilo === "auto" ? "" : crudo("hidden")}>Cada clip elige al renderizar entre cámara arriba y contenido abajo, dos personas en pantalla dividida, pantalla completa siguiendo al protagonista o el clásico. La vista previa muestra el clásico; abajo se ajustan también la pantalla completa y la vista dividida.</p>`) : ""}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
-      ${titulo === "Marca y nombre" ? crudo(h`<p class="pequeno tenue" id="pl-logo-nota"></p>
-        <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">${ic("subir")}Subir logo PNG<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
+      ${titulo === "Marca y nombre" ? crudo(h`<p class="nota">Nombre y firma: del perfil activo «${perfilActivo()?.nombre}» (${perfilActivo()?.firma || "sin firma: se usa el nombre"}). Se cambian en <a href="#perfiles">Perfiles</a>; la vista previa muestra los suyos.</p>
+        <p class="pequeno tenue" id="pl-logo-nota"></p>
+        <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">${ic("subir")}Subir logo general (PNG)<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
         <button type="button" data-accion="logo-quitar" id="pl-logo-quitar">Quitar logo</button></div>`) : ""}</fieldset>`;
   };
   m.innerHTML = h`<form id="form-plantilla"><div class="cabecera"><div><div class="antetitulo">Identidad del canal</div><h1>Tu plantilla</h1><p>Un formato reconocible en todos tus clips.</p></div>
@@ -1109,8 +1316,9 @@ async function pintarPlantilla(m) {
   };
   const logo = (propio) => {
     $("#pl-logo-quitar").hidden = !propio;
-    $("#pl-logo-nota").textContent = propio ? "Usando tu logo. Los márgenes transparentes se recortan automáticamente."
-      : "Sin logo propio: se muestra el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.";
+    const delPerfil = perfilActivo()?.logo ? ` El perfil activo «${perfilActivo().nombre}» tiene su propio logo: es el que muestra la vista previa.` : "";
+    $("#pl-logo-nota").textContent = (propio ? "Logo general: lo usan los perfiles sin logo propio. Los márgenes transparentes se recortan automáticamente."
+      : "Sin logo general: los perfiles sin logo propio muestran el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.") + delPerfil;
   };
 
   // ---- Historial de la sesión: cada entrada guarda solo los campos que cambiaron (formulario o editor visual).
@@ -1352,17 +1560,7 @@ async function pintarAjustes(m) {
       <label>Modelo de Gemini (vacío = automático)<input name="gemini_modelo" value="${v.gemini_modelo}"></label>
       <label>Momentos a proponer por video largo<input name="momentos_cantidad" type="number" min="1" max="20" value="${v.momentos_cantidad}"></label></div>
       <p class="pequeno tenue">Modelos más grandes transcriben mejor pero tardan más. «small» es un punto de partida razonable en CPU.</p>
-      <label>Contexto de transcripción<textarea name="vocabulario" rows="3" maxlength="600" aria-describedby="ayuda-vocabulario">${v.vocabulario}</textarea></label>
-      <p class="pequeno tenue" id="ayuda-vocabulario">Escríbelo como se habla, con puntuación: «Stream de Jongottii en Kick. ¿Cachai? Ya po, altiro.» No pongas una lista de palabras sueltas: Whisper pierde tildes y puntuación. Solo orienta el reconocimiento; no agrega nada al texto.</p>
-      <label>Correcciones de escritura<textarea name="correcciones" rows="4" placeholder="cachay => cachai&#10;jongoti => Jongottii" aria-describedby="ayuda-correcciones">${v.correcciones}</textarea></label>
-      <p class="pequeno tenue" id="ayuda-correcciones">Una por línea: como sale => como debe verse. Corrigen subtítulos y títulos; la transcripción literal no cambia. Se aplican a los clips que se procesen desde ahora.</p>
-      <label>Tema del canal<select name="tema" aria-describedby="ayuda-tema">
-        <option value="" ${v.tema === "" ? "selected" : ""}>Detectar automáticamente en cada clip</option>
-        <option value="gta6" ${v.tema === "gta6" ? "selected" : ""}>GTA 6: todo el canal es de GTA 6</option></select></label>
-      <p class="pequeno tenue" id="ayuda-tema">Con GTA 6, cada título menciona «GTA 6», la categoría es Gaming y se añaden los hashtags fijos. Los textos no inventan misiones ni sucesos. Los clips ya procesados se actualizan con «Regenerar automáticamente» en su detalle.</p>
-      <div class="pila" id="campo-hashtags" ${v.tema === "gta6" ? "" : crudo("hidden")}>
-        <label>Hashtags fijos<input name="hashtags_fijos" value="${v.hashtags_fijos}" placeholder="#GTA6 #GTAVI #GTA #Gaming" aria-describedby="ayuda-hashtags"></label>
-        <p class="pequeno tenue" id="ayuda-hashtags">Separados por espacios. Se añaden a la descripción de cada Short.</p></div>
+      <p class="nota">El contexto de transcripción, las correcciones de escritura, el tema (GTA 6) y los hashtags fijos ahora son de cada creador: se editan en <a href="#perfiles">Perfiles</a>.</p>
       <div><button class="primario">Guardar</button></div></form>
     <div class="tarjeta pila"><h3>Clave de Gemini</h3>${crudo(soloPc)}
       <form class="fila" id="form-gemini"><input type="password" id="gemini-clave" placeholder="${p.gemini.clave ? "Hay una clave guardada" : "Pega aquí la clave de API"}" autocomplete="off" style="flex:1;min-width:200px" ${local ? "" : "disabled"}>
@@ -1412,8 +1610,6 @@ async function pintarAjustes(m) {
     await api("/api/ajustes", { method: "PUT", json: cambios }); avisar(mensaje); refrescar();
   }));
   guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
-  // «Hashtags fijos» solo tiene efecto con el tema GTA 6: se muestra solo entonces (su valor se conserva igual).
-  $("#form-prov [name=tema]")?.addEventListener("change", (e) => { $("#campo-hashtags").hidden = e.target.value !== "gta6"; });
 
   $("#form-clave")?.addEventListener("submit", async (e) => {
     e.preventDefault();

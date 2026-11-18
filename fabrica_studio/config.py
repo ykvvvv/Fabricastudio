@@ -40,14 +40,15 @@ class Rutas:
         self.trabajos = self.base / "trabajos"
         self.secretos = self.base / "secretos"
         self.modelos = self.base / "modelos"
-        self.recursos = self.base / "recursos"  # logo subido por el usuario
+        self.recursos = self.base / "recursos"  # logo general subido por el usuario
+        self.perfiles = self.recursos / "perfiles"   # perfiles/<id>/logo.png: logo propio de un perfil de creador
         self.crudos = self.base / "1_clips_crudos"
         self.renderizados = self.base / "2_shorts_renderizados"
         self.procesados = self.base / "3_procesados_ok"
         self.exportados = self.base / "4_exportados"
 
     def crear(self) -> None:
-        for p in (self.base, self.trabajos, self.secretos, self.modelos, self.recursos,
+        for p in (self.base, self.trabajos, self.secretos, self.modelos, self.recursos, self.perfiles,
                   self.crudos, self.renderizados, self.procesados, self.exportados):
             p.mkdir(parents=True, exist_ok=True)
 
@@ -136,6 +137,18 @@ AJUSTES_POR_DEFECTO: dict = {
     # --- Carpeta vigilada ---
     "vigilar_carpeta": True,
     "segundos_estable": 6,            # un archivo debe llevar este tiempo sin cambiar
+    # --- Perfiles de creador ---
+    # Estado interno: id del perfil que reciben los clips nuevos. Solo cambia con «activar» (no por PUT /api/ajustes).
+    # creador, firma, vocabulario, correcciones, tema y hashtags_fijos de arriba solo sirven para crear el primer
+    # perfil (migración): desde entonces cada clip usa los de su perfil.
+    "perfil_activo": "",
+}
+
+# Perfil de creador: campo de la API → ajuste que sustituye al procesar un clip, y largo máximo del texto.
+CAMPOS_PERFIL: dict = {
+    "nombre": ("creador", 40), "firma": ("firma", 40), "contexto_transcripcion": ("vocabulario", 600),
+    "correcciones": ("correcciones", 4000), "tema": ("tema", 0), "hashtags_fijos": ("hashtags_fijos", 200),
+    "estilo": ("estilo", 0),         # "" = el estilo general de la Plantilla
 }
 
 # Rangos válidos (mín, máx) de los ajustes numéricos, y valores permitidos de las listas.

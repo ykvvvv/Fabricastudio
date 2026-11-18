@@ -19,8 +19,8 @@ import traceback
 from pathlib import Path
 
 from . import edicion, exportar, importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
-from .config import AJUSTES_DE_DISENO, Rutas
-from .db import DB
+from .config import AJUSTES_DE_DISENO, CAMPOS_PERFIL, Rutas
+from .db import DB, perfil_como_ajustes
 from .errores import ErrorEtapa, sin_secretos
 from .youtube import YouTube
 
@@ -102,13 +102,85 @@ class Fabrica:
         self.carpeta_estado: dict[str, str] = {}  # archivo -> motivo por el que aún no se importa
         self.progreso: dict[str, str] = {}        # trabajo -> texto de avance (no persistente)
 
+    # ------------------------------------------------------------ perfiles de creador
+    def perfil_de(self, t: dict) -> dict:
+        """Perfil con el que se procesa un clip: el que se le asignó al importarlo, aunque después se active otro.
+        Si ese perfil se eliminó, la copia que se le guardó al eliminarlo."""
+        d = t["datos"]
+        return self.db.perfil(d.get("perfil")) or d.get("perfil_copia") or self.db.perfil_activo()
+
+    def ajustes_de(self, t: dict) -> dict:
+        """Ajustes generales con los del perfil del clip encima (nombre, firma, contexto, tema…)."""
+        return {**self.db.ajustes(), **perfil_como_ajustes(self.perfil_de(t))}
+
+    def carpeta_logo(self, perfil: dict) -> Path:
+        """Carpeta del logo.png que se dibuja: el propio del perfil o, si no tiene, el logo general."""
+        propia = self.rutas.perfiles / perfil["id"]
+        return propia if (propia / "logo.png").exists() else self.rutas.recursos
+
+    def perfiles(self) -> list[dict]:
+        """Perfiles con lo que el panel muestra: si tienen logo, cuántos clips los usan y el contexto que recibe Whisper."""
+        uso = self.db.uso_perfiles()
+        return [{**p, "logo": (self.rutas.perfiles / p["id"] / "logo.png").exists(), "en_uso": uso.get(p["id"], 0),
+                 "contexto_efectivo": contexto_transcripcion(perfil_como_ajustes(p))} for p in self.db.perfiles()]
+
+    def activar_perfil(self, pid: str) -> dict:
+        """Los clips que se importen desde ahora usarán este perfil; los ya importados conservan el suyo."""
+        p = self.db.perfil(pid)
+        if not p:
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        self.db.guardar_ajustes({"perfil_activo": pid})
+        return p
+
+    def duplicar_perfil(self, pid: str) -> dict:
+        p = self.db.perfil(pid)
+        if not p:
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        usados = {x["nombre"].casefold() for x in self.db.perfiles()}
+        base = f"{p['nombre'][:28]} (copia"
+        nombre = next(n for n in [f"{base})"] + [f"{base} {i})" for i in range(2, 100)] if n.casefold() not in usados)
+        nuevo = self.db.crear_perfil({**{k: p[k] for k in CAMPOS_PERFIL}, "nombre": nombre})
+        logo = self.rutas.perfiles / pid / "logo.png"
+        if logo.exists():
+            (self.rutas.perfiles / nuevo["id"]).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(logo, self.rutas.perfiles / nuevo["id"] / "logo.png")
+        return nuevo
+
+    def eliminar_perfil(self, pid: str, confirmar: bool = False) -> None:
+        """No se elimina el activo. Si hay clips con este perfil hace falta confirmar: cada uno guarda una copia de
+        sus valores (nombre, firma, contexto, tema…) para seguir igual; el logo propio se borra (usarán el general)."""
+        p = self.db.perfil(pid)
+        if not p:
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        if pid == self.db.perfil_activo()["id"]:
+            raise ErrorEtapa("Es el perfil activo: activa otro antes de eliminarlo.", "entrada")
+        usados = [t for t in self.db.trabajos() if t["datos"].get("perfil") == pid]
+        if any(t["estado"] in ("procesando", "subiendo") for t in usados):
+            raise ErrorEtapa("Hay clips de este perfil en proceso: espera a que terminen para eliminarlo.", "entrada")
+        if usados and not confirmar:
+            raise ErrorEtapa(f"Lo usan {len(usados)} clips. Si lo eliminas, esos clips conservan una copia de su "
+                             "nombre, firma, contexto y tema; su logo propio se borra.", "confirmar")
+        copia = {k: p[k] for k in ("id", *CAMPOS_PERFIL)}
+        for t in usados:
+            self.db.actualizar(t["id"], datos={**t["datos"], "perfil_copia": copia})
+        self.db.borrar_perfil(pid)
+        shutil.rmtree(self.rutas.perfiles / pid, ignore_errors=True)
+
+    def _perfil_para_importar(self, perfil: str | None) -> str:
+        if perfil and not self.db.perfil(perfil):
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        return perfil or self.db.perfil_activo()["id"]
+
     # ------------------------------------------------------------ importación
     def importar_archivo(self, origen: Path, nombre: str, origen_tipo: str = "archivo",
-                         publicar: bool = True, mover: bool = False, modo: str = "clip") -> dict:
-        """Crea un trabajo a partir de un archivo local. Rechaza duplicados exactos."""
+                         publicar: bool = True, mover: bool = False, modo: str = "clip",
+                         perfil: str | None = None) -> dict:
+        """Crea un trabajo a partir de un archivo local con el perfil indicado (o el activo).
+        Rechaza duplicados exactos."""
         if Path(nombre).suffix.lower() not in media.EXTENSIONES:
             raise ErrorEtapa(f"Formato no admitido: {Path(nombre).suffix or 'sin extensión'}. "
                              f"Usa {', '.join(sorted(media.EXTENSIONES))}.", "entrada")
+        pid = self._perfil_para_importar(perfil)
         media.sondear(origen)                      # falla aquí si no es un video legible
         sha = media.sha256(origen)
         previo = self.db.por_sha(sha)
@@ -125,20 +197,22 @@ class Fabrica:
             shutil.move(str(origen), destino)
         else:
             shutil.copyfile(origen, destino)
-        self.db.actualizar(t["id"], sha256=sha)
+        self.db.actualizar(t["id"], sha256=sha, datos={"perfil": pid})
         self.db.marcar_etapa(t["id"], "importar", "hecho")
         return self.db.trabajo(t["id"])
 
-    def importar_enlace(self, url: str, publicar: bool = True, modo: str = "clip") -> dict:
+    def importar_enlace(self, url: str, publicar: bool = True, modo: str = "clip", perfil: str | None = None) -> dict:
         url = importar.validar_enlace(url)
+        pid = self._perfil_para_importar(perfil)
         for t in self.db.trabajos():
             if t["origen_tipo"] == "enlace" and t["origen_ref"] == url:
                 raise ErrorEtapa(f"Ese enlace ya está en la cola como «{t['nombre']}».", "duplicado")
         nombre = _nombre_seguro(url.rstrip("/").rsplit("/", 1)[-1] or "clip-kick")
         t = self.db.crear_trabajo(nombre, "enlace", origen_ref=url, publicar=publicar,
                                   modo="largo" if modo == "largo" else "clip")
+        self.db.actualizar(t["id"], datos={"perfil": pid})
         self.rutas.trabajo(t["id"]).mkdir(parents=True)
-        return t
+        return self.db.trabajo(t["id"])
 
     # ------------------------------------------------------------ etapas
     def _entrada(self, carpeta: Path) -> Path | None:
@@ -154,7 +228,8 @@ class Fabrica:
         t = self.db.trabajo(jid)
         carpeta = self.rutas.trabajo(jid)
         carpeta.mkdir(parents=True, exist_ok=True)
-        a = self.db.ajustes()
+        perfil = self.perfil_de(t)
+        a = {**self.db.ajustes(), **perfil_como_ajustes(perfil)}     # el perfil del clip, no el activo
         self.db.actualizar(jid, estado="procesando", error="", error_tipo="", subir_solicitado=False)
 
         # 1. Importar (solo los enlaces descargan aquí).
@@ -290,17 +365,21 @@ class Fabrica:
                     estilo, encuadre = "clasico", None
             if aviso_encuadre and estilo != "clasico":   # el aviso habla del seguimiento: no aplica si «auto» eligió el clásico
                 self.db.anadir_aviso(jid, aviso_encuadre)
-        logo = self.rutas.recursos / "logo.png"
+        recursos = self.carpeta_logo(perfil)
+        logo = recursos / "logo.png"
         huella = hashlib.sha256(json.dumps([
             t["textos"]["banner"], sub["bloques"], {k: a[k] for k in AJUSTES_DE_DISENO}, recorte, estilo,
             _leer(carpeta / "edicion.json")["huella"] if (carpeta / "edicion.json").exists() else "",
             (encuadre or {}).get("dividido"), (decision or {}).get("tipo"),
-            logo.stat().st_mtime_ns if logo.exists() else 0], sort_keys=True).encode()).hexdigest()
+            logo.stat().st_mtime_ns if logo.exists() else 0]
+            # con el logo general la huella es la de siempre: los Shorts ya hechos no se renderizan otra vez
+            + ([logo.relative_to(self.rutas.base).as_posix()] if recursos != self.rutas.recursos else []),
+            sort_keys=True).encode()).hexdigest()
         datos = t["datos"]
         if datos.get("huella_render") != huella or not (carpeta / "short.mp4").exists():
             self._etapa(jid, "render", "Renderizando el video vertical…")
             res = render.renderizar(carpeta, entrada.name, prop, t["textos"]["banner"], sub["bloques"], a,
-                                    self.rutas.recursos, recorte=recorte, encuadre=encuadre)
+                                    recursos, recorte=recorte, encuadre=encuadre)
             for aviso in res["disposicion"]["avisos"]:
                 self.db.anadir_aviso(jid, aviso)
             datos.update(huella_render=huella, salida=res["propiedades"], disposicion=res["disposicion"])
@@ -383,7 +462,8 @@ class Fabrica:
         hijo = self.db.crear_trabajo(f"{padre['nombre']} {_reloj(inicio)}-{_reloj(fin)}".replace(":", "m"),
                                      "momento", origen_ref=ref, publicar=padre["publicar"])
         self.rutas.trabajo(hijo["id"]).mkdir(parents=True)
-        self.db.actualizar(hijo["id"], datos={"padre": jid, "inicio": inicio, "fin": fin})
+        herencia = {k: padre["datos"][k] for k in ("perfil", "perfil_copia") if k in padre["datos"]}   # su mismo creador
+        self.db.actualizar(hijo["id"], datos={"padre": jid, "inicio": inicio, "fin": fin, **herencia})
         return self.db.trabajo(hijo["id"])
 
     def _recortar(self, jid: str, carpeta: Path) -> Path:
@@ -652,20 +732,58 @@ class Fabrica:
                 "picos": _leer(f_picos)["picos"],
                 "palabras": [{k: p[k] for k in ("inicio", "fin", "texto")} for p in tr.get("palabras", [])]}
 
-    def retranscribir(self, jid: str) -> None:
-        """Vuelve a transcribir (p. ej. tras cambiar el modelo o el vocabulario). Rehace subtítulos;
-        conserva los textos editados a mano."""
-        t = self._editable(jid)
-        carpeta = self.rutas.trabajo(jid)
-        if (carpeta / "edicion.json").exists():
+    def _se_puede_retranscribir(self, t: dict) -> None:
+        if (self.rutas.trabajo(t["id"]) / "edicion.json").exists():
             raise ErrorEtapa("Quita primero la edición de tiempos («Volver al clip completo») y vuelve a transcribir.",
                              "entrada")
         if t["origen_tipo"] == "momento":
             raise ErrorEtapa("Este clip usa la transcripción de su video largo: vuelve a transcribir el video largo.",
                              "entrada")
+
+    def retranscribir(self, jid: str) -> None:
+        """Vuelve a transcribir (p. ej. tras cambiar el modelo o el vocabulario). Rehace subtítulos;
+        conserva los textos editados a mano."""
+        t = self._editable(jid)
+        self._se_puede_retranscribir(t)
+        carpeta = self.rutas.trabajo(jid)
         for nombre in ("transcripcion.json", "subtitulos.json", "picos.json"):
             (carpeta / nombre).unlink(missing_ok=True)
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
+
+    def cambiar_perfil(self, jid: str, pid: str, retranscribir: bool = False) -> dict:
+        """Asigna otro perfil a un clip: se vuelven a generar los textos y el render con sus valores, sin transcribir
+        otra vez salvo que se pida (`retranscribir`, p. ej. porque el contexto de transcripción es otro).
+        Devuelve el trabajo y si el contexto que recibiría Whisper cambia."""
+        t = self._editable(jid)
+        if not self.db.perfil(pid):
+            raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
+        if retranscribir:
+            self._se_puede_retranscribir(t)          # se comprueba antes de tocar nada
+        if t["datos"].get("perfil") == pid and not t["datos"].get("perfil_copia") and not retranscribir:
+            return {"trabajo": t, "contexto_cambia": False}
+        antes = self.ajustes_de(t)
+        datos = {**t["datos"], "perfil": pid}
+        datos.pop("perfil_copia", None)
+        self.db.actualizar(jid, datos=datos)
+        despues = self.ajustes_de(self.db.trabajo(jid))
+        carpeta = self.rutas.trabajo(jid)
+        borrar = ["textos_generados.json"]
+        if retranscribir:
+            borrar += ["transcripcion.json", "subtitulos.json", "picos.json"]
+        elif antes["correcciones"] != despues["correcciones"]:
+            f_sub = carpeta / "subtitulos.json"
+            if f_sub.exists() and _leer(f_sub).get("editado"):
+                self.db.anadir_aviso(jid, "Se conservaron tus subtítulos editados a mano. «Restaurar originales» "
+                                          "aplica las correcciones de escritura del nuevo perfil.")
+            else:
+                borrar.append("subtitulos.json")
+        for nombre in borrar:
+            (carpeta / nombre).unlink(missing_ok=True)
+        t = self.db.trabajo(jid)
+        self.db.actualizar(jid, textos={}, estado="pendiente", error="", error_tipo="",
+                           avisos=[x for x in t["avisos"] if not x.startswith("Textos generados")])
+        cambia = contexto_transcripcion(antes) != contexto_transcripcion(despues)
+        return {"trabajo": self.db.trabajo(jid), "contexto_cambia": cambia and not retranscribir}
 
     def exportar(self, jid: str, plataforma: str) -> dict:
         """Copia el Short a 4_exportados/<plataforma>/ con su texto y avisos de zona segura. No publica nada."""
