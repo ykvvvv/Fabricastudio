@@ -17,7 +17,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import edicion, importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
+from . import edicion, exportar, importar, media, momentos, reencuadre, render, subtitulos, textos, transcribe
 from .config import AJUSTES_DE_DISENO, Rutas
 from .db import DB
 from .errores import ErrorEtapa, sin_secretos
@@ -598,6 +598,10 @@ class Fabrica:
         for nombre in ("transcripcion.json", "subtitulos.json", "picos.json"):
             (carpeta / nombre).unlink(missing_ok=True)
         self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
+
+    def exportar(self, jid: str, plataforma: str) -> dict:
+        """Copia el Short a 4_exportados/<plataforma>/ con su texto y avisos de zona segura. No publica nada."""
+        return exportar.exportar(self._trabajo(jid), self.rutas.trabajo(jid), self.rutas.exportados, plataforma)
 
     def renderizar_de_nuevo(self, jid: str) -> None:
         self._editable(jid)

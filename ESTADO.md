@@ -840,3 +840,15 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   progreso tras «Renderizar de nuevo» y no se repitió en dos vueltas más. Captura en `docs/diseno/capturas-gta6/`.
   **No probado** con Gemini real ni en la tablet real. Nota para la nube: en `config.py` el comentario de
   `hashtags_fijos` dice «vacío = elegir entre los modelos que la API liste» (copiado de `gemini_modelo`); no lo toqué.
+- **2026-11-18 · Claude Code (nube)** — Ideas de OpenShorts elegidas por Cristóbal (1 y 2):
+  1. **Servidor MCP** `fabrica_studio/mcp_servidor.py` (SDK oficial `mcp` 2.x, MIT, rueda para Windows; API
+     `MCPServer`). 15 herramientas: estado, listar_clips, ver_clip, importar_archivos, importar_carpeta,
+     importar_enlace, cambiar_estilo, editar_textos, regenerar_textos, reintentar, ver_momentos,
+     crear_clip_de_momento, subir_a_youtube (privado), exportar, cambiar_ajustes (solo ajustes seguros). Usa la
+     misma base de datos; el panel procesa. Sin claves, cuenta, OAuth, canal, dispositivos ni borrar.
+     Lanzador `scripts\mcp_servidor.cmd`; registro: `claude mcp add fabrica-studio -- "<ruta>\scripts\mcp_servidor.cmd"`.
+  2. **Exportar** (`exportar.py`, `POST /api/trabajos/<id>/exportar {plataforma}`): tiktok, reels o shorts →
+     `4_exportados/<plataforma>/` con MP4 + .txt (sin #Shorts fuera de YouTube) y avisos de zona segura
+     (márgenes aproximados). No publica.
+  Pruebas: protocolo MCP real por stdio, herramientas y exportación. **Sin probar en Windows** (registro en
+  Claude Code y lanzador .cmd). **Falta en el panel:** botón «Exportar» con plataforma en el detalle del clip.

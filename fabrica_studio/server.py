@@ -285,6 +285,10 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def trabajo(jid: str, request: Request):
         return _con_etag(request, {**_publico(fab._trabajo(jid)), **fab.detalle(jid)})
 
+    @app.post("/api/trabajos/{jid}/exportar")
+    async def exportar_trabajo(jid: str, request: Request):
+        return fab.exportar(jid, str((await request.json()).get("plataforma", "")))
+
     @app.post("/api/trabajos/{jid}/clips")
     async def crear_clip(jid: str, request: Request):
         c = await request.json()

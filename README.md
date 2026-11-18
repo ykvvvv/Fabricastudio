@@ -103,6 +103,25 @@ la contraseña, en PowerShell dentro de la carpeta del proyecto:
 
 Borra la contraseña y las sesiones; tus clips y ajustes no se tocan.
 
+## Manejar Fábrica Studio con Claude (MCP)
+
+Claude Code puede usar Fábrica Studio directamente: importar clips o carpetas, revisar estados, cambiar
+estilos y textos, exportar y pedir subidas privadas. En **PowerShell** (una sola vez):
+
+```powershell
+claude mcp add fabrica-studio -- "C:\Users\notea\OneDrive\Escritorio\Fabricastudio\scripts\mcp_servidor.cmd"
+```
+
+Ajusta la ruta si el proyecto está en otra carpeta. Después, en Claude Code, `/mcp` debe mostrar
+`fabrica-studio` conectado. El panel tiene que estar abierto para que los clips se procesen.
+No incluye acciones sensibles (claves, cuentas, canal de YouTube ni borrar clips).
+
+## Exportar para TikTok y Reels
+
+En el detalle de un clip (o con la herramienta MCP `exportar`): copia el Short a `4_exportados/<plataforma>/`
+con un `.txt` con el texto de la publicación, y avisa si el banner, los subtítulos, el logo o la firma quedan
+bajo los botones de esa app (zonas aproximadas). La publicación en TikTok e Instagram se hace a mano.
+
 ## Carpetas
 
 Dentro de `datos/` (se crea sola, no se sube al repositorio):
@@ -111,6 +130,7 @@ Dentro de `datos/` (se crea sola, no se sube al repositorio):
 | --- | --- |
 | `1_clips_crudos/` | Copia aquí un video y entra solo a la cola cuando termina de copiarse. |
 | `2_shorts_renderizados/` | Copia de cada Short terminado. |
+| `4_exportados/` | Shorts copiados para subir a mano a TikTok, Reels o Shorts, con su texto. |
 | `3_procesados_ok/` | Los originales se mueven aquí solo tras confirmar la subida a YouTube. |
 | `secretos/` | Clave de Gemini y credenciales de YouTube. No la compartas. |
 

@@ -33,10 +33,11 @@ class Rutas:
         self.crudos = self.base / "1_clips_crudos"
         self.renderizados = self.base / "2_shorts_renderizados"
         self.procesados = self.base / "3_procesados_ok"
+        self.exportados = self.base / "4_exportados"
 
     def crear(self) -> None:
         for p in (self.base, self.trabajos, self.secretos, self.modelos, self.recursos,
-                  self.crudos, self.renderizados, self.procesados):
+                  self.crudos, self.renderizados, self.procesados, self.exportados):
             p.mkdir(parents=True, exist_ok=True)
 
     def trabajo(self, job_id: str) -> Path:

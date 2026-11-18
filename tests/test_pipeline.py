@@ -1,5 +1,6 @@
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -226,3 +227,21 @@ def test_clips_viejos_en_error_por_cuota_vuelven_a_la_cola(fabrica, clip):
     assert fabrica._recuperar_por_cuota() == 1
     t = fabrica.db.trabajo(t["id"])
     assert t["estado"] == "renderizado" and t["subir_solicitado"] and not t["error"]
+
+
+def test_exportar_para_otras_plataformas(fabrica, clip):
+    from fabrica_studio import exportar as ex
+    t = _procesar(fabrica, fabrica.importar_archivo(clip, "Clip GTA (1).mp4"))
+    fabrica.db.actualizar(t["id"], textos={**t["textos"], "titulo": "GTA 6 | Escapa #Shorts",
+                                            "descripcion": "Escapa de la policía\n#Shorts #GTA6 #GTA"})
+    r = fabrica.exportar(t["id"], "reels")
+    assert r["video"].endswith(".mp4") and (fabrica.rutas.exportados / "reels").exists()
+    assert r["texto"] == "GTA 6 | Escapa\n\nEscapa de la policía\n\n#GTA6 #GTA\n"
+    assert "#Shorts" in fabrica.exportar(t["id"], "shorts")["texto"]
+    avisos = ex.revisar_zonas({"logo": {"y": 1810, "h": 52}, "subtitulos": {"y": 1250, "h": 200},
+                               "tarjeta": {"y": 100, "h": 200}}, "tiktok")
+    assert any("El logo" in a and "inferior" in a for a in avisos) and any("El banner" in a for a in avisos)
+    assert not any("subtítulos" in a for a in avisos)
+    pendiente = fabrica.importar_archivo(fabrica.rutas.renderizados / Path(t["datos"]["copia"]).name, "otro.mp4")
+    with pytest.raises(ErrorEtapa):
+        fabrica.exportar(pendiente["id"], "tiktok")             # aún no renderizado
