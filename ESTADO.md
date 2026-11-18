@@ -813,3 +813,10 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   - **Pendiente:** revisión de Codex de esta fase cuando se renueve el cupo; del resto de la auditoría siguen áreas
     táctiles pequeñas, foco tras entrar sin GSAP, cambio de «reducir movimiento» en curso, URLs de objeto de Plantilla,
     GSAP fuera del arranque, contraste de bordes, `dvh` en Plantilla y el escalonado de 30 ms frente a 50–60 ms del plan.
+- **2026-11-18 · Claude Code (nube)** — **Corregido bloqueo en «Buscando rostros para el encuadre»** (reportado
+  por Cristóbal: un clip real quedó así desde el día anterior y bloqueaba la cola). Causa: `reencuadre.analizar`
+  leía los avisos de FFmpeg (stderr) recién al final; si un clip genera muchos avisos, la tubería se llena
+  (en Windows es pequeña), FFmpeg se detiene y ambos quedan esperando. Ahora stderr va a un archivo temporal y
+  el análisis tiene un límite de tiempo (`LIMITE_MINIMO` 120 s o 8 × duración): si se supera, se corta y el clip
+  sigue con lo analizado y un aviso. 2 pruebas nuevas (2 MB de avisos; FFmpeg colgado). 120 pruebas.
+  Pendiente: confirmar en el PC con el clip `clip_01M7P6XP9GSGYN0F0WP3248PBB`.

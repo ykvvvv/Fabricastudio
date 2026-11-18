@@ -233,3 +233,38 @@ def test_modo_automatico_sin_sujetos_usa_clasico_sin_aviso_de_seguimiento(fabric
     assert t["estado"] == "renderizado", t["error"]
     assert "automático:" in t["etapas"]["render"]["detalle"] and t["etapas"]["render"]["detalle"].endswith("clásico")
     assert not any("rostros" in a for a in t["avisos"])
+
+
+def _ffmpeg_falso(tmp_path, avisos_kb: int, cuadros: int, colgar: bool = False):
+    """Script que imita a FFmpeg: escribe muchos avisos por stderr y luego cuadros por stdout."""
+    import sys
+    s = tmp_path / "ffmpeg_falso.py"
+    s.write_text(f"""#!{sys.executable}
+import sys, time
+sys.stderr.write("[aviso] marca de tiempo no monótona\\n" * ({avisos_kb} * 30)); sys.stderr.flush()
+cuadro = bytes(640 * 360 * 3)
+for _ in range({cuadros}):
+    sys.stdout.buffer.write(cuadro)
+sys.stdout.flush()
+if {colgar}:
+    time.sleep(60)
+""")
+    s.chmod(0o755)
+    return str(s)
+
+
+@pytest.mark.skipif(__import__("sys").platform == "win32" or not reencuadre.disponible()[0], reason="script POSIX / OpenCV")
+def test_muchos_avisos_de_ffmpeg_no_bloquean_el_analisis(tmp_path, monkeypatch):
+    monkeypatch.setattr(reencuadre, "herramienta", lambda n: _ffmpeg_falso(tmp_path, 2048, 10))
+    r = reencuadre.analizar(tmp_path / "x.mp4", {"ancho": 640, "alto": 360, "duracion": 2.0})
+    assert len(r["muestras"]) == 10
+
+
+@pytest.mark.skipif(__import__("sys").platform == "win32" or not reencuadre.disponible()[0], reason="script POSIX / OpenCV")
+def test_analisis_colgado_se_corta_por_tiempo(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(reencuadre, "herramienta", lambda n: _ffmpeg_falso(tmp_path, 1, 3, colgar=True))
+    monkeypatch.setattr(reencuadre, "LIMITE_MINIMO", 2.0)                       # límite corto para la prueba
+    t0 = time.time()
+    r = reencuadre.analizar(tmp_path / "x.mp4", {"ancho": 640, "alto": 360, "duracion": 0.1})
+    assert time.time() - t0 < 20 and "tiempo máximo" in r.get("aviso", "") and len(r["muestras"]) == 3

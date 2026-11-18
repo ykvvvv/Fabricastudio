@@ -28,6 +28,7 @@ log = logging.getLogger("fabrica.reencuadre")
 
 MODELO = PAQUETE / "assets" / "modelos" / "face_detection_yunet_2023mar.onnx"
 FPS_ANALISIS = 5
+LIMITE_MINIMO = 120.0     # segundos: tiempo máximo del análisis = máx(esto, 8 × duración del clip)
 ANCHO_ANALISIS = 640
 
 
@@ -75,7 +76,18 @@ def analizar(video: Path, propiedades: dict, recorte: dict | None = None) -> dic
            "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
     detector = cv2.FaceDetectorYN.create(str(MODELO), "", (w_a, h_a), 0.6, 0.3, 50)
     tam = w_a * h_a * 3
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    import tempfile
+    import threading
+    # Los avisos de FFmpeg van a un archivo temporal: si fueran a una tubería que nadie lee, en Windows se
+    # llena (es pequeña), FFmpeg se detiene y el análisis queda esperando para siempre.
+    errores = tempfile.TemporaryFile()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errores)
+    limite = max(LIMITE_MINIMO, float(propiedades.get("duracion") or 0) * 8)
+    vencido = threading.Event()
+
+    vigia = threading.Timer(limite, lambda: (vencido.set(), proc.kill()))
+    vigia.daemon = True
+    vigia.start()
     try:
         i = 0
         previo = None
@@ -95,14 +107,20 @@ def analizar(video: Path, propiedades: dict, recorte: dict | None = None) -> dic
                                      "movimiento": movimiento, "corte": corte})
             i += 1
     finally:
+        vigia.cancel()
         proc.stdout.close()
-        error = proc.stderr.read().decode("utf-8", "replace")[-400:]
-        proc.stderr.close()
         proc.wait()
-    if proc.returncode != 0 and not base["muestras"]:
+        errores.seek(0)
+        error = errores.read().decode("utf-8", "replace")[-400:]
+        errores.close()
+    if vencido.is_set():
+        log.warning("Análisis de encuadre detenido tras %.0f s", limite)
+        base["aviso"] = (f"El análisis de rostros superó el tiempo máximo ({limite:.0f} s) y se detuvo: "
+                         "el encuadre usa lo analizado hasta ahí (o queda centrado).")
+    if proc.returncode != 0 and not base["muestras"] and not vencido.is_set():
         raise ErrorEtapa(f"No se pudo leer el video para el encuadre: {error}", "herramienta")
     con = sum(1 for m in base["muestras"] if m["rostros"])
-    if base["muestras"] and con / len(base["muestras"]) < 0.2:
+    if base["muestras"] and con / len(base["muestras"]) < 0.2 and not base.get("aviso"):
         base["aviso"] = ("Se detectaron rostros en pocas partes del clip: el encuadre se mantiene centrado "
                          "donde no hay nadie visible. Revisa el resultado o usa el estilo clásico.")
     return base
