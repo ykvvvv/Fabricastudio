@@ -778,3 +778,11 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     hoy lo reconoce por el texto «Esperando a que termine de copiarse», con una prueba que vigila que coincida);
     (d) maqueta del Resumen más pequeña o con validación compartida (`/api/diseno/vista` genera 540×960 que se muestra a
     176×313).
+- **2026-11-18 · Claude Code (nube)** — Rendimiento, tareas de servidor (a)–(d) anotadas en la fase 1 del panel:
+  (a) compresión gzip de HTML/CSS/JS/JSON (no de `/media` ni `/fuentes`: los videos mantienen las peticiones por
+  rangos); carga en frío medida con Chromium: **~86 KB** (antes ~308 KB). (b) `ETag` + 304 en `/api/estado` y
+  `/api/trabajos/<id>`, con `Cache-Control: private, no-cache`; se autoriza antes de responder 304; el panel no
+  necesita cambios (el navegador revalida solo). El resto de la API sigue con `no-store`. (c) `carpeta.pendientes[].copiando`
+  (bool); `pipeline.MENSAJE_COPIANDO` es el texto. El panel puede dejar de comparar el texto. (d) `/api/diseno/vista?ancho=`
+  (180–1080, por defecto 540) para pedir una maqueta pequeña en el Resumen. 117 pruebas.
+  **Para el panel (PC):** usar `copiando` en vez del texto y pedir `ancho=352` en la tarjeta «Tu formato».

@@ -132,3 +132,42 @@ def test_ajustes_fuera_de_rango_se_rechazan_en_espanol(fabrica):
     assert pc.put("/api/ajustes", json={"sub_tamano": 70, "banner_color": "#112233"}).status_code == 200
     r = pc.get("/api/diseno/vista", params={"banner_tamano": "-3"})
     assert r.status_code == 400 and "tamaño del banner" in r.json()["error"]
+
+
+def test_rendimiento_compresion_etag_y_maqueta(fabrica, clip):
+    pc, tablet, _ = _clientes(fabrica)
+    # (a) Compresión del panel y la API; los videos no se comprimen y mantienen los rangos.
+    r = pc.get("/app.js", headers={"Accept-Encoding": "gzip"})
+    assert r.headers.get("content-encoding") == "gzip"
+    t = fabrica.importar_archivo(clip, "a.mp4")
+    fabrica._ejecutar(t)
+    r = pc.get(f"/media/{t['id']}/short.mp4", headers={"Accept-Encoding": "gzip", "Range": "bytes=0-99"})
+    assert r.status_code == 206 and "content-encoding" not in r.headers
+    # (b) ETag/304 en estado y detalle; cambia cuando cambia el contenido.
+    for ruta in ("/api/estado", f"/api/trabajos/{t['id']}"):
+        r1 = pc.get(ruta)
+        assert r1.status_code == 200 and r1.headers["etag"] and "no-cache" in r1.headers["cache-control"]
+        r2 = pc.get(ruta, headers={"If-None-Match": r1.headers["etag"]})
+        assert r2.status_code == 304 and r2.content == b""
+    etag = pc.get("/api/estado").headers["etag"]
+    fabrica.db.actualizar(t["id"], nombre="otro nombre")
+    assert pc.get("/api/estado", headers={"If-None-Match": etag}).status_code == 200
+    # Sin autorización no hay 304 (se autoriza antes).
+    assert tablet.get("/api/estado", headers={"If-None-Match": etag}).status_code == 401
+    # Las demás rutas de la API siguen sin caché.
+    assert pc.get("/api/ajustes").headers["cache-control"] == "no-store"
+    # (d) Maqueta pequeña para el Resumen.
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(pc.get("/api/diseno/vista", params={"ancho": 352}).content))
+    assert img.size == (352, 625)
+    assert Image.open(io.BytesIO(pc.get("/api/diseno/vista").content)).size == (540, 960)
+
+
+def test_campo_copiando_en_la_carpeta(fabrica, clip):
+    pc, _, _ = _clientes(fabrica)
+    destino = fabrica.rutas.crudos / "nuevo.mp4"
+    destino.write_bytes(clip.read_bytes()[:1000])
+    fabrica.revisar_carpeta(ahora=1000)
+    p = pc.get("/api/estado").json()["carpeta"]["pendientes"]
+    assert p == [{"archivo": "nuevo.mp4", "motivo": "Esperando a que termine de copiarse…", "copiando": True}]

@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, acceso, cuentas, render, textos
 from .config import AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
 from .errores import ErrorEtapa, sin_secretos
-from .pipeline import Fabrica
+from .pipeline import MENSAJE_COPIANDO, Fabrica
 
 log = logging.getLogger("fabrica.server")
 _CODIGOS = {"duplicado": 409, "configuracion": 409, "autenticacion": 502, "cuota": 502, "temporal": 502,
@@ -78,7 +78,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
             return JSONResponse({"error": "Inicia sesión o vincula este dispositivo."}, status_code=401)
         respuesta = await call_next(request)
         if ruta.startswith("/api/"):
-            respuesta.headers["Cache-Control"] = "no-store"
+            respuesta.headers.setdefault("Cache-Control", "no-store")
         elif not ruta.startswith("/media/"):   # panel: tras actualizar el código, el navegador no debe usar el app.js viejo
             respuesta.headers["Cache-Control"] = "no-cache"
         return respuesta
@@ -236,12 +236,27 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
             "textos": a["proveedor_textos"],
         }
 
+    def _con_etag(request: Request, datos) -> Response:
+        """Respuesta JSON con ETag: si el panel ya tiene esa versión, 304 sin cuerpo (ahorra datos en el sondeo).
+        Privada y revalidada siempre; la autorización ya pasó por el middleware antes de llegar aquí."""
+        cuerpo = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        etiqueta = '"' + __import__("hashlib").sha1(cuerpo).hexdigest()[:20] + '"'
+        cabeceras = {"ETag": etiqueta, "Cache-Control": "private, no-cache"}
+        previas = [x.strip().removeprefix("W/") for x in request.headers.get("if-none-match", "").split(",")]
+        if etiqueta in previas:
+            return Response(status_code=304, headers=cabeceras)
+        return Response(cuerpo, media_type="application/json", headers=cabeceras)
+
     @app.get("/api/estado")
-    def estado():
+    def estado(request: Request):
+        return _con_etag(request, _estado())
+
+    def _estado():
         a = fab.db.ajustes()
         return {"trabajos": [_publico(t) for t in fab.db.trabajos()],
                 "carpeta": {"activa": a["vigilar_carpeta"], "ruta": str(fab.rutas.crudos),
-                            "pendientes": [{"archivo": k, "motivo": v} for k, v in fab.carpeta_estado.items()]},
+                            "pendientes": [{"archivo": k, "motivo": v, "copiando": v == MENSAJE_COPIANDO}
+                                           for k, v in fab.carpeta_estado.items()]},
                 "youtube": {**fab.youtube.estado(), "canal_id": a["youtube_canal_id"],
                             "canal_nombre": a["youtube_canal_nombre"]},
                 "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"],
@@ -267,8 +282,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
     # ------------------------------------------------------------ trabajos
     @app.get("/api/trabajos/{jid}")
-    def trabajo(jid: str):
-        return {**_publico(fab._trabajo(jid)), **fab.detalle(jid)}
+    def trabajo(jid: str, request: Request):
+        return _con_etag(request, {**_publico(fab._trabajo(jid)), **fab.detalle(jid)})
 
     @app.post("/api/trabajos/{jid}/clips")
     async def crear_clip(jid: str, request: Request):
@@ -392,7 +407,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 "elementos": render.elementos_editables(d, a, fab.rutas.recursos), "avisos": d["avisos"]}
 
     @app.get("/api/diseno/vista")
-    def vista_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER"):
+    def vista_diseno(request: Request, banner: str = "ASÍ SE VERÁ TU BANNER", ancho: int = 540):
         """Maqueta rápida del diseño con los ajustes actuales (o los que lleguen por parámetro)."""
         from PIL import Image, ImageDraw
         a, b, d, completo = _maqueta(request, banner)
@@ -423,7 +438,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                      stroke_fill="black")
             x += dib.textlength(texto_parte, font=fuente)
         salida = io.BytesIO()
-        lienzo.convert("RGB").resize((540, 960)).save(salida, "JPEG", quality=85)
+        ancho = max(180, min(1080, int(ancho))) // 2 * 2       # el Resumen puede pedir una maqueta más pequeña
+        lienzo.convert("RGB").resize((ancho, ancho * 16 // 9), Image.LANCZOS).save(salida, "JPEG", quality=85)
         return Response(salida.getvalue(), media_type="image/jpeg",
                         headers={"X-Avisos": str(len(d["avisos"])), "Cache-Control": "no-store"})
 
@@ -519,7 +535,19 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     # ------------------------------------------------------------ interfaz
     app.mount("/fuentes", StaticFiles(directory=FUENTES), name="fuentes")
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
-    return app
+    from starlette.middleware.gzip import GZipMiddleware
+    comprimida = GZipMiddleware(app, minimum_size=1024)
+
+    async def aplicacion(scope, receive, send):
+        """Comprime HTML, CSS, JS y JSON. Los videos e imágenes de /media van sin comprimir: ya lo están y
+        la compresión rompería las peticiones por rangos del reproductor."""
+        if scope["type"] == "http" and not scope["path"].startswith(("/media/", "/fuentes/")):
+            await comprimida(scope, receive, send)
+        else:
+            await app(scope, receive, send)
+    aplicacion.state = app.state          # las pruebas y el servidor acceden a app.state
+    aplicacion.app = app
+    return aplicacion
 
 
 def main() -> None:

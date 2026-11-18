@@ -42,6 +42,9 @@ def res_recorte(carpeta: Path) -> dict | None:
     return _leer(f)["recorte"] if f.exists() else None
 
 
+MENSAJE_COPIANDO = "Esperando a que termine de copiarse…"
+
+
 def _reloj(seg: float) -> str:
     return f"{int(seg) // 60}:{int(seg) % 60:02d}"
 
@@ -655,7 +658,7 @@ class Fabrica:
             previo = self._vistos.get(clave)
             if not previo or previo[:2] != firma:
                 self._vistos[clave] = (*firma, ahora, False)
-                self.carpeta_estado[ruta.name] = "Esperando a que termine de copiarse…"
+                self.carpeta_estado[ruta.name] = MENSAJE_COPIANDO
                 continue
             if previo[3]:                      # ya se intentó con este mismo contenido y no sirvió
                 continue
