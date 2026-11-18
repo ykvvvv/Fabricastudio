@@ -676,6 +676,7 @@ function pintarTrabajo(m, completo) {
       : t.origen_tipo === "momento" ? "Este clip usa la transcripción de su video largo; no se transcribe por separado." : "";
     botones += h`<button data-accion="retranscribir" data-foco="b-retranscribir" ${crudo(motivo ? 'disabled aria-describedby="t-motivo"' : "")}>Volver a transcribir</button>`;
   }
+  if (t.tiene_video && ["renderizado", "subiendo", "publicado"].includes(t.estado)) botones += h`<button data-accion="exportar" data-foco="b-exportar">${ic("subir")}Exportar</button>`;
   if (t.tiene_video) botones += h`<a class="boton" href="/media/${t.id}/short.mp4" download="${t.nombre}.mp4">Descargar MP4</a>`;
   if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`;
   const sal = t.salida;
@@ -742,6 +743,46 @@ function pintarTrabajo(m, completo) {
       S.sucio = false; avisar("Subtítulos guardados; se renderiza de nuevo."); document.activeElement.blur(); refrescar();
     }));
   }
+}
+
+// ---------------------------------------------------------------- exportar a otras plataformas
+const PLATAFORMAS = [["tiktok", "TikTok"], ["reels", "Instagram Reels"], ["shorts", "YouTube Shorts"]];
+// Se muestra la ruta dentro de la carpeta de datos (4_exportados/<plataforma>/<archivo>), no la ruta completa del PC.
+const rutaCorta = (r) => String(r).split(/[\\/]/).slice(-3).join("/");
+// Desde la tablet el panel va por http en la red de casa y el portapapeles moderno no está disponible:
+// se usa el método antiguo y, si tampoco funciona, el texto queda seleccionado para copiarlo a mano.
+async function copiarTexto(area) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(area.value); return true; } } catch (e) { /* se intenta el método antiguo */ }
+  area.focus(); area.select();
+  try { return document.execCommand("copy"); } catch (e) { return false; }
+}
+function exportarClip(t) {
+  abrirModal("Exportar el Short", h`<p>Copia el video y el texto de la publicación a la carpeta <b>4_exportados</b> del PC para subirlos a mano. No se publica nada.</p>
+    <div class="fila" role="group" aria-label="Plataforma">${PLATAFORMAS.map(([k, n]) => crudo(h`<button type="button" data-plataforma="${k}" aria-pressed="false">${n}</button>`))}</div>
+    <div id="ex-resultado" class="pila" aria-live="polite"></div>`, `<button data-accion="cerrar-modal">Cerrar</button>`);
+  const cuerpo = $("#modal-cuerpo"), resultado = $("#ex-resultado");
+  cuerpo.addEventListener("click", intentar(async (e) => {
+    if (e.target.closest("#ex-copiar")) {
+      const bien = await copiarTexto($("#ex-texto"));
+      $("#ex-copiado").textContent = bien ? "Copiado." : "Texto seleccionado: cópialo con Ctrl+C o manteniéndolo pulsado.";
+      return;
+    }
+    const b = e.target.closest("[data-plataforma]");
+    if (!b) return;
+    const botones = [...cuerpo.querySelectorAll("[data-plataforma]")];
+    botones.forEach((x) => { x.disabled = true; x.setAttribute("aria-pressed", x === b); });
+    resultado.innerHTML = `<p class="pequeno tenue" role="status">Exportando…</p>`;
+    let r;
+    try { r = await api(`/api/trabajos/${t.id}/exportar`, { method: "POST", json: { plataforma: b.dataset.plataforma } }); }
+    catch (err) { resultado.innerHTML = h`<p class="nota mal" role="alert">${err.message}</p>`; throw err; }
+    finally { botones.forEach((x) => { x.disabled = false; }); }
+    resultado.innerHTML = h`<p class="nota bien">Exportado para ${r.plataforma}. En el PC: <code>${rutaCorta(r.video)}</code> y <code>${rutaCorta(r.texto_archivo)}</code>.</p>
+      <label>Texto de la publicación<textarea id="ex-texto" rows="5" readonly>${r.texto}</textarea></label>
+      <div class="fila"><button type="button" id="ex-copiar">Copiar texto</button><span class="pequeno tenue" id="ex-copiado" role="status"></span></div>
+      ${r.avisos.length ? crudo(h`<p class="pequeno"><b>Zona segura de ${r.plataforma}</b></p>${r.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}`)
+        : crudo(h`<p class="pequeno tenue">Nada queda bajo los botones ni los textos de ${r.plataforma}.</p>`)}
+      <p class="pequeno tenue">Las zonas seguras son aproximadas: cada app cambia su diseño de vez en cuando.</p>`;
+  }));
 }
 
 // ---------------------------------------------------------------- video largo
@@ -865,6 +906,7 @@ const acciones = {
     b.disabled = true; b.lastChild.textContent = "Preparando…";
     try { await cargarEditor(); await abrirEditorTiempos(S.detalle); } finally { b.disabled = false; b.lastChild.textContent = "Editar tiempos"; }
   }),
+  exportar: () => exportarClip(S.detalle),
   "regenerar-textos": accionTrabajo("regenerar-textos", "Regenerando textos."),
   retranscribir: intentar(async () => {
     if (!await confirmar("Volver a transcribir", "Whisper transcribirá de nuevo el audio con el contexto de Ajustes → Proveedores. Los subtítulos se rehacen (se pierden los cambios hechos a mano); el banner, el título y la descripción se conservan. Puede tardar unos minutos.", "Volver a transcribir")) return;

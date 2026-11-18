@@ -92,3 +92,10 @@ def test_sondeo_activo_mientras_se_copia_a_la_carpeta(fabrica):
 
 def test_maqueta_del_resumen_pide_el_tamano_que_muestra():
     assert "/api/diseno/vista?ancho=352" in _texto("app.js")      # se ve a 176×313 (352 para pantallas 2×)
+
+
+def test_exportar_desde_el_detalle_muestra_la_ruta_sin_la_carpeta_del_pc():
+    js = _texto("app.js")
+    assert "/exportar`" in js and 'data-accion="exportar"' in js
+    assert "rutaCorta(r.video)" in js and "rutaCorta(r.texto_archivo)" in js and "r.avisos" in js
+    assert "document.execCommand(\"copy\")" in js        # copiar también desde la tablet (http en la red de casa)

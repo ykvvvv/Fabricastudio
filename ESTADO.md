@@ -852,3 +852,18 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
      (márgenes aproximados). No publica.
   Pruebas: protocolo MCP real por stdio, herramientas y exportación. **Sin probar en Windows** (registro en
   Claude Code y lanzador .cmd). **Falta en el panel:** botón «Exportar» con plataforma en el detalle del clip.
+- **2026-11-18 · Claude Code (PC Windows)** — **Exportar desde el panel** (`web/app.js`, `web/estilo.css`, `tests/test_web.py`).
+  Botón «Exportar» en el detalle de un clip con video y estado `renderizado`, `subiendo` o `publicado` (los que acepta el
+  servidor). Abre una ventana con TikTok, Instagram Reels y YouTube Shorts; cada uno llama a `POST /api/trabajos/<id>/exportar`
+  y muestra: dónde quedaron el MP4 y el .txt (como `4_exportados/<plataforma>/<archivo>`, sin la ruta completa del PC), el
+  texto de la publicación con «Copiar texto» y los avisos de zona segura (o «Nada queda bajo…»), marcados como aproximados.
+  Si el servidor rechaza, el motivo se ve en la ventana. «Copiar texto» usa el portapapeles moderno cuando existe y, si no
+  (la tablet entra por http en la red de casa, donde el navegador no lo permite), el método antiguo; si ninguno funciona,
+  deja el texto seleccionado para copiarlo a mano. 122 pruebas con pytest (3 omitidas: 2 POSIX de `test_reencuadre.py` y
+  `test_mcp.py` porque el `.venv` del PC aún no tiene el paquete `mcp`: ejecutar `.\scripts\instalar.ps1`). Playwright
+  con datos temporales, escritorio y tablet emulada: 18 comprobaciones × 2 bien (sin «Exportar» en un clip con error, las
+  tres plataformas, archivos reales en el PC iguales al texto mostrado, #Shorts solo en YouTube Shorts, avisos, copiar con
+  y sin portapapeles moderno, Esc devuelve el foco, error del servidor). Regresión de la fase 1: 38 bien. Capturas en
+  `docs/diseno/capturas-exportar/`. Nota: en Windows el .txt queda con saltos de línea `
+` (normal en Bloc de notas).
+  **No probado** en la tablet real (copiar por http desde HarmonyOS) ni subiendo a TikTok o Instagram.
