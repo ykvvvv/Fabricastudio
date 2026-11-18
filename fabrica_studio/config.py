@@ -101,11 +101,11 @@ AJUSTES_POR_DEFECTO: dict = {
     "correcciones": "",
     # --- Textos ---
     "proveedor_textos": "auto",       # auto (Gemini si hay clave, si no local), gemini, local
-    "gemini_modelo": "",
+    "gemini_modelo": "",              # vacío = elegir entre los modelos que la API liste
     # Tema fijo del canal. "gta6": el usuario declara que todo el contenido es de GTA 6 → títulos con «GTA 6»,
     # hashtags fijos y categoría Gaming. "" = detectar por la transcripción.
     "tema": "",
-    "hashtags_fijos": "#GTA6 #GTAVI #GTA #Gaming",              # vacío = elegir entre los modelos que la API liste
+    "hashtags_fijos": "#GTA6 #GTAVI #GTA #Gaming",  # se añaden a la descripción solo con tema = "gta6"
     "momentos_cantidad": 6,           # propuestas por video largo
     "momentos_auto": False,           # crear Shorts de las propuestas sin esperar a que el usuario elija
     "momentos_auto_solo_ia": True,    # automático solo si las propuestas vienen de Gemini (la heurística es débil)
