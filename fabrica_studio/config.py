@@ -84,10 +84,10 @@ AJUSTES_POR_DEFECTO: dict = {
     "completo_logo_y": 1610,
     # dividido: cámara del streamer arriba (zoom) y contenido abajo; sin banner ni firma por defecto.
     "dividido_proporcion": 45,        # % del alto para la cámara
-    "dividido_sub_y": 1430,
+    "dividido_sub_y": 1150,           # sobre el contenido, por encima de los botones de TikTok y Reels
     "dividido_sub_tamano": 96,
     "dividido_logo_alto": 52,
-    "dividido_logo_y": 1810,
+    "dividido_logo_y": 1430,          # termina antes de y≈1500, la franja que tapan los botones
     "dividido_banner": False,
     "dividido_firma": False,
     # --- Transcripción ---

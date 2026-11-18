@@ -42,6 +42,17 @@ def res_recorte(carpeta: Path) -> dict | None:
     return _leer(f)["recorte"] if f.exists() else None
 
 
+CONTEXTO_GTA6 = "Hablando de GTA 6 y GTA 5: Vice City, Leonida, Ambrosia, Lucía y Jason."
+
+
+def contexto_transcripcion(a: dict) -> str:
+    """Frase de contexto para Whisper; en modo GTA 6 se le suma el vocabulario del juego."""
+    base = (a.get("vocabulario") or "").strip()
+    if a.get("tema") == "gta6" and CONTEXTO_GTA6 not in base:
+        base = f"{base} {CONTEXTO_GTA6}".strip()
+    return base
+
+
 MENSAJE_COPIANDO = "Esperando a que termine de copiarse…"
 
 
@@ -173,7 +184,7 @@ class Fabrica:
             if prop["tiene_audio"]:
                 wav = media.extraer_audio(entrada, carpeta / "audio.wav")
                 tr = transcribe.transcribir(wav, a["whisper_modelo"], a["whisper_dispositivo"], a["idioma"],
-                                            self.rutas.modelos, vocabulario=a["vocabulario"])
+                                            self.rutas.modelos, vocabulario=contexto_transcripcion(a))
                 wav.unlink(missing_ok=True)
             else:
                 tr = {"idioma": a["idioma"], "motor": "sin audio", "texto": "", "segmentos": [], "palabras": []}

@@ -866,3 +866,12 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   y sin portapapeles moderno, Esc devuelve el foco, error del servidor). Regresión de la fase 1: 38 bien. Capturas en
   `docs/diseno/capturas-exportar/`. Nota: en Windows el .txt queda con saltos de línea `\r\n` (normal en Bloc de notas).
   **No probado** en la tablet real (copiar por http desde HarmonyOS) ni subiendo a TikTok o Instagram.
+- **2026-11-18 · Claude Code (nube)** — Ajustes tras la **primera prueba real con enlaces de Kick** (rdjavi, vía MCP:
+  descarga OK, vista dividida, export a TikTok). Problemas vistos y cambios:
+  - Whisper oyó «gente a 5» por «GTA 5»: en modo GTA 6 el contexto suma `pipeline.CONTEXTO_GTA6`
+    («GTA 6 y GTA 5: Vice City, Leonida, Ambrosia, Lucía y Jason»). Aplica al volver a transcribir.
+  - Títulos del borrador local cortados a la mitad: ahora usan una frase o cláusula completa de ≤55 caracteres.
+  - Subtítulos y logo bajo los botones de TikTok en vista dividida: nuevos valores por defecto
+    `dividido_sub_y` 1150 y `dividido_logo_y` 1430; pasan la revisión de zonas de TikTok, Reels y Shorts.
+    Si Plantilla ya guardó valores, hay que «Restablecer» o moverlos con el editor visual.
+  - Pendiente: clip 2 de 183 s (recortar con Editar tiempos) y configurar Gemini para títulos de calidad. 129 pruebas.

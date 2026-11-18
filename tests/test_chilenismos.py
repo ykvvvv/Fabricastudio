@@ -47,3 +47,12 @@ def test_retranscribir(fabrica, clip):
     (fabrica.rutas.trabajo(t["id"]) / "edicion.json").write_text("{}")
     with pytest.raises(ErrorEtapa):
         fabrica.retranscribir(t["id"])
+
+
+def test_modo_gta6_suma_vocabulario_del_juego_a_whisper(fabrica, clip):
+    from fabrica_studio.pipeline import CONTEXTO_GTA6, contexto_transcripcion
+    assert contexto_transcripcion({"vocabulario": "Hola.", "tema": ""}) == "Hola."
+    assert contexto_transcripcion({"vocabulario": "Hola.", "tema": "gta6"}) == f"Hola. {CONTEXTO_GTA6}"
+    fabrica.db.guardar_ajustes({"tema": "gta6"})
+    fabrica._ejecutar(fabrica.importar_archivo(clip, "a.mp4"))
+    assert "Vice City" in fabrica.transcripciones["vocabulario"] and "GTA 5" in fabrica.transcripciones["vocabulario"]

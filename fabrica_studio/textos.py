@@ -126,13 +126,18 @@ def generar_local(transcripcion: str, creador: str) -> dict:
     def peso(f):
         return sum(1 for p in re.findall(r"\w+", f.lower()) if p not in _VACIAS and len(p) > 3)
     mejor = max(frases[:12], key=peso)
+    # Para el título: una frase o cláusula COMPLETA que quepa (nunca cortada a la mitad).
+    clausulas = [c.strip(" ,;:") for f in frases[:12] for c in re.split(r"(?<=[,;:])\s+", f)] + frases[:12]
+    caben = [c.rstrip(".!?…") for c in clausulas if 12 <= len(c.rstrip(".!?…")) <= 55]
+    frase_titulo = max(caben, key=lambda c: (peso(c), -len(c))) if caben else mejor.rstrip(".!?…")
+    titulo = f"{creador}: {frase_titulo}" if len(frase_titulo) + len(creador) + 2 <= 60 else frase_titulo
     palabras = re.findall(r"[\wáéíóúüñÁÉÍÓÚÜÑ]+", mejor)[:BANNER_PALABRAS]
     while len(palabras) > 2 and palabras[-1].lower() in _VACIAS:
         palabras.pop()                      # no terminar el banner en "a", "de", "la"...
     resumen = frases[0] if len(frases[0]) <= 140 else frases[0][:140].rsplit(" ", 1)[0] + "…"
     return {
         "banner": " ".join(palabras),
-        "titulo": f"{creador}: {mejor.rstrip('.!?…')}",
+        "titulo": titulo,
         "descripcion": f"{creador}: {resumen}",
         "hashtags": [f"#{re.sub(r'[^0-9A-Za-z]', '', creador)}", "#Kick", "#Clips"],
         "es_gaming": False,

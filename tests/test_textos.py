@@ -113,3 +113,12 @@ def test_modo_gta6_con_gemini_y_local(monkeypatch):
     assert r["titulo"].startswith("GTA 6 | ") and "#GTA6" in r["descripcion"]
     r = textos.generar("me escapo de la policía.", "Chetalonso", "local", "", tema="gta6", hashtags_fijos="#GTA6")
     assert "GTA 6" in r["titulo"] and r["es_gaming"]
+
+
+def test_titulo_local_usa_frases_completas():
+    tr = ("Aquí nada más se maneja con el joystick, creo que la gente a 5 era otra cosa. "
+          "Como tuve la ciudad, ya lo lejo y me fui al mapa nuevo porque estaba lleno de policías.")
+    t = textos.generar_local(tr, "rdjavi")["titulo"]
+    cuerpo = t.split(": ", 1)[-1]
+    assert len(t) <= 60 and cuerpo in tr.replace(".", "")                          # literal
+    assert any(cuerpo == c.strip(" ,") for c in tr.replace(".", ",").split(","))   # cláusula completa, no cortada
