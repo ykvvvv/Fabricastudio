@@ -958,3 +958,30 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     actuales, guardar 3/30/60 como números sin tocar los otros ajustes, recargar, «Nunca» = 0, 101 rechazado por el
     navegador y por el servidor, valor fuera de la lista conservado, sin ritmo desaparece) y las 57 de la fase A de
     movimiento repetidas. Capturas en `docs/diseno/capturas-ritmo/`. **No probado** con subidas reales a YouTube.
+- **2026-11-18 · Claude Code (PC Windows)** — **Encargo por fases, fase 0 (estado real, sin código).** Cristóbal autorizó
+  a Claude Code del PC a tocar también Python (servidor y motor) mientras dure el encargo; **la sesión de la nube no toca
+  estos archivos** hasta que termine. Una fase a la vez; cada una con pytest, Playwright (1440×900 y tablet emulada
+  800×1280 con CPU 4×), capturas, este registro, commit y push, y espera el «sigue» de Cristóbal.
+  - **Estado:** pytest 133 bien, 2 omitidas (POSIX). Local 2 commits por delante de origin (`3fc31a4` movimiento fase A,
+    `d12f6b3` ritmo en el panel): el push pide iniciar sesión (Git Credential Manager) y lo hace Cristóbal.
+  - **Ya existe (comprobado en el código):** modo GTA 6 (`tema`, `hashtags_fijos`), títulos con emojis (`emojis_titulo`,
+    sin interruptor en el panel), estilos `clasico`/`completo`/`dividido`/`auto`, editor visual, editor de tiempos,
+    exportar, ritmo de publicación y recorte automático (servidor y panel), MCP con 15 herramientas, .exe 0.4.0 por GitHub
+    Actions. Importar varios enlaces (uno por línea) y varios archivos ya existe; carpeta completa solo por la carpeta
+    vigilada o el MCP (que corta en 50 rutas).
+  - **Plan y archivos** (una fase = una lista de archivos):
+    1. Perfiles de creador: `db.py`, `config.py`, `pipeline.py`, `render.py`, `server.py`, `mcp_servidor.py`,
+       `web/{index.html,app.js,estilo.css,iconos.js}`, `tests/test_perfiles.py` (nuevo) y ajustes en las pruebas existentes.
+    2. «Subir ahora» y sin topes artificiales: `db.py`, `pipeline.py`, `server.py`, `mcp_servidor.py`, `web/app.js`,
+       `web/estilo.css`, pruebas de cola y YouTube simulado.
+    3. Textos de GTA 6: `textos.py`, `pipeline.py`, `server.py`, `web/app.js`, `web/estilo.css`, `tests/test_textos.py`.
+    4. Plantilla profesional y comparación en video: `render.py`, `pipeline.py`, `server.py`, `config.py`,
+       `web/{app.js,estilo.css,iconos.js}`, `tests/test_muestras.py` (nuevo).
+    5. Animaciones B y C y la Cola en la tablet: `web/{app.js,editor.js,estilo.css,iconos.js}`, `tests/test_web.py`.
+    6. Uso por otras personas: `web/*`, `server.py`, `config.py` (valores por defecto sin datos de Cristóbal),
+       `docs/GUIA_AMIGOS.md` (nuevo), `README.md`.
+    7. .exe 0.5.0: `fabrica_studio/__init__.py`, `empaquetado/version.txt`, `.github/workflows/windows.yml` si falla.
+       En este PC no está `gh` (GitHub CLI): para seguir la ejecución y bajar el instalador hace falta instalarlo e iniciar
+       sesión, o que Cristóbal descargue el artefacto desde el navegador.
+  - **Codex:** según el último registro, el cupo de ChatGPT estaba agotado hasta el 2026-11-20 16:56; se comprueba antes
+    del commit de cada fase y, si no hay cupo, la revisión queda pendiente aquí.
