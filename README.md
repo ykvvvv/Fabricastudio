@@ -21,7 +21,22 @@ solo abre el panel en su navegador: puede apagarse sin que el PC se detenga.
 7. Muestra la vista previa y permite corregir textos y subtítulos (opcional).
 8. Sube a YouTube **siempre en privado**, al canal que tú confirmes.
 
-## Instalación en Windows 11
+## Instalar con el instalador (recomendado)
+
+1. Descarga `FabricaStudio-Setup-<versión>.exe` (lo genera GitHub Actions: pestaña **Actions** →
+   «Windows (pruebas, .exe e instalador)» → la ejecución más reciente → **Artifacts**).
+2. Ábrelo. Como el instalador no está firmado digitalmente, Windows puede mostrar «Windows protegió su PC»:
+   pulsa **Más información → Ejecutar de todas formas**.
+3. Se instala para tu usuario, sin permisos de administrador, con accesos en el menú Inicio y (opcional) en el
+   escritorio. **Incluye FFmpeg**: no hace falta instalar Python ni FFmpeg.
+4. Abre **Fábrica Studio**: se abre una ventana con el estado del servidor (no la cierres mientras lo uses) y el
+   panel en el navegador.
+
+Los datos quedan en `%LOCALAPPDATA%\FabricaStudio\datos` (o en `FABRICA_DATOS` si la definiste) y se conservan
+al desinstalar o actualizar. Otras opciones: `FabricaStudio.exe --diagnostico`, `--restablecer-contrasena`,
+`--mcp` (para Claude Code: `claude mcp add --scope user fabrica-studio -- "<ruta>\FabricaStudio.exe" --mcp`).
+
+## Instalación en Windows 11 (desde el código, para desarrollo)
 
 Todo se hace en **PowerShell**. Ábrelo en la carpeta del proyecto (clic derecho en la
 carpeta → «Abrir en Terminal»).

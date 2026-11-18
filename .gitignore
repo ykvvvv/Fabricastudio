@@ -25,3 +25,11 @@ client_secret*.json
 referencias/
 # Registros y capturas temporales de Playwright (las de referencia van en docs/diseno/)
 .playwright-mcp/
+
+# Empaquetado
+build/
+dist/
+salida/
+ffmpeg_tmp/
+ffmpeg.zip
+/ffmpeg/

@@ -12,7 +12,21 @@ from .errores import ErrorEtapa
 EXTENSIONES = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 
 
+def encontrar(nombre: str) -> str | None:
+    """Como herramienta(), pero devuelve None en vez de lanzar un error."""
+    try:
+        return herramienta(nombre)
+    except ErrorEtapa:
+        return None
+
+
 def herramienta(nombre: str) -> str:
+    """Ruta de ffmpeg/ffprobe: primero la copia incluida en el programa empaquetado, después el PATH."""
+    from .config import CARPETA_PROGRAMA, EMPAQUETADO
+    if EMPAQUETADO and CARPETA_PROGRAMA:
+        incluida = CARPETA_PROGRAMA / "ffmpeg" / f"{nombre}.exe"
+        if incluida.exists():
+            return str(incluida)
     ruta = shutil.which(nombre)
     if not ruta:
         raise ErrorEtapa(

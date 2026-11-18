@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, acceso, cuentas, render, textos
+from . import __version__, acceso, cuentas, media, render, textos
 from .config import AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
 from .errores import ErrorEtapa, sin_secretos
 from .pipeline import MENSAJE_COPIANDO, Fabrica
@@ -229,7 +229,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         a = fab.db.ajustes()
         clave = textos.leer_clave_gemini(fab.rutas.secretos)
         return {
-            "ffmpeg": bool(shutil.which("ffmpeg")), "ffprobe": bool(shutil.which("ffprobe")),
+            "ffmpeg": bool(media.encontrar("ffmpeg")), "ffprobe": bool(media.encontrar("ffprobe")),
             "whisper": {"modelo": a["whisper_modelo"], "dispositivo": a["whisper_dispositivo"],
                         "descargado": any(fab.rutas.modelos.glob(f"*whisper-{a['whisper_modelo']}*"))},
             "gemini": {"clave": bool(clave), "modelo": a["gemini_modelo"]},

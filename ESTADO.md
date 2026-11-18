@@ -875,3 +875,15 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     `dividido_sub_y` 1150 y `dividido_logo_y` 1430; pasan la revisión de zonas de TikTok, Reels y Shorts.
     Si Plantilla ya guardó valores, hay que «Restablecer» o moverlos con el editor visual.
   - Pendiente: clip 2 de 183 s (recortar con Editar tiempos) y configurar Gemini para títulos de calidad. 129 pruebas.
+- **2026-11-18 · Claude Code (nube)** — **Programa de Windows (.exe) e instalador**, versión 0.4.0:
+  - `fabrica_studio/aplicacion.py`: abre el panel y el navegador (o solo el navegador si ya está abierto);
+    `--sin-navegador`, `--diagnostico`, `--mcp`, `--restablecer-contrasena`, `--version`.
+  - Empaquetado: datos en `%LOCALAPPDATA%\FabricaStudio\datos` salvo `FABRICA_DATOS`; FFmpeg incluido en
+    `ffmpeg\` junto al .exe (`media.herramienta` lo prefiere al PATH).
+  - `empaquetado/FabricaStudio.spec` (PyInstaller, modo carpeta), `instalador.iss` (Inno Setup, por usuario, sin
+    admin, accesos en Inicio/escritorio, no borra datos al desinstalar), ícono y recurso de versión.
+  - Validado aquí armando con PyInstaller en Linux: el ejecutable pasa el diagnóstico con render, procesa un clip
+    completo (Whisper + render) por la API y responde por MCP (15 herramientas).
+  - `.github/workflows/windows.yml`: en un Windows real ejecuta pytest, arma el .exe con FFmpeg, prueba el
+    programa armado (diagnóstico sin FFmpeg en el PATH, panel respondiendo), compila el instalador y lo prueba
+    con instalación silenciosa. El instalador queda como artefacto (7 días). Sin firma digital (SmartScreen avisa).

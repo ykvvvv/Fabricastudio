@@ -38,7 +38,8 @@ def revisar(rutas: Rutas | None = None, ajustes: dict | None = None, autoprueba:
     v = sys.version_info
     anotar("Python", v >= (3, 10), f"{v.major}.{v.minor}.{v.micro}" + ("" if v >= (3, 10) else " (se necesita 3.10 o superior)"))
 
-    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    from .media import encontrar
+    ffmpeg, ffprobe = encontrar("ffmpeg"), encontrar("ffprobe")
     if ffmpeg and ffprobe:
         version = _salida([ffmpeg, "-version"]).splitlines()[0:1]
         anotar("FFmpeg", True, version[0][:70] if version else ffmpeg)
@@ -105,11 +106,11 @@ def revisar(rutas: Rutas | None = None, ajustes: dict | None = None, autoprueba:
 def _autoprueba(a: dict) -> dict:
     """Renderiza un clip sintético de 2 s (sin Whisper ni red) y comprueba el resultado."""
     from . import render
-    from .media import ejecutar, sondear
+    from .media import ejecutar, herramienta, sondear
     try:
         with tempfile.TemporaryDirectory(prefix="fabrica_diag_", ignore_cleanup_errors=True) as tmp:
             carpeta = Path(tmp)
-            ejecutar([shutil.which("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=2",
+            ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=2",
                       "-f", "lavfi", "-i", "sine=f=440:d=2", "-c:v", "libx264", "-preset", "ultrafast",
                       "-pix_fmt", "yuv420p", "-c:a", "aac", "entrada.mp4"], cwd=carpeta, timeout=120)
             r = render.renderizar(carpeta, "entrada.mp4", sondear(carpeta / "entrada.mp4"), "PRUEBA DE RENDER",

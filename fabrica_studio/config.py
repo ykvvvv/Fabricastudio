@@ -6,7 +6,13 @@ la base de datos, los clips, los modelos y las credenciales.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
+
+# Programa empaquetado (PyInstaller): los archivos del paquete viven junto al .exe, y los datos
+# del usuario van a %LOCALAPPDATA%\FabricaStudio (no junto al programa, que puede actualizarse).
+EMPAQUETADO = bool(getattr(sys, "frozen", False))
+CARPETA_PROGRAMA = Path(sys.executable).resolve().parent if EMPAQUETADO else None
 
 PAQUETE = Path(__file__).resolve().parent
 RAIZ = PAQUETE.parent
@@ -17,7 +23,12 @@ WEB = PAQUETE / "web"
 
 
 def carpeta_datos() -> Path:
-    return Path(os.environ.get("FABRICA_DATOS", RAIZ / "datos")).resolve()
+    if os.environ.get("FABRICA_DATOS"):
+        return Path(os.environ["FABRICA_DATOS"]).resolve()
+    if EMPAQUETADO:
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return (Path(base) / "FabricaStudio" / "datos").resolve()
+    return (RAIZ / "datos").resolve()
 
 
 class Rutas:
