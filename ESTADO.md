@@ -720,3 +720,61 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   personas…», el video de prueba no tiene personas); Plantilla: secciones y nota según el estilo, guardar, Resumen.
   Capturas en `docs/diseno/capturas-auto/`. **No probado** con un clip real (Westcol) ni en la tablet; el caso «vista
   dividida» de la nota está cubierto por la prueba de `test_reencuadre.py`, no visto en el navegador.
+- **2026-11-17 · Claude Code + Codex (PC Windows)** — **Rendimiento del panel, fase 1: red y CPU en reposo**
+  (`web/app.js`, `web/editor.js`, `web/sondeo.js` nuevo, `web/estilo.css`, `web/index.html`, `tests/test_sondeo_js.py` nuevo,
+  `tests/test_web.py`, `.gitignore`). Codex (plugin `codex` 1.0.6, modelo `gpt-6.2-astra`) hizo una auditoría de solo lectura
+  y 10 revisiones del cambio; Claude Code eligió e implementó. Sin cambios en Python ni en el motor.
+  - **Qué se mejoró:** (1) Sondeo de `/api/estado` en `web/sondeo.js`: una consulta a la vez (quien llama espera a la que
+    pidió), cada 2 s solo si algo avanza (cola, subida pedida sin pausa de cuota, archivo copiándose a la carpeta vigilada o
+    sin conexión), cada 15 s en reposo, nada con la pestaña oculta y consulta inmediata al volver; plazo de 15 s por
+    petición. (2) La ficha del clip (`/api/trabajos/<id>`) solo se pide si el clip cambió (`actualizado`) o cada 60 s; el
+    progreso llega con `/api/estado`. Si la ficha no responde se conserva la que se ve (con lo que se esté editando) y su
+    versión, y se reintenta. (3) Editor de tiempos: el bucle de cuadros solo corre al reproducir; el cabezal se mueve con
+    `transform` y el reloj solo se escribe si cambia. (4) La vista previa de un momento suelta su temporizador al salir.
+    (5) Arreglo del editor encontrado al medir: si se tocaba la onda antes de que cargara el video, al cargar volvía al
+    inicio del primer tramo; ahora respeta la posición elegida.
+  - **Mediciones** (Chrome sin ventana, Playwright 1.66; A/B intercalado en la misma sesión: código anterior `HEAD` vs.
+    nuevo, mismos datos: 2 clips renderizados + 24 en error; tablet = 800×1280 táctil con CPU 4× más lenta, emulada, no la
+    MatePad real). Reposo, escritorio: Resumen 30→4 consultas/min y 506→67,5 KB/min; detalle de clip 60→4 consultas/min y
+    652→67,5 KB/min; editor de tiempos en pausa 7516→4 maquetaciones/min y 32 274→98 ms/min de hilo principal. Tablet:
+    Resumen 26→2 consultas/min, hilo 1363→207 ms/min; cola 2535→587 ms/min; editor en pausa 53 709→418 ms/min (antes
+    ocupaba ~90 % del hilo sin moverse nada). Carga y transiciones no eran objetivo de esta fase: sus cifras varían entre
+    corridas (FPS sin vsync en Chrome sin ventana) y no se atribuyen a este cambio. Scripts de medición fuera del
+    repositorio (scratchpad de la sesión).
+  - **Lo que encontró Codex** (todo corregido y verificado salvo lo indicado): auditoría — sondeo cada 2 s aunque no pase
+    nada, ficha pedida en cada ciclo, bucle del editor en pausa, temporizador de la vista previa de momentos, más los
+    pendientes de abajo. Revisiones: (1) `await refrescar()` volvía antes de la consulta pedida (Ajustes con canal viejo);
+    (2) al encadenar consultas se perdía el primer pintado (Plantilla/Ajustes en «Cargando…»); (3) una subida en pausa por
+    cuota mantenía el sondeo a 2 s durante horas; (4) se perdían las etapas recién completadas entre consultas encadenadas;
+    (5) faltaban pruebas en `tests/` (→ `sondeo.js` sin DOM + `test_sondeo_js.py`); (6) P3: registros de `.playwright-mcp/`
+    (→ `.gitignore`); (7) un clip abierto durante la primera consulta tardaba hasta 15 s; (8) un archivo copiándose a la
+    carpeta vigilada dejaba el sondeo en reposo; (9) un temporizador podía consultar tras cerrar sesión; (10) una respuesta
+    colgada bloqueaba el sondeo; (11) sin `AbortSignal.timeout` no había plazo; (12) se repetía una consulta con la pestaña
+    ya oculta; (13) si la ficha no respondía se borraba el formulario que se estaba editando; (14) la ficha conservada
+    mostraba botones de un estado viejo; (15) la ficha conservada tomaba la versión nueva y podía guardar subtítulos viejos
+    sobre los nuevos. El arreglo (15) se verificó con pytest y Playwright pero **Codex no lo revisó** (se acabó el cupo).
+    Desde la 4.ª revisión Codex señaló también `.claude/skills/design-dna/scripts/verify.mjs` (lee UTF-16 de PowerShell
+    5.1 como UTF-8; redondea deltaE antes de comparar): es una skill local sin versionar, ajena al panel; no se tocó.
+    Codex no pudo ejecutar pytest en sus revisiones (su entorno no accede al `.venv`).
+  - **Pruebas:** 115 con pytest (nuevas: `test_sondeo_js.py` con reloj falso; en `test_web.py`, orden de scripts y texto de
+    copia en curso igual al del servidor). Playwright funcional en escritorio 1440×900 y tablet emulada: 19 comprobaciones
+    × 2, todas bien (navegación A→B, reposo sin fichas, progreso en vivo, pestaña oculta, cabezal con zoom, salto de
+    cortes, consultas encadenadas, cuota, carpeta, respuesta colgada, formulario conservado). Sin cambios visuales: no hay
+    capturas nuevas. **No probado** en la MatePad real ni en el navegador de HarmonyOS.
+  - **Pendiente (panel, fases siguientes, de la auditoría):** barra lateral animando `grid-template-columns` (en la tablet
+    emulada ~46–48 FPS con cuadros de 83–90 ms) → `transform`; áreas táctiles pequeñas (asa del cabezal 14×18 px, tirador de
+    esquina de Plantilla ~33 px, palabras cortas); foco tras entrar sin GSAP o con «reducir movimiento»; reaccionar al
+    cambio de «reducir movimiento» en curso y no instalar `animationend` en `errorAcceso()` si no hay animación; repintado
+    que construye HTML aunque nada cambie (`poner`, `ponerLista`, `--fase` en cada ciclo); maqueta del Resumen pedida en
+    cada entrada y URLs de objeto de Plantilla sin revocar; cargar `editor.js` al primer uso y GSAP fuera del arranque;
+    fuentes WOFF2 para el panel (hoy Inter solo se usa en el código de vinculación); contraste de bordes interactivos
+    (#28282b sobre #161617 ≈ 1,2:1); `dvh` en el lienzo de Plantilla. Duraciones/curvas: el escalonado de filas es 30 ms y
+    `plan-login.md` §2 pide 50–60 ms (máx. 400 ms, −30 % en tablet). `docs/diseno/movimiento.md` no existe: la referencia de
+    movimiento es `docs/diseno/plan-login.md` §2.
+  - **Tareas para el servidor (sesión de la nube, Python):** (a) comprimir respuestas (p. ej. `GZipMiddleware` de
+    Starlette): la carga en frío transfiere ~308 KB sin comprimir (198 KB de JS) y cada `/api/estado` ~17 KB con 26 clips;
+    (b) `ETag`/304 privados para `/api/estado` y `/api/trabajos/<id>`, autorizando antes del 304 e incluyendo progreso,
+    carpeta, canal, proveedores y pausa de cuota; (c) un campo propio en `carpeta.pendientes` para «copiándose» (el panel
+    hoy lo reconoce por el texto «Esperando a que termine de copiarse», con una prueba que vigila que coincida);
+    (d) maqueta del Resumen más pequeña o con validación compartida (`/api/diseno/vista` genera 540×960 que se muestra a
+    176×313).

@@ -32,7 +32,7 @@ Python 3.10+ · FastAPI · SQLite · FFmpeg · faster-whisper · interfaz web si
 | `fabrica_studio/acceso.py` | Vinculación de dispositivos por código. |
 | `fabrica_studio/cuentas.py` | Cuenta del propietario, contraseña (scrypt), sesiones y límite de intentos. |
 | `fabrica_studio/server.py` | API HTTP y archivos estáticos. |
-| `fabrica_studio/web/` | Panel: `index.html`, `estilo.css`, `app.js`, `editor.js` (editor de tiempos) (sin compilación ni CDN; `vendor/` trae GSAP local para las animaciones del acceso). |
+| `fabrica_studio/web/` | Panel: `index.html`, `estilo.css`, `app.js`, `editor.js` (editor de tiempos), `sondeo.js` (consultas periódicas a la API) (sin compilación ni CDN; `vendor/` trae GSAP local para las animaciones del acceso). |
 
 Cada trabajo tiene una carpeta `datos/trabajos/<id>/` con un archivo por etapa
 (`propiedades.json`, `transcripcion.json`, `textos_generados.json`, `subtitulos.json`,

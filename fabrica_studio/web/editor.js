@@ -150,15 +150,20 @@ async function abrirEditorTiempos(t) {
     q("quitar-t").textContent = selP ? (restaurar ? "Recuperar palabras" : "Cortar palabras") : "Quitar tramo";
   }
   function pintarRegla() {
-    const ancho = lienzo.clientWidth, paso = PASOS_REGLA.find((p) => (p / dur) * ancho >= 64) || 600;
+    const ancho = anchoLienzo = lienzo.clientWidth, paso = PASOS_REGLA.find((p) => (p / dur) * ancho >= 64) || 600;
     let html = "";
     for (let s = 0; s <= dur + 1e-6; s += paso) html += `<span style="left:${pct(s, dur)}">${paso < 1 ? rd(s) : reloj(s)}</span>`;
     q("regla").innerHTML = html;
+    if (!arrastre) pintarCabezal();            // la posición en píxeles depende del ancho (zoom, giro de la tablet)
   }
+  // El cabezal se mueve con transform (sin recalcular la maquetación) y el texto solo se escribe si cambia.
+  let anchoLienzo = 0, relojMostrado = "";
   function pintarCabezal(tt = actual()) {
-    q("cabezal").style.left = pct(tt, dur);
-    q("t").textContent = rd(tt);
-    const a = q("asa"); a.setAttribute("aria-valuenow", tt.toFixed(1)); a.setAttribute("aria-valuetext", rd(tt));
+    q("cabezal").style.transform = `translateX(${(tt / dur) * anchoLienzo}px)`;
+    const texto = rd(tt);
+    if (texto === relojMostrado) return;
+    relojMostrado = texto; q("t").textContent = texto;
+    const a = q("asa"); a.setAttribute("aria-valuenow", tt.toFixed(1)); a.setAttribute("aria-valuetext", texto);
   }
   function pintarTodo() { pintarCortes(); pintarTramos(); pintarPalabras(); pintarResultado(); }
 
@@ -197,16 +202,22 @@ async function abrirEditorTiempos(t) {
     else if (d - tt > 0.02) video.currentTime = d;
     seguir(false);
   }
+  // Bucle de cuadros solo mientras se reproduce; en pausa el cabezal se pinta al moverlo (ir, arrastres, seeked).
+  let bucle = 0;
   function cuadro() {
+    bucle = 0;
     if (!raiz.isConnected) return;
     vigilar();
     if (!arrastre) pintarCabezal();
-    requestAnimationFrame(cuadro);
+    if (!video.paused) bucle = requestAnimationFrame(cuadro);
   }
+  const arrancar = () => { if (!bucle) bucle = requestAnimationFrame(cuadro); };
+  video.addEventListener("seeked", () => { if (!arrastre) pintarCabezal(); });
   video.addEventListener("timeupdate", vigilar);       // por si el navegador frena los cuadros (pestaña o ventana en segundo plano)
-  video.addEventListener("play", () => { q("play").innerHTML = icono("pausa"); q("play").setAttribute("aria-label", "Pausar"); });
+  video.addEventListener("play", () => { arrancar(); q("play").innerHTML = icono("pausa"); q("play").setAttribute("aria-label", "Pausar"); });
   video.addEventListener("pause", () => { q("play").innerHTML = icono("reproducir"); q("play").setAttribute("aria-label", "Reproducir"); });
-  video.addEventListener("loadedmetadata", () => { if (tramos.length) video.currentTime = tramos[0][0]; }, { once: true });
+  // Al cargar, el video va al inicio del primer tramo, salvo que ya se haya movido el cabezal (toque antes de que cargara).
+  video.addEventListener("loadedmetadata", () => { if (tramos.length && !video.currentTime) video.currentTime = tramos[0][0]; pintarCabezal(); }, { once: true });
   video.addEventListener("error", () => {
     q("play").disabled = true;
     raiz.querySelector(".et-escena").innerHTML = `<p class="nota">Este navegador no puede reproducir el archivo original. Puedes recortar igual con la onda y las palabras.</p>`;
@@ -376,7 +387,6 @@ async function abrirEditorTiempos(t) {
 
   q("alejar").disabled = true;
   pintarTodo(); pintarRegla(); pintarCabezal(tramos[0]?.[0] || 0);
-  requestAnimationFrame(cuadro);
   q("play").focus();
   // Entrada: la onda se dibuja de izquierda a derecha y el resto llega detrás.
   if (animar()) {

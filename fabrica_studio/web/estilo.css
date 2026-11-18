@@ -524,7 +524,7 @@ button.primario.peligro { background: var(--mal); border-color: var(--mal); colo
 .et-palabra.fuera { color: var(--apagado); background: none; text-decoration: line-through; text-decoration-color: #df969099; }
 .et-palabra.sel { background: var(--acento); color: var(--acento-tinta); text-decoration: none; }
 .et-palabra:focus-visible { outline-offset: 0; z-index: 1; }
-.et-cabezal { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--claro); margin-left: -1px; pointer-events: none; z-index: 3; }
+.et-cabezal { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-left: 2px solid var(--claro); margin-left: -1px; pointer-events: none; z-index: 3; }
 .et-cabezal-asa { position: absolute; top: 0; left: -8px; width: 14px; height: 18px; background: var(--claro); clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); pointer-events: auto; cursor: ew-resize; touch-action: none; }
 .et-cabezal-asa:focus-visible { outline: none; background: var(--acento); }
 

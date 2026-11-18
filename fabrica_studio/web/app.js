@@ -25,7 +25,7 @@ async function api(ruta, opciones = {}) {
   const r = await fetch(ruta, opciones);
   if (r.status === 401) { sinAcceso(); throw new Error("Inicia sesión o vincula este dispositivo."); }
   const datos = r.headers.get("content-type")?.includes("json") ? await r.json() : null;
-  if (!r.ok) throw new Error(datos?.error || `Error ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(datos?.error || `Error ${r.status}`), { status: r.status });   // status: el servidor respondió
   return datos;
 }
 
@@ -401,17 +401,49 @@ function anunciar(antes) {
   }
 }
 
-async function refrescar() {
-  if ($("#app").hidden) return;           // en una pantalla de acceso no se consulta el estado
-  const primera = !S.estado;
+// Sondeo: una consulta a la vez; cada 2 s mientras algo avanza (o sin conexión), cada 15 s en reposo
+// (carpeta vigilada, otro dispositivo, sesión) y nada con la pestaña oculta.
+const SONDEO_ACTIVO = 2000, SONDEO_REPOSO = 15000;
+let detalleLeido = 0;
+// Una subida pedida no cuenta mientras la cuota de YouTube tenga las subidas en pausa (pueden ser horas).
+// shortcut: la copia en curso a la carpeta vigilada se reconoce por el texto del servidor (pipeline.revisar_carpeta);
+// cuando /api/estado exponga un campo propio, usarlo (tarea anotada en ESTADO.md).
+const copiando = (p) => p.motivo.startsWith("Esperando a que termine de copiarse");
+const algoAvanza = () => !S.conectado || S.estado.carpeta.pendientes.some(copiando)
+  || S.estado.trabajos.some((t) => enCola(t) || (t.subir_solicitado && !S.estado.subidas_pausadas_hasta));
+const sondeo = crearSondeo({        // web/sondeo.js
+  consultar,
+  // Lo recién completado se compara con lo último que se mostró, aunque se encadenen consultas; el primer pintado es completo.
+  alEmpezar: () => ({ antes: S.estado, primera: !S.estado }),
+  alTerminar: ({ antes, primera }) => { anunciar(antes); pintar(primera); },
+  intervalo: () => (algoAvanza() ? SONDEO_ACTIVO : SONDEO_REPOSO),
+  puede: () => !document.hidden && !$("#app").hidden && dentro,
+});
+// En una pantalla de acceso no se consulta el estado.
+const refrescar = () => ($("#app").hidden ? Promise.resolve() : sondeo.refrescar());
+document.addEventListener("visibilitychange", () => (document.hidden ? sondeo.detener() : refrescar()));
+
+// Una respuesta que nunca llega no bloquea el sondeo: a los 15 s cuenta como «sin conexión» y se reintenta.
+const plazo = () => { const c = new AbortController(); setTimeout(() => c.abort(), 15000); return { signal: c.signal }; };
+async function consultar() {
   try {
-    const nuevo = await api("/api/estado"), antes = S.estado;
+    const nuevo = await api("/api/estado", plazo());
     S.estado = nuevo;
     S.conectado = true;
-    anunciar(antes);
-    if (S.jid) S.detalle = await api(`/api/trabajos/${S.jid}`).catch(() => false);
+    const jid = S.jid;                         // se lee ahora: pudo abrirse un clip mientras llegaba el estado
+    if (jid) {
+      // La ficha completa solo se pide si el clip cambió (o cada 60 s); el progreso en vivo llega con /api/estado.
+      const resumen = nuevo.trabajos.find((t) => t.id === jid), d = S.detalle;
+      const vigente = d && resumen && d.id === jid && d.actualizado === resumen.actualizado && d.modo !== "largo" && Date.now() - detalleLeido < 60000;
+      // Si el servidor responde con error, el clip ya no está (false); si no responde (plazo, red), se conserva la
+      // ficha que se ve —con lo que se esté editando— con el estado actual del resumen pero la versión con la que se
+      // descargó (así la próxima consulta la pide de nuevo y el formulario no se da por actualizado).
+      const ficha = vigente ? { ...d, ...resumen } : await api(`/api/trabajos/${jid}`, plazo())
+        .then((f) => { detalleLeido = Date.now(); return f; })
+        .catch((e) => (e.status ? false : d?.id === jid ? { ...d, ...resumen, actualizado: d.actualizado } : null));
+      if (S.jid === jid) S.detalle = ficha;     // se navegó a otro clip mientras llegaba: se descarta
+    }
   } catch (e) { S.conectado = false; /* se reintenta en el siguiente ciclo */ }
-  pintar(primera);
 }
 
 let dentro = false;
@@ -422,7 +454,6 @@ async function entrar(ocultar = true) {        // ocultar = false: el acceso sig
   dentro = true;
   S.ajustes = await api("/api/ajustes").catch(() => null);
   await refrescar();
-  setInterval(refrescar, 2000);
 }
 const BIENVENIDA = "fabrica.bienvenida";       // «Ahora no» la oculta para siempre en este navegador
 const bienvenidaVista = () => { try { return !!localStorage.getItem(BIENVENIDA); } catch (e) { return false; } };
@@ -786,7 +817,8 @@ const acciones = {
     const f = b.closest("form"), v = $("#l-video"), ini = aSegundos(f.ini.value), fin = aSegundos(f.fin.value);
     if (!v || isNaN(ini)) return;
     v.currentTime = ini; v.play();
-    clearInterval(v._tope); v._tope = setInterval(() => { if (!isNaN(fin) && v.currentTime >= fin) { v.pause(); clearInterval(v._tope); } }, 200);
+    // Al salir de la vista el video se desconecta: el temporizador se detiene en vez de seguir despertando.
+    clearInterval(v._tope); v._tope = setInterval(() => { if (!v.isConnected || (!isNaN(fin) && v.currentTime >= fin)) { v.pause(); clearInterval(v._tope); } }, 200);
     v.scrollIntoView({ behavior: "smooth", block: "center" });
   },
   diagnostico: intentar(async (b) => {

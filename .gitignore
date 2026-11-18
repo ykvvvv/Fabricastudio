@@ -23,3 +23,5 @@ client_secret*.json
 
 # Material de referencia local (APK, ZIP, HTML, chats exportados): no se versiona.
 referencias/
+# Registros y capturas temporales de Playwright (las de referencia van en docs/diseno/)
+.playwright-mcp/
