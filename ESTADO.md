@@ -943,3 +943,18 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     Capturas en `docs/diseno/capturas-movimiento/`. Scripts de medición fuera del repositorio (scratchpad).
     **No probado** en la MatePad real ni en el navegador de HarmonyOS (mantener pulsado y reproducción automática en
     silencio pueden comportarse distinto).
+- **2026-11-18 · Claude Code (PC Windows)** — **Ritmo de publicación y recorte automático en el panel** (`web/app.js`,
+  `web/estilo.css`, `tests/test_web.py`). Completa lo que faltaba de «Automatización segura».
+  - **Ajustes → YouTube → Publicación:** «Máximo de subidas por día» (`subidas_max_dia`, 0–100), «Minutos entre
+    subidas» (`subidas_intervalo_min`, 0–1440) y «Recortar clips más largos de (s)» (`recorte_auto_segundos`: Nunca = 0,
+    60 o 180). Se guardan con el mismo «Guardar»; los límites del formulario son los de `config.LIMITES` (un valor fuera
+    de rango no se envía y el servidor también lo rechaza). Si `recorte_auto_segundos` tiene otro valor (p. ej. puesto
+    por otra vía), aparece como opción y guardar no lo cambia.
+  - **Resumen:** en la tarjeta de YouTube, «Próxima subida: HH:MM» solo cuando `/api/estado.proxima_subida > 0`, con la
+    hora local de ese valor; si cae al día siguiente dice «mañana a las HH:MM».
+  - **Pruebas:** 133 con pytest (2 omitidas, POSIX); nueva en `test_web.py`: claves reales y límites iguales a
+    `config.LIMITES`. Playwright con datos temporales, escritorio y tablet emulada: 30 comprobaciones bien (sin subidas
+    recientes no se muestra; tras una subida terminada la API da ahora + 60 min y el Resumen muestra esa hora; valores
+    actuales, guardar 3/30/60 como números sin tocar los otros ajustes, recargar, «Nunca» = 0, 101 rechazado por el
+    navegador y por el servidor, valor fuera de la lista conservado, sin ritmo desaparece) y las 57 de la fase A de
+    movimiento repetidas. Capturas en `docs/diseno/capturas-ritmo/`. **No probado** con subidas reales a YouTube.

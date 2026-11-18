@@ -296,7 +296,7 @@ details > summary:hover { color: var(--texto); }
 .pl-form fieldset:last-child { border-bottom: 0; }
 .pl-form legend { float: left; width: 100%; padding: 0; font-size: 14px; font-weight: 500; color: var(--texto); }
 .pl-form legend + * { clear: both; }
-.pl-form .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
+.pl-form .campos, #form-pub .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
 .pl-vista { position: sticky; top: 20px; display: flex; flex-direction: column; }
 .pl-vista .formato-escena { padding: 6px 20px 22px; }
 .pl-vista .panel-titulo .icono-boton:disabled { opacity: .3; }

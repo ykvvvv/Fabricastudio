@@ -85,6 +85,22 @@ def test_campos_de_proveedores_son_ajustes_reales():
     assert nombres <= set(AJUSTES_POR_DEFECTO), nombres - set(AJUSTES_POR_DEFECTO)
 
 
+def test_campos_de_publicacion_son_ajustes_reales():
+    """Ritmo de subidas y recorte automático: claves reales y valores dentro de los límites del servidor."""
+    from fabrica_studio.config import AJUSTES_POR_DEFECTO, LIMITES
+    js = _texto("app.js")
+    bloque = js.split('id="form-pub"')[1].split("</form>")[0]
+    nombres = set(re.findall(r'name="([a-z_]+)"', bloque))
+    assert {"subidas_max_dia", "subidas_intervalo_min", "recorte_auto_segundos"} <= nombres <= set(AJUSTES_POR_DEFECTO)
+    for clave in ("subidas_max_dia", "subidas_intervalo_min"):
+        lo, hi = LIMITES[clave]
+        assert f'name="{clave}" min="{lo}" max="{hi}"' in bloque, clave
+    lo, hi = LIMITES["recorte_auto_segundos"]
+    assert all(lo <= x <= hi for x in (0, 60, 180)) and "[0, 60, 180, v.recorte_auto_segundos]" in bloque
+    # El Resumen solo muestra la próxima subida si la API trae una hora futura (0 = se puede subir ya).
+    assert "e.proxima_subida > 0 ? ` Próxima subida: ${horaSubida(e.proxima_subida)}.`" in js
+
+
 def test_el_panel_se_revalida_tras_actualizar(fabrica):
     """Sin esto el navegador seguía usando un app.js viejo después de un git pull."""
     pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765")

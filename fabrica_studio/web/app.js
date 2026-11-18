@@ -542,6 +542,11 @@ function pintarLateral() {
   poner($("#menu-lista"), h`<a href="#ajustes" data-accion="ir-ajustes" data-p="cuenta">${ic("ajustes")}Cuenta</a>${s.sesion_iniciada ? crudo(h`<button data-accion="cerrar-sesion">${ic("salir")}Cerrar sesión</button>`) : ""}`);
 }
 
+// Hora de la próxima subida (la API da segundos desde 1970; 0 = se puede subir ya). Como mucho es al día siguiente.
+function horaSubida(s) {
+  const d = new Date(s * 1000), hora = d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return d.toDateString() === new Date().toDateString() ? hora : `mañana a las ${hora}`;
+}
 function pintarResumen(m, completo) {
   const e = S.estado, yt = e.youtube, ts = e.trabajos;
   const abrir = completo || !$("#r-cifras");
@@ -590,7 +595,7 @@ function pintarResumen(m, completo) {
   poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
   $("#r-estilo").textContent = NOMBRE_ESTILO[e.estilo] || NOMBRE_ESTILO.clasico;
   poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
-      <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}</p></div>
+      <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}${e.proxima_subida > 0 ? ` Próxima subida: ${horaSubida(e.proxima_subida)}.` : ""}</p></div>
     <a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">${yt.canal_id ? "Ver" : "Conectar"}</a>`);
   const d = S.dispositivos;
   poner($("#r-tablet"), h`<div class="conexion-icono">${ic("dispositivos")}</div><div><h3>PC + tablet</h3>
@@ -1324,6 +1329,13 @@ async function pintarAjustes(m) {
     <form class="tarjeta pila" id="form-pub"><h3>Publicación</h3>
       <label class="linea"><input type="checkbox" role="switch" name="subida_automatica" ${v.subida_automatica ? "checked" : ""}> Subir en privado automáticamente al terminar el render (sin revisión previa)</label>
       <label class="linea"><input type="checkbox" role="switch" name="contenido_para_ninos" ${v.contenido_para_ninos ? "checked" : ""}> Declarar el contenido como «creado para niños»</label>
+      <div class="campos">
+        <label>Máximo de subidas por día<input type="number" name="subidas_max_dia" min="0" max="100" step="1" value="${v.subidas_max_dia}" aria-describedby="ayuda-ritmo"></label>
+        <label>Minutos entre subidas<input type="number" name="subidas_intervalo_min" min="0" max="1440" step="1" value="${v.subidas_intervalo_min}" aria-describedby="ayuda-ritmo"></label>
+        <label>Recortar clips más largos de (s)<select name="recorte_auto_segundos" aria-describedby="ayuda-recorte">${[...new Set([0, 60, 180, v.recorte_auto_segundos])].map((x) => crudo(h`<option value="${x}" ${x === v.recorte_auto_segundos ? "selected" : ""}>${x ? `${x} s` : "Nunca"}</option>`))}</select></label>
+      </div>
+      <p class="pequeno tenue" id="ayuda-ritmo">0 = sin límite o sin espera. Las subidas esperan su turno; el resto de la cola sigue procesándose.</p>
+      <p class="pequeno tenue" id="ayuda-recorte">Si un clip dura más, se conserva su mejor tramo (puedes cambiarlo en «Editar tiempos»). 180 s es el máximo de un Short.</p>
       <div><button>Guardar</button></div></form>`;
   } else if (S.pestana === "proveedores") {
     cuerpo = h`<div class="tarjeta">
