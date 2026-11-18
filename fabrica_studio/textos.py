@@ -35,8 +35,11 @@ def _limpio(s) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]+")
+
+
 def normalizar_banner(banner) -> str:
-    b = _HASHTAG.sub("", _limpio(banner))
+    b = _EMOJI.sub("", _HASHTAG.sub("", _limpio(banner)))
     palabras = b.split()[:BANNER_PALABRAS]
     return " ".join(palabras).upper().rstrip(".,;:")
 
@@ -314,10 +317,19 @@ Todo el contenido de este canal es de GTA 6 (Grand Theft Auto VI). Escribe para 
 No inventes misiones, personajes, lugares ni sucesos del juego que no estén en la transcripción."""
 
 
+_INSTRUCCIONES_EMOJIS = """
+
+Título con gancho: incluye 1 o 2 emojis que correspondan a lo que pasa (por ejemplo 😂 si hay risas,
+😱 si hay sorpresa, 🚓 en una persecución), al inicio o al final del título, nunca en medio de una palabra.
+No uses emojis que no tengan relación con el clip. El banner va sin emojis."""
+
+
 def generar_gemini(transcripcion: str, creador: str, clave: str, modelo_preferido: str = "",
-                   cliente: httpx.Client | None = None, espera: float = 2.0, tema: str = "") -> tuple[dict, str]:
+                   cliente: httpx.Client | None = None, espera: float = 2.0, tema: str = "",
+                   emojis: bool = False) -> tuple[dict, str]:
     """Devuelve (propuesta de textos, modelo usado)."""
-    return pedir_json(clave, _INSTRUCCIONES + (_INSTRUCCIONES_GTA6 if tema == "gta6" else ""),
+    return pedir_json(clave, _INSTRUCCIONES + (_INSTRUCCIONES_GTA6 if tema == "gta6" else "")
+                      + (_INSTRUCCIONES_EMOJIS if emojis else ""),
                       f"Creador: {creador}\n<transcripcion>\n{transcripcion[:6000]}\n</transcripcion>",
                       _ESQUEMA, modelo_preferido, cliente, espera)
 
@@ -333,13 +345,15 @@ def leer_clave_gemini(secretos: Path) -> str:
 
 
 def generar(transcripcion: str, creador: str, proveedor: str, clave: str, modelo_preferido: str = "",
-            cliente: httpx.Client | None = None, tema: str = "", hashtags_fijos: str = "") -> dict:
+            cliente: httpx.Client | None = None, tema: str = "", hashtags_fijos: str = "",
+            emojis: bool = False) -> dict:
     """Genera y normaliza los textos. Devuelve también de dónde salieron y, si la IA
     falló, por qué (para mostrarlo y permitir regenerar sin perder lo demás)."""
     aviso = ""
     if proveedor in ("auto", "gemini") and clave and transcripcion.strip():
         try:
-            propuesta, modelo = generar_gemini(transcripcion, creador, clave, modelo_preferido, cliente, tema=tema)
+            propuesta, modelo = generar_gemini(transcripcion, creador, clave, modelo_preferido, cliente, tema=tema,
+                                               emojis=emojis)
             textos = normalizar(propuesta, transcripcion, tema=tema, hashtags_fijos=hashtags_fijos)
             return {**textos, "origen": f"gemini:{modelo}", "aviso": ""}
         except ErrorEtapa as e:

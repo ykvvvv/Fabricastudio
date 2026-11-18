@@ -893,3 +893,11 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     `FabricaStudio-Setup-0.4.0.exe` de **184 MB**, instalación silenciosa OK y el programa instalado arranca.
     Pendiente: probar el instalador en el PC de Cristóbal (SmartScreen, accesos directos, Defender) y en el PC de
     un amigo sin Python ni FFmpeg.
+- **2026-11-18 · Claude Code (nube)** — **Títulos con emojis** (ajuste `emojis_titulo`, activado): Gemini añade 1–2
+  emojis pertinentes al título; el banner los quita (la fuente del render no los tiene). Son Unicode: cada teléfono
+  los dibuja con su estilo (iPhone, Android). 130 pruebas.
+  **Publicación pública automática: bloqueada por las plataformas, no por el código.** Verificado: YouTube deja en
+  privado todo lo subido por la API desde proyectos no auditados (requiere auditoría de Google del proyecto de
+  Cristóbal); TikTok fuerza «solo yo» y cuentas privadas a clientes no auditados (requiere app de desarrollador
+  aprobada). Ambas piden sitio web con política de privacidad y términos (posible uso de ltmpartners.site).
+  Mientras tanto: subida privada automática + paso a público en YouTube Studio; TikTok con «Exportar».

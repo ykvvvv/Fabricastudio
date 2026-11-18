@@ -117,7 +117,8 @@ AJUSTES_POR_DEFECTO: dict = {
     # Tema fijo del canal. "gta6": el usuario declara que todo el contenido es de GTA 6 → títulos con «GTA 6»,
     # hashtags fijos y categoría Gaming. "" = detectar por la transcripción.
     "tema": "",
-    "hashtags_fijos": "#GTA6 #GTAVI #GTA #Gaming",  # se añaden a la descripción solo con tema = "gta6"
+    "hashtags_fijos": "#GTA6 #GTAVI #GTA #Gaming",
+    "emojis_titulo": True,            # Gemini añade 1–2 emojis pertinentes al título (el banner nunca lleva)  # se añaden a la descripción solo con tema = "gta6"
     "momentos_cantidad": 6,           # propuestas por video largo
     "momentos_auto": False,           # crear Shorts de las propuestas sin esperar a que el usuario elija
     "momentos_auto_solo_ia": True,    # automático solo si las propuestas vienen de Gemini (la heurística es débil)

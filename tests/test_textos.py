@@ -122,3 +122,20 @@ def test_titulo_local_usa_frases_completas():
     cuerpo = t.split(": ", 1)[-1]
     assert len(t) <= 60 and cuerpo in tr.replace(".", "")                          # literal
     assert any(cuerpo == c.strip(" ,") for c in tr.replace(".", ",").split(","))   # cláusula completa, no cortada
+
+
+def test_titulos_con_emojis(monkeypatch):
+    vistas = []
+
+    def falsa(clave, instr, contenido, esquema, *a, **k):
+        vistas.append(instr)
+        return {"banner": "huida 🚓 total", "titulo": "Escapa de la policía 🚓😱", "descripcion": "Huye",
+                "hashtags": [], "es_gaming": True}, "gemini-9"
+    monkeypatch.setattr(textos, "pedir_json", falsa)
+    r = textos.generar("me escapo de la policía", "Chetalonso", "auto", "clave", tema="gta6",
+                       hashtags_fijos="#GTA6", emojis=True)
+    assert "1 o 2 emojis" in vistas[0]
+    assert "🚓😱" in r["titulo"] and len(r["titulo"]) <= 80 and r["titulo"].endswith("#Shorts")
+    assert r["banner"] == "HUIDA TOTAL"                                  # el banner nunca lleva emojis
+    textos.generar("x", "C", "auto", "clave", emojis=False)
+    assert "emojis" not in vistas[1]
