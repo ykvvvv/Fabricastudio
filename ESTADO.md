@@ -911,3 +911,35 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   - **Sin suspensión:** `pipeline.sin_suspender` pide a Windows no suspender el equipo mientras procesa o sube.
   - **Instalador:** tarea opcional «Abrir Fábrica Studio al iniciar Windows» (acceso en Inicio con `--sin-navegador`).
   133 pruebas. **Falta en el panel:** campos de ritmo y recorte automático en Ajustes y la próxima subida en el Resumen.
+- **2026-11-18 · Claude Code (PC Windows)** — **Movimiento del panel, fase A** (`web/app.js`, `web/estilo.css`,
+  `tests/test_web.py`). `docs/diseno/movimiento.md` no existe: la referencia sigue siendo `plan-login.md` §2.
+  - **Biblioteca, vista previa:** al pasar el mouse (o mantener pulsado 350 ms en la tablet) la tarjeta reproduce su Short
+    en silencio desde `/media/<id>/short.mp4`; el `<video preload="none">` se crea al empezar y se destruye al salir
+    (vuelve la miniatura, se corta la descarga). Un toque corto abre el clip como siempre; tras mantener pulsado, soltar no
+    lo abre; el clic derecho con mouse no se toca. Se detiene al cambiar de vista.
+  - **Reordenar (Cola, Biblioteca y recientes del Resumen):** al filtrar, ordenar, buscar o cuando un clip cambia de
+    estado, las filas y tarjetas que se ven se deslizan a su lugar nuevo (FLIP en `ponerLista`, 280 ms, solo
+    `transform`); las que no se veían y entran a la vista suben 8 px y aparecen. **No se usa GSAP Flip:** se probó
+    (`Flip.min.js` 3.15.1) y en la tablet emulada sumaba ~15 ms al cuadro del clic (en Biblioteca 4 cuadros de ~71 ms
+    donde antes había 0). Cristóbal eligió la versión propia con Web Animations, que corre en el compositor.
+  - **Microinteracciones:** botones se hunden al 97 % al pulsar; ajustes de sí/no como interruptores (`role="switch"`:
+    Publicación y casillas de Plantilla) con perilla de resorte; casillas con el check dibujado en dos trazos (scaleX);
+    el foco del teclado llega con una escala corta. En alto contraste de Windows vuelven las casillas nativas.
+  - **Logros reales:** cuando la API pasa un clip a renderizado o publicado, además del check de su pastilla la fila o
+    tarjeta brilla y se apaga (1,4 s). Las cifras del Resumen cuentan desde el valor que se veía hasta el nuevo de la API.
+  - **Medición** (A/B intercalado, `HEAD` vs. nuevo, mismos datos sembrados, 3 vueltas, medianas; Chrome sin ventana;
+    tablet = 800×1280 táctil con CPU 4× más lenta, emulada). Escritorio: 60 FPS y 0 cuadros > 25 ms en todo, antes y
+    después; hilo principal en Cola 62→91 ms/s al filtrar y 74→100 al buscar (las animaciones). Tablet: Cola filtrar
+    53,4→53,3 FPS, buscar 53,4→52,4; Biblioteca ordenar 58,0→57,4 (peor cuadro 67→67 ms); recorrer 5 tarjetas con vista
+    previa 57,7→60,0 (peor cuadro 167→17 ms); clip que termina 59,0→59,3; Resumen 60→60. Entre vueltas el «antes» de la
+    Cola varió de 51,6 a 58,4 FPS. **Ni antes ni ahora la Cola llega a 60 FPS en la tablet emulada:** el cuadro del clic
+    cuesta 70–170 ms reconstruyendo la tabla (no es de esta fase; queda pendiente). Hallazgos al medir, ya corregidos:
+    `:is(.app …) button:active` hacía recalcular el estilo de toda la página en cada pulsación; quitar `entra-fila` fila por
+    fila y `.volando` al terminar causaban cuadros de 33–50 ms tras cada vuelo.
+  - **Pruebas:** 132 con pytest (2 omitidas, POSIX). Playwright con datos temporales en escritorio 1440×900 y tablet
+    emulada: 57 comprobaciones bien (vista previa con mouse y mantener pulsado, toque corto, un video a la vez, FLIP al
+    ordenar/filtrar/buscar, check y brillo al terminar un clip, cifras que cuentan hasta el valor de la API, botón,
+    casilla, interruptor, foco, «reducir movimiento» sin vista previa ni vuelos ni conteos, sin errores en consola).
+    Capturas en `docs/diseno/capturas-movimiento/`. Scripts de medición fuera del repositorio (scratchpad).
+    **No probado** en la MatePad real ni en el navegador de HarmonyOS (mantener pulsado y reproducción automática en
+    silencio pueden comportarse distinto).

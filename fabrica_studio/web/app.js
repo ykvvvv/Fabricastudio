@@ -67,35 +67,64 @@ function poner(el, html) {
 }
 // Lista con clave (id del trabajo): cada elemento se actualiza por separado y solo los nuevos
 // llevan la animación de entrada (al abrir la vista o al llegar un trabajo), escalonada hasta 8.
+// Si cambia qué se ve o en qué orden (filtro, orden, búsqueda, cambio de estado), los que siguen y están en pantalla
+// se deslizan a su lugar nuevo (técnica FLIP: se mide antes y después y se anima solo transform con Web Animations,
+// que corre en el compositor; GSAP Flip costaba ~15 ms más por clic en la tablet emulada). Los que salen desaparecen
+// y los nuevos entran con la animación de entrada.
 function ponerLista(el, trabajos, etiqueta, html) {
   el._html = null;
   const viejos = new Map([...el.children].map((c) => [c.dataset.k, c]));
+  const ids = new Set(trabajos.map((t) => t.id));
+  const antes = new Map(), fuera = [], visible = (r) => r.bottom > 0 && r.top < innerHeight;
+  if (mover() && viejos.size && [...viejos.keys()].join() !== trabajos.map((t) => t.id).join()) {
+    for (const c of viejos.values()) {
+      const r = c.getBoundingClientRect();      // dónde se ve ahora, aunque otro vuelo esté a medias
+      if (ids.has(c.dataset.k)) visible(r) ? antes.set(c, r) : fuera.push(c);
+      c.classList.remove("entra-fila");         // moverlo no debe repetir la entrada (todos a la vez: un solo recálculo)
+    }
+    el._vuelos?.forEach((a) => a.cancel()); el.classList.remove("volando");   // sin reordenar, un vuelo sigue hasta el final
+  }
   let nuevos = 0;
   trabajos.forEach((t, i) => {
     let c = viejos.get(t.id);
     viejos.delete(t.id);
-    if (!c) { c = document.createElement(etiqueta); c.dataset.k = t.id; c.className = "entra-fila"; c.style.setProperty("--i", Math.min(nuevos++, 8)); }
+    if (!c) {
+      c = document.createElement(etiqueta); c.dataset.k = t.id; c.className = "entra-fila"; c.style.setProperty("--i", Math.min(nuevos++, 8));
+    }
     poner(c, html(t));
+    c.classList.toggle("logro", !!S.cambios[t.id]?.logro);    // brillo: la API dice que acaba de terminar
     if (el.children[i] !== c) el.insertBefore(c, el.children[i] || null);
   });
   viejos.forEach((c) => c.remove());
+  if (!antes.size && !fuera.length) return;
+  el.classList.add("volando");                               // sin transiciones CSS de transform mientras vuela
+  el._vuelos = [];
+  antes.forEach((r, c) => {
+    const n = c.getBoundingClientRect(), dx = r.left - n.left, dy = r.top - n.top;
+    if (dx || dy) el._vuelos.push(c.animate({ transform: [`translate(${dx}px, ${dy}px)`, "none"] }, { duration: 280, easing: "cubic-bezier(.2, 0, 0, 1)" }));   // curva «en pantalla» del plan
+  });
+  // Los que no se veían y ahora sí (p. ej. al filtrar) entran como uno nuevo, en vez de aparecer de golpe.
+  for (const c of fuera) if (visible(c.getBoundingClientRect())) el._vuelos.push(c.animate({ opacity: [0, 1], transform: ["translateY(8px)", "none"] }, { duration: 220, easing: "cubic-bezier(.3, .7, .2, 1)" }));
+  Promise.all(el._vuelos.map((a) => a.finished)).then(() => el.classList.remove("volando"), () => {});   // cancelado: lo limpia el vuelo siguiente
 }
 // Esqueleto de carga mientras llegan los datos de la API.
 function esqueleto(m) {
   if (!S.conectado) m.innerHTML = `<div class="panel sin-nada" role="status">Sin conexión con el PC. Se reintenta cada 2 s.</div>`;
   else if (!$(".esqueleto", m)) m.innerHTML = `<div class="esqueleto" role="status"><span class="solo-lector">Cargando…</span><i style="width:38%;height:34px"></i><i style="width:24%"></i><div><i></i><i></i><i></i></div><i style="height:220px"></i></div>`;
 }
-// Cuenta desde cero hasta el número real que ya entregó la API (solo al abrir el Resumen).
-function contar(raiz) {
+// Cuenta hasta el número real que ya entregó la API: desde cero al abrir el Resumen y, cuando una cifra cambia,
+// desde la que se veía (desde[i]). Solo se escribe texto; el número final siempre es el de la API.
+function contar(raiz, desde = null) {
   if (calma.matches) return;
-  raiz.querySelectorAll("[data-cuenta]").forEach((el) => {
-    const fin = +el.dataset.cuenta, t0 = performance.now();
+  raiz.querySelectorAll("[data-cuenta]").forEach((el, i) => {
+    const fin = +el.dataset.cuenta, ini = desde ? desde[i] ?? fin : 0, t0 = performance.now();
+    if (ini === fin) return;
     const paso = (t) => {
       const p = Math.min((t - t0) / 600, 1);
-      el.textContent = dos(Math.round(fin * (1 - (1 - p) ** 3)));
+      el.textContent = dos(Math.round(ini + (fin - ini) * (1 - (1 - p) ** 3)));
       if (p < 1 && el.isConnected) requestAnimationFrame(paso);
     };
-    if (fin) paso(t0);
+    paso(t0);
   });
 }
 function hidratar(raiz = document) { raiz.querySelectorAll("i[data-icono]").forEach((i) => { i.outerHTML = icono(i.dataset.icono); }); }
@@ -237,6 +266,7 @@ function errorAcceso(f, texto) {
 // ---------------------------------------------------------------- movimiento del acceso (GSAP local, fase 2 del plan)
 // Sin GSAP o con «reducir movimiento» no se monta ninguna línea de tiempo: los estados se aplican de golpe.
 const animar = () => !!window.gsap && !calma.matches;
+const mover = () => !calma.matches && !!Element.prototype.animate;     // listas que se reordenan (ponerLista); sin GSAP
 if (animar()) $("#acceso").classList.add("con-gsap");       // apaga las entradas CSS equivalentes
 let entrada = null;
 function entradaAcceso(modo) {
@@ -392,7 +422,7 @@ function navegar() {
   document.querySelectorAll(".nav a").forEach((a) => { const si = a.dataset.vista === activa; a.classList.toggle("activa", si); si ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   $("#miga").textContent = NOMBRES_VISTA[S.vista];
   document.title = `${NOMBRES_VISTA[S.vista]} · Fábrica Studio`;
-  cerrarMenu(); cerrarModal();
+  cerrarMenu(); cerrarModal(); pararPrevia();
   const m = $("#principal");
   m._html = null; m.classList.remove("entra"); void m.offsetWidth; m.classList.add("entra");   // transición solo al cambiar de vista
   pintar(true); window.scrollTo(0, 0);
@@ -545,13 +575,15 @@ function pintarResumen(m, completo) {
   }
   const cola = ts.filter(enCola).length, fallos = ts.filter((t) => t.estado === "error").length;
   const listos = ts.filter((t) => t.estado === "renderizado").length, subidos = ts.filter((t) => t.estado === "publicado").length;
-  poner($("#r-cifras"), h`<div class="cifra"><div class="cifra-titulo">Clips en la cola${ic("capas")}</div><div class="cifra-valor"><span data-cuenta="${cola}">${dos(cola)}</span> <small>${cola === 1 ? "clip" : "clips"}</small></div>
+  const cifras = $("#r-cifras"), vistas = [...cifras.querySelectorAll("[data-cuenta]")].map((el) => +el.textContent), previo = cifras._html;
+  poner(cifras, h`<div class="cifra"><div class="cifra-titulo">Clips en la cola${ic("capas")}</div><div class="cifra-valor"><span data-cuenta="${cola}">${dos(cola)}</span> <small>${cola === 1 ? "clip" : "clips"}</small></div>
       <div class="cifra-nota">${fallos ? `${plural(fallos, "clip con error", "clips con error")}: revísalos en la cola` : "En espera o generándose"}</div></div>
     <div class="cifra"><div class="cifra-titulo">Listos para revisar${ic("check-circulo")}</div><div class="cifra-valor"><span data-cuenta="${listos}">${dos(listos)}</span> <small>${listos === 1 ? "Short" : "Shorts"}</small></div>
       <div class="cifra-nota">${plural(subidos, "subido", "subidos")} en privado a YouTube</div></div>
     <div class="cifra"><div class="cifra-titulo">Canal de YouTube${ic("youtube")}</div><div class="cifra-valor texto">${yt.canal_id ? yt.canal_nombre : "Sin confirmar"}</div>
       <div class="cifra-nota">${yt.canal_id ? `${yt.canal_id} · subidas siempre en privado` : "No se puede subir hasta confirmar el canal"}</div></div>`);
-  if (abrir) contar($("#r-cifras"));
+  if (abrir) contar(cifras);
+  else if (cifras._html !== previo) contar(cifras, vistas);      // solo si la API trajo otras cifras
   const recientes = [...ts].filter(coincide).sort((a, b) => b.creado - a.creado).slice(0, 3);
   if (recientes.length) ponerLista($("#r-recientes"), recientes, "div", (t) => h`<div class="reciente">${crudo(clipHtml(t))}${crudo(pastilla(t))}</div>`);
   else poner($("#r-recientes"), `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
@@ -609,6 +641,46 @@ function pintarBiblioteca(m, completo) {
   $("#bib-vacia").hidden = listos.length > 0;
   poner($("#bib-vacia"), icono("pelicula") + (S.busca ? "Ningún Short coincide con la búsqueda." : "Aún no hay Shorts renderizados. Aparecerán aquí cuando termine el primer render."));
 }
+
+// Biblioteca: al pasar el mouse (o mantener pulsado en la tablet) la tarjeta reproduce su Short en silencio. El video
+// se crea al empezar (preload="none": nada se descarga antes) y se destruye al salir; queda la miniatura.
+let previa = null;
+function verPrevia(pieza) {
+  if (previa?.pieza === pieza) return;
+  pararPrevia();
+  if (!pieza || calma.matches) return;
+  const v = document.createElement("video");
+  v.muted = v.defaultMuted = v.loop = v.playsInline = true;
+  v.preload = "none"; v.className = "previa"; v.setAttribute("aria-hidden", "true");
+  v.src = `/media/${pieza.getAttribute("href").split("/")[1]}/short.mp4`;
+  v.addEventListener("playing", () => v.classList.add("lista"), { once: true });   // aparece cuando de verdad reproduce
+  $("img", pieza).after(v);
+  previa = { pieza, v };
+  v.play().catch(() => {});        // si el navegador no lo permite, se queda la miniatura
+}
+function pararPrevia() {
+  if (!previa) return;
+  const { v } = previa; previa = null;
+  v.pause(); v.classList.remove("lista");
+  setTimeout(() => { v.removeAttribute("src"); v.load(); v.remove(); }, calma.matches ? 0 : 160);   // corta la descarga
+}
+const piezaDe = (e) => e.target.closest?.("#bib-rejilla .pieza") || null;
+document.addEventListener("pointerover", (e) => { if (e.pointerType === "mouse") verPrevia(piezaDe(e)); });
+document.addEventListener("pointerout", (e) => { if (e.pointerType === "mouse" && previa && !previa.pieza.contains(e.relatedTarget)) pararPrevia(); });
+// Tablet: mantener pulsado 350 ms. Un toque corto abre el clip como siempre; tras mantener pulsado, soltar no lo abre.
+let pulsando = 0, tocando = false, mantenida = false;
+document.addEventListener("pointerdown", (e) => {
+  const p = e.pointerType !== "mouse" && piezaDe(e);
+  if (!p) return;
+  tocando = true; mantenida = false; clearTimeout(pulsando);
+  pulsando = setTimeout(() => { mantenida = true; verPrevia(p); }, 350);
+});
+const soltarPieza = (e) => { if (e.pointerType === "mouse") return; tocando = false; clearTimeout(pulsando); if (mantenida) pararPrevia(); };
+document.addEventListener("pointerup", soltarPieza);
+document.addEventListener("pointercancel", soltarPieza);     // al desplazar la página el navegador cancela la pulsación
+// Solo con el dedo: el menú del enlace taparía la vista previa. Con el mouse, el clic derecho sigue igual.
+document.addEventListener("contextmenu", (e) => { if (tocando && piezaDe(e)) e.preventDefault(); });
+document.addEventListener("click", (e) => { if (mantenida && piezaDe(e)) { e.preventDefault(); e.stopPropagation(); } mantenida = false; }, true);
 
 document.addEventListener("change", intentar(async (e) => {
   const sel = e.target.closest("[data-estilo-trabajo]");
@@ -988,7 +1060,7 @@ const seccionesEstilo = (estilo) => {
   Object.values(SECCION_ESTILO).forEach(([id, e]) => { $(`#${id}`).hidden = !seVeSeccion(estilo, e); });
   $("#pl-auto-nota").hidden = estilo !== "auto";
 };
-const campoPlantilla = ([k, n, tipo = "number", ops], v, lim) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
+const campoPlantilla = ([k, n, tipo = "number", ops], v, lim) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" role="switch" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
   : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
     : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}" ${crudo(lim?.[k] ? `min="${lim[k][0]}" max="${lim[k][1]}"` : "")}></label>`);
 
@@ -1250,8 +1322,8 @@ async function pintarAjustes(m) {
       ${yt.conectado && local ? crudo(`<button data-accion="yt-desconectar">Desconectar</button>`) : ""}</div>
       <div id="yt-canales" class="pila"></div></div>
     <form class="tarjeta pila" id="form-pub"><h3>Publicación</h3>
-      <label class="linea"><input type="checkbox" name="subida_automatica" ${v.subida_automatica ? "checked" : ""}> Subir en privado automáticamente al terminar el render (sin revisión previa)</label>
-      <label class="linea"><input type="checkbox" name="contenido_para_ninos" ${v.contenido_para_ninos ? "checked" : ""}> Declarar el contenido como «creado para niños»</label>
+      <label class="linea"><input type="checkbox" role="switch" name="subida_automatica" ${v.subida_automatica ? "checked" : ""}> Subir en privado automáticamente al terminar el render (sin revisión previa)</label>
+      <label class="linea"><input type="checkbox" role="switch" name="contenido_para_ninos" ${v.contenido_para_ninos ? "checked" : ""}> Declarar el contenido como «creado para niños»</label>
       <div><button>Guardar</button></div></form>`;
   } else if (S.pestana === "proveedores") {
     cuerpo = h`<div class="tarjeta">

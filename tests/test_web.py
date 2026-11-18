@@ -50,6 +50,19 @@ def test_gsap_local_referenciado_e_intacto():
     # Sin la biblioteca el panel debe seguir funcionando: todo uso pasa por animar() o comprueba window.gsap.
     js = _texto("app.js")
     assert "const animar = () => !!window.gsap && !calma.matches;" in js
+    # Reordenar listas no depende de GSAP y respeta «reducir movimiento».
+    assert "const mover = () => !calma.matches && !!Element.prototype.animate;" in js
+    assert "if (mover() && viejos.size" in js.split("function ponerLista(")[1].split("\n}")[0]
+
+
+def test_vista_previa_de_la_biblioteca():
+    """El Short se pide solo al reproducir la vista previa, sin sonido, y nunca con «reducir movimiento»."""
+    js = _texto("app.js")
+    previa = js.split("function verPrevia(pieza) {")[1].split("\n}")[0]
+    assert 'v.preload = "none"' in previa and "v.muted = " in previa
+    assert "/media/${" in previa and "/short.mp4" in previa
+    assert "calma.matches) return;" in previa
+    assert "pararPrevia();" in js.split("function navegar() {")[1].split("\n}")[0]       # salir de la vista la detiene
 
 
 def test_campos_de_la_plantilla_son_ajustes_reales():
