@@ -864,6 +864,5 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   con datos temporales, escritorio y tablet emulada: 18 comprobaciones × 2 bien (sin «Exportar» en un clip con error, las
   tres plataformas, archivos reales en el PC iguales al texto mostrado, #Shorts solo en YouTube Shorts, avisos, copiar con
   y sin portapapeles moderno, Esc devuelve el foco, error del servidor). Regresión de la fase 1: 38 bien. Capturas en
-  `docs/diseno/capturas-exportar/`. Nota: en Windows el .txt queda con saltos de línea `
-` (normal en Bloc de notas).
+  `docs/diseno/capturas-exportar/`. Nota: en Windows el .txt queda con saltos de línea `\r\n` (normal en Bloc de notas).
   **No probado** en la tablet real (copiar por http desde HarmonyOS) ni subiendo a TikTok o Instagram.
