@@ -127,7 +127,12 @@ AJUSTES_POR_DEFECTO: dict = {
     "youtube_canal_id": "",           # canal confirmado por el usuario
     "youtube_canal_nombre": "",
     "contenido_para_ninos": False,
-    "subidas_pausadas_hasta": 0,      # estado interno: hora (epoch) en que se reanudan las subidas tras el límite diario
+    "subidas_pausadas_hasta": 0,
+    # Ritmo de publicación: evita subir muchos videos de golpe y agotar la cuota diaria.
+    "subidas_max_dia": 6,             # máximo en 24 h (0 = sin límite)
+    "subidas_intervalo_min": 60,      # minutos mínimos entre una subida y la siguiente (0 = sin espera)
+    # Clips demasiado largos: se recorta automáticamente el mejor tramo (0 = no recortar).
+    "recorte_auto_segundos": 180,     # 180 = límite de un Short; 60 = Shorts más cortos y dinámicos      # estado interno: hora (epoch) en que se reanudan las subidas tras el límite diario
     # --- Carpeta vigilada ---
     "vigilar_carpeta": True,
     "segundos_estable": 6,            # un archivo debe llevar este tiempo sin cambiar
@@ -144,7 +149,8 @@ LIMITES: dict = {
     "completo_sub_tamano": (24, 180), "completo_logo_alto": (20, 400), "completo_logo_y": (200, 1900),
     "dividido_proporcion": (30, 60), "dividido_sub_y": (200, 1850), "dividido_sub_tamano": (24, 180),
     "dividido_logo_alto": (20, 300), "dividido_logo_y": (200, 1900),
-    "momentos_cantidad": (1, 20), "segundos_estable": (0, 600),
+    "momentos_cantidad": (1, 20), "subidas_max_dia": (0, 100), "subidas_intervalo_min": (0, 1440),
+    "recorte_auto_segundos": (0, 180), "segundos_estable": (0, 600),
 }
 OPCIONES: dict = {
     "estilo": ("clasico", "completo", "dividido", "auto"), "whisper_dispositivo": ("auto", "cpu", "cuda"),

@@ -85,3 +85,21 @@ def test_api_de_edicion(fabrica, clip8):
     assert pc.get(f"/api/trabajos/{t['id']}").json()["editado"]          # el panel deshabilita «Volver a transcribir»
     fabrica._ejecutar(fabrica.db.trabajo(t["id"]))
     assert abs(pc.get(f"/api/trabajos/{t['id']}").json()["duracion"] - 5) < 0.2     # la ficha no muestra la del original
+
+
+def test_clip_demasiado_largo_se_recorta_solo(fabrica, clip8):
+    # El mínimo validado es 0; para la prueba se fuerza un límite de 5 s directamente en la base.
+    fabrica.db._c.execute("INSERT INTO ajustes (clave, valor) VALUES ('recorte_auto_segundos', '5') "
+                          "ON CONFLICT(clave) DO UPDATE SET valor='5'")
+    t = fabrica.importar_archivo(clip8, "ocho.mp4")
+    fabrica._ejecutar(t)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "renderizado", t["error"]
+    assert t["datos"]["recorte_auto"]["fin"] - t["datos"]["recorte_auto"]["inicio"] <= 5.01
+    assert abs(media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")["duracion"] - 5.0) < 0.3
+    assert any("se conservó el tramo" in a for a in t["avisos"])
+    assert fabrica.transcripciones["n"] == 1                        # no se volvió a transcribir
+    # Deshacer desde el editor no vuelve a recortar.
+    t = fabrica.editar_tiempos(t["id"], [])
+    fabrica._ejecutar(t)
+    assert abs(media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")["duracion"] - 8.0) < 0.3

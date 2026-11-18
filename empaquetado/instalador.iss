@@ -31,6 +31,7 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "escritorio"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"
+Name: "inicio"; Description: "Abrir Fábrica Studio al iniciar Windows (en segundo plano, sin abrir el navegador)"; GroupDescription: "Automatización:"; Flags: unchecked
 
 [Files]
 Source: "..\dist\FabricaStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -40,6 +41,7 @@ Name: "{group}\Fábrica Studio"; Filename: "{app}\FabricaStudio.exe"; WorkingDir
 Name: "{group}\Diagnóstico de Fábrica Studio"; Filename: "{app}\FabricaStudio.exe"; Parameters: "--diagnostico"; WorkingDir: "{app}"
 Name: "{group}\Desinstalar Fábrica Studio"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Fábrica Studio"; Filename: "{app}\FabricaStudio.exe"; WorkingDir: "{app}"; Tasks: escritorio
+Name: "{userstartup}\Fábrica Studio"; Filename: "{app}\FabricaStudio.exe"; Parameters: "--sin-navegador"; WorkingDir: "{app}"; Tasks: inicio; Flags: runminimized
 
 [Run]
 Filename: "{app}\FabricaStudio.exe"; Description: "Abrir Fábrica Studio ahora"; Flags: nowait postinstall skipifsilent

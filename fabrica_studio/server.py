@@ -260,7 +260,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 "youtube": {**fab.youtube.estado(), "canal_id": a["youtube_canal_id"],
                             "canal_nombre": a["youtube_canal_nombre"]},
                 "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"],
-                "subidas_pausadas_hasta": a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0}
+                "subidas_pausadas_hasta": a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0,
+                "proxima_subida": (lambda x: x if x > time.time() else 0)(fab.db.proxima_subida())}
 
     # ------------------------------------------------------------ importación
     @app.post("/api/importar/archivo")

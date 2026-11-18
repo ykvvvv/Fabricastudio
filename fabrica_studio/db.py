@@ -163,10 +163,27 @@ class DB:
             return self._fila(self._c.execute(
                 "SELECT * FROM trabajos WHERE sha256=? ORDER BY creado LIMIT 1", (sha,)).fetchone())
 
+    def proxima_subida(self, ahora: float | None = None) -> float:
+        """Momento (epoch) desde el que se puede subir otro video según el ritmo de publicación
+        y la pausa por límite diario. Si ya se puede, devuelve un valor <= ahora."""
+        ahora = ahora or time.time()
+        a = self.ajustes()
+        with self._lock:
+            filas = self._c.execute("SELECT subida FROM trabajos WHERE youtube_id != ''").fetchall()
+        hechas = sorted(t for t in (json.loads(r["subida"]).get("terminado") for r in filas) if t)
+        desde = a["subidas_pausadas_hasta"]
+        if hechas and a["subidas_intervalo_min"]:
+            desde = max(desde, hechas[-1] + a["subidas_intervalo_min"] * 60)
+        recientes = [t for t in hechas if t > ahora - 86400]
+        if a["subidas_max_dia"] and len(recientes) >= a["subidas_max_dia"]:
+            desde = max(desde, recientes[-a["subidas_max_dia"]] + 86400)    # cuando la más antigua cumpla 24 h
+        return desde
+
     def siguiente(self) -> dict | None:
         """Siguiente trabajo que necesita al trabajador (el más antiguo primero).
-        Mientras las subidas estén en pausa por el límite diario de YouTube, solo se procesa y renderiza."""
-        subir = time.time() >= self.ajustes()["subidas_pausadas_hasta"]
+        Las subidas esperan su turno según el ritmo de publicación o la pausa por límite diario;
+        mientras tanto se sigue procesando y renderizando."""
+        subir = time.time() >= self.proxima_subida()
         with self._lock:
             return self._fila(self._c.execute(
                 "SELECT * FROM trabajos WHERE estado='pendiente'"

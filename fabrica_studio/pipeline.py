@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -40,6 +41,30 @@ def _escribir(ruta: Path, datos) -> None:
 def res_recorte(carpeta: Path) -> dict | None:
     f = carpeta / "bordes.json"
     return _leer(f)["recorte"] if f.exists() else None
+
+
+class sin_suspender:
+    """Mientras se procesa o se sube un clip, pide a Windows que no suspenda el equipo
+    (la pantalla sí puede apagarse). En otros sistemas no hace nada."""
+
+    ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+
+    def __enter__(self):
+        self._ok = False
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED)
+                self._ok = True
+            except Exception:
+                log.debug("No se pudo pedir a Windows que no suspenda el equipo", exc_info=True)
+        return self
+
+    def __exit__(self, *exc):
+        if self._ok:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(self.ES_CONTINUOUS)
+        return False
 
 
 CONTEXTO_GTA6 = "Hablando de GTA 6 y GTA 5: Vice City, Leonida, Ambrosia, Lucía y Jason."
@@ -197,6 +222,8 @@ class Fabrica:
         if t["modo"] == "largo":
             self._proponer_momentos(jid, carpeta, tr, a)
             return
+        if self._recorte_automatico(jid, t, prop, tr, a):
+            return self.procesar(jid)          # vuelve a empezar con el tramo elegido (sin transcribir otra vez)
 
         # 4. Textos.
         f_ia = carpeta / "textos_generados.json"
@@ -549,7 +576,12 @@ class Fabrica:
 
     def editar_tiempos(self, jid: str, tramos) -> dict:
         """Guarda qué tramos del original conservar. Lista vacía o el clip completo = quitar la edición."""
-        t = self._editable(jid)
+        self._editable(jid)
+        self._aplicar_tramos(jid, tramos)
+        self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
+        return self.db.trabajo(jid)
+
+    def _aplicar_tramos(self, jid: str, tramos) -> list:
         carpeta = self.rutas.trabajo(jid)
         original = self._entrada(carpeta)
         if not original or not (carpeta / "transcripcion.json").exists():
@@ -574,8 +606,33 @@ class Fabrica:
             _escribir(f_tr, edicion.remapear_transcripcion(_leer(f_tr_orig), tramos))
         if subs_editados:
             self.db.anadir_aviso(jid, "Al cambiar los tiempos se regeneraron los subtítulos a partir de la transcripción.")
-        self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
-        return self.db.trabajo(jid)
+        return tramos
+
+    def _recorte_automatico(self, jid: str, t: dict, prop: dict, tr: dict, a: dict) -> bool:
+        """Si el clip supera recorte_auto_segundos, conserva el mejor tramo (Gemini o heurística) con el
+        editor de tiempos (no destructivo: se puede deshacer). Devuelve True si recortó."""
+        limite = int(a["recorte_auto_segundos"])
+        carpeta = self.rutas.trabajo(jid)
+        if (not limite or prop["duracion"] <= limite + 0.5 or t["modo"] != "clip" or t["origen_tipo"] == "momento"
+                or (carpeta / "edicion.json").exists() or t["datos"].get("recorte_auto")):
+            return False
+        self._etapa(jid, "transcribir", f"El clip dura {prop['duracion']:.0f} s: buscando el mejor tramo…")
+        res = momentos.proponer(tr.get("segmentos", []), a["proveedor_textos"],
+                                textos.leer_clave_gemini(self.rutas.secretos), 1, a["gemini_modelo"])
+        if res["propuestas"]:
+            p = res["propuestas"][0]
+            ini, fin = p["inicio"], min(p["fin"], p["inicio"] + limite)
+            motivo = p.get("motivo", "")
+        else:
+            ini, fin, motivo = 0.0, float(limite), "sin voz detectada: se conservan los primeros segundos"
+        datos = t["datos"]
+        datos["recorte_auto"] = {"inicio": ini, "fin": fin, "origen": res["origen"]}
+        self.db.actualizar(jid, datos=datos)
+        self._aplicar_tramos(jid, [[ini, fin]])
+        self.db.anadir_aviso(jid, f"El clip duraba {prop['duracion']:.0f} s (más de {limite} s): se conservó el tramo "
+                                  f"{_reloj(ini)}–{_reloj(fin)} ({res['origen']}{': ' + motivo if motivo else ''}). "
+                                  "Puedes cambiarlo en «Editar tiempos».")
+        return True
 
     def linea_de_tiempo(self, jid: str) -> dict:
         """Datos para el editor: duración del original, tramos actuales, forma de onda y palabras con tiempos."""
@@ -726,7 +783,8 @@ class Fabrica:
                 log.exception("Error leyendo la cola")
                 t = None
             if t:
-                self._ejecutar(t)
+                with sin_suspender():
+                    self._ejecutar(t)
             else:
                 self._parar.wait(1.0)
 

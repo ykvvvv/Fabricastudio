@@ -901,3 +901,13 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   Cristóbal); TikTok fuerza «solo yo» y cuentas privadas a clientes no auditados (requiere app de desarrollador
   aprobada). Ambas piden sitio web con política de privacidad y términos (posible uso de ltmpartners.site).
   Mientras tanto: subida privada automática + paso a público en YouTube Studio; TikTok con «Exportar».
+- **2026-11-18 · Claude Code (nube)** — Automatización segura:
+  - **Ritmo de publicación:** `subidas_max_dia` (6) y `subidas_intervalo_min` (60). `db.proxima_subida()` combina el
+    ritmo con la pausa por límite diario; las subidas esperan su turno y el resto de la cola sigue.
+    `/api/estado.proxima_subida` (0 si se puede subir ya).
+  - **Recorte automático:** si un clip dura más de `recorte_auto_segundos` (180; 60 para Shorts más cortos), se
+    conserva el mejor tramo (Gemini o heurística) con el editor de tiempos, sin volver a transcribir; aviso en el
+    clip y se puede cambiar en «Editar tiempos». Solo una vez por clip (`datos.recorte_auto`).
+  - **Sin suspensión:** `pipeline.sin_suspender` pide a Windows no suspender el equipo mientras procesa o sube.
+  - **Instalador:** tarea opcional «Abrir Fábrica Studio al iniciar Windows» (acceso en Inicio con `--sin-navegador`).
+  133 pruebas. **Falta en el panel:** campos de ritmo y recorte automático en Ajustes y la próxima subida en el Resumen.

@@ -245,3 +245,31 @@ def test_exportar_para_otras_plataformas(fabrica, clip):
     pendiente = fabrica.importar_archivo(fabrica.rutas.renderizados / Path(t["datos"]["copia"]).name, "otro.mp4")
     with pytest.raises(ErrorEtapa):
         fabrica.exportar(pendiente["id"], "tiktok")             # aún no renderizado
+
+
+def test_ritmo_de_publicacion(fabrica, clip, monkeypatch):
+    import json as _json
+    import time as _t
+    ahora = 1_800_000_000
+    monkeypatch.setattr("fabrica_studio.db.time.time", lambda: ahora)
+    fabrica.db.guardar_ajustes({"subidas_max_dia": 2, "subidas_intervalo_min": 30})
+    assert fabrica.db.proxima_subida() <= ahora                          # sin subidas previas: se puede ya
+    t1 = fabrica.db.crear_trabajo("a", "archivo")
+    fabrica.db.actualizar(t1["id"], estado="publicado", youtube_id="v1", subida={"terminado": ahora - 600})
+    assert fabrica.db.proxima_subida() == ahora - 600 + 1800            # espera el intervalo de 30 min
+    t2 = fabrica.db.crear_trabajo("b", "archivo")
+    fabrica.db.actualizar(t2["id"], estado="publicado", youtube_id="v2", subida={"terminado": ahora - 7200})
+    fabrica.db.guardar_ajustes({"subidas_intervalo_min": 0})
+    assert fabrica.db.proxima_subida() == ahora - 7200 + 86400          # 2 en 24 h: espera a que venza la más antigua
+    # Un clip listo para subir espera su turno; los pendientes de procesar no.
+    t3 = fabrica.db.crear_trabajo("c", "archivo")
+    fabrica.db.actualizar(t3["id"], estado="renderizado", subir_solicitado=True)
+    assert fabrica.db.siguiente() is None
+    fabrica.db.guardar_ajustes({"subidas_max_dia": 0})
+    assert fabrica.db.siguiente()["id"] == t3["id"]
+
+
+def test_sin_suspender_no_falla_fuera_de_windows():
+    from fabrica_studio.pipeline import sin_suspender
+    with sin_suspender() as s:
+        assert s is not None
