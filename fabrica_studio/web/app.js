@@ -694,9 +694,11 @@ function pintarTrabajo(m, completo) {
     <ul class="pasos">${crudo(pasos)}</ul>
     <div class="fila">${crudo(botones)}</div>${motivo ? crudo(h`<p class="pequeno tenue" id="t-motivo">${motivo}</p>`) : ""}`);
 
-  // Formularios: se repintan solo si el trabajo cambió y no hay cambios sin guardar.
-  const version = `${t.actualizado}|${ocupado}`;
-  if (S.sucio || S.version === version || $("#t-edicion").contains(document.activeElement)) return;
+  // Formularios: se repintan solo si el trabajo cambió, no hay cambios sin guardar y no se está escribiendo ni leyendo
+  // ahí. Un botón de acción con el foco (p. ej. «Regenerar automáticamente») no impide ver el resultado: el foco vuelve a él.
+  const version = `${t.actualizado}|${ocupado}`, a = document.activeElement;
+  const accion = $("#t-edicion").contains(a) && a.matches("button[data-accion]") ? a.dataset.accion : "";
+  if (S.sucio || S.version === version || ($("#t-edicion").contains(a) && !accion)) return;
   S.version = version;
   const bloqueado = ocupado || !!t.youtube_id;
   const x = t.textos;
@@ -718,6 +720,7 @@ function pintarTrabajo(m, completo) {
       </div><div class="fila"><button ${bloqueado ? "disabled" : ""}>Guardar y renderizar</button>
       ${t.subtitulos_editados ? crudo(`<button type="button" data-accion="restaurar-subtitulos" ${bloqueado ? "disabled" : ""}>Restaurar originales</button>`) : ""}</div></form></details>`) : ""}
     ${t.transcripcion ? crudo(h`<details class="tarjeta"><summary>Transcripción literal</summary><p class="transcripcion">${t.transcripcion}</p></details>`) : ""}`;
+  if (accion) $(`#t-edicion [data-accion="${accion}"]`)?.focus();
   const ft = $("#form-textos");
   if (ft) {
     const contar = () => { const n = ft.titulo.value.length; $("#c-titulo").textContent = `${n}/80`; $("#c-titulo").classList.toggle("pasado", n > 80); };
@@ -1227,6 +1230,13 @@ async function pintarAjustes(m) {
       <p class="pequeno tenue" id="ayuda-vocabulario">Escríbelo como se habla, con puntuación: «Stream de Jongottii en Kick. ¿Cachai? Ya po, altiro.» No pongas una lista de palabras sueltas: Whisper pierde tildes y puntuación. Solo orienta el reconocimiento; no agrega nada al texto.</p>
       <label>Correcciones de escritura<textarea name="correcciones" rows="4" placeholder="cachay => cachai&#10;jongoti => Jongottii" aria-describedby="ayuda-correcciones">${v.correcciones}</textarea></label>
       <p class="pequeno tenue" id="ayuda-correcciones">Una por línea: como sale => como debe verse. Corrigen subtítulos y títulos; la transcripción literal no cambia. Se aplican a los clips que se procesen desde ahora.</p>
+      <label>Tema del canal<select name="tema" aria-describedby="ayuda-tema">
+        <option value="" ${v.tema === "" ? "selected" : ""}>Detectar automáticamente en cada clip</option>
+        <option value="gta6" ${v.tema === "gta6" ? "selected" : ""}>GTA 6: todo el canal es de GTA 6</option></select></label>
+      <p class="pequeno tenue" id="ayuda-tema">Con GTA 6, cada título menciona «GTA 6», la categoría es Gaming y se añaden los hashtags fijos. Los textos no inventan misiones ni sucesos. Los clips ya procesados se actualizan con «Regenerar automáticamente» en su detalle.</p>
+      <div class="pila" id="campo-hashtags" ${v.tema === "gta6" ? "" : crudo("hidden")}>
+        <label>Hashtags fijos<input name="hashtags_fijos" value="${v.hashtags_fijos}" placeholder="#GTA6 #GTAVI #GTA #Gaming" aria-describedby="ayuda-hashtags"></label>
+        <p class="pequeno tenue" id="ayuda-hashtags">Separados por espacios. Se añaden a la descripción de cada Short.</p></div>
       <div><button class="primario">Guardar</button></div></form>
     <div class="tarjeta pila"><h3>Clave de Gemini</h3>${crudo(soloPc)}
       <form class="fila" id="form-gemini"><input type="password" id="gemini-clave" placeholder="${p.gemini.clave ? "Hay una clave guardada" : "Pega aquí la clave de API"}" autocomplete="off" style="flex:1;min-width:200px" ${local ? "" : "disabled"}>
@@ -1276,6 +1286,8 @@ async function pintarAjustes(m) {
     await api("/api/ajustes", { method: "PUT", json: cambios }); avisar(mensaje); refrescar();
   }));
   guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
+  // «Hashtags fijos» solo tiene efecto con el tema GTA 6: se muestra solo entonces (su valor se conserva igual).
+  $("#form-prov [name=tema]")?.addEventListener("change", (e) => { $("#campo-hashtags").hidden = e.target.value !== "gta6"; });
 
   $("#form-clave")?.addEventListener("submit", async (e) => {
     e.preventDefault();

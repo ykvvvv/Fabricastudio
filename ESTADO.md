@@ -826,3 +826,17 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   Gaming, y Gemini recibe instrucciones para títulos de GTA 6 sin inventar misiones ni sucesos. Regla 5 de
   CLAUDE.md actualizada. 122 pruebas. **Falta en el panel:** selector «Tema del canal» y campo «Hashtags fijos»
   (Ajustes → Proveedores). Los clips ya procesados se actualizan con «Regenerar automáticamente».
+- **2026-11-18 · Claude Code (PC Windows)** — **Modo GTA 6 en el panel** (`web/app.js`, `tests/test_web.py`). Ajustes →
+  Proveedores: selector «Tema del canal» (`tema`: «Detectar automáticamente en cada clip» = `""`, «GTA 6: todo el canal es
+  de GTA 6» = `gta6`) con una nota de lo que cambia, y campo «Hashtags fijos» (`hashtags_fijos`) visible solo con GTA 6
+  (al ocultarlo su valor se conserva). **Arreglado (de antes):** en el detalle de un clip, si el foco quedaba en un botón
+  de acción como «Regenerar automáticamente» (pasa al hacer clic en escritorio), los textos nuevos no aparecían hasta mover
+  el foco; ahora el formulario se repinta y el foco vuelve al mismo botón (sigue sin repintarse mientras se escribe en un
+  campo o con un desplegable enfocado). 120 pruebas con pytest (+2 omitidas en Windows: scripts POSIX de
+  `test_reencuadre.py`); `test_web.py` comprueba que las opciones del selector son las de `config.OPCIONES["tema"]`.
+  Playwright con datos temporales, escritorio y tablet emulada: mostrar/ocultar el campo, guardar y recargar, y
+  «Regenerar automáticamente» con GTA 6 (título «GTA 6 | …», hashtags fijos en la descripción, Gaming marcado); 14
+  comprobaciones bien. Regresión: fase 1 (38) y fase 2 (36) bien; una vuelta de la fase 1 se cortó una vez esperando el
+  progreso tras «Renderizar de nuevo» y no se repitió en dos vueltas más. Captura en `docs/diseno/capturas-gta6/`.
+  **No probado** con Gemini real ni en la tablet real. Nota para la nube: en `config.py` el comentario de
+  `hashtags_fijos` dice «vacío = elegir entre los modelos que la API liste» (copiado de `gemini_modelo`); no lo toqué.

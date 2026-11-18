@@ -66,7 +66,9 @@ def test_campos_de_proveedores_son_ajustes_reales():
     from fabrica_studio.config import AJUSTES_POR_DEFECTO
     bloque = _texto("app.js").split('id="form-prov"')[1].split("</form>")[0]
     nombres = set(re.findall(r'name="([a-z_]+)"', bloque))
-    assert {"vocabulario", "correcciones"} <= nombres
+    assert {"vocabulario", "correcciones", "tema", "hashtags_fijos"} <= nombres
+    from fabrica_studio.config import OPCIONES
+    assert set(re.findall(r'<option value="([a-z0-9]*)" \$\{v\.tema', bloque)) == set(OPCIONES["tema"])
     assert nombres <= set(AJUSTES_POR_DEFECTO), nombres - set(AJUSTES_POR_DEFECTO)
 
 
