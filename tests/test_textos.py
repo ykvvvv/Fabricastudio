@@ -156,8 +156,8 @@ def test_titulo_local_usa_frases_completas():
           "Como tuve la ciudad, ya lo lejo y me fui al mapa nuevo porque estaba lleno de policías.")
     t = textos.generar_local(tr, "rdjavi")["titulo"]
     cuerpo = t.split(": ", 1)[-1]
-    assert len(t) <= 60 and cuerpo in tr.replace(".", "")                          # literal
-    assert any(cuerpo == c.strip(" ,") for c in tr.replace(".", ",").split(","))   # cláusula completa, no cortada
+    assert len(t) <= 60 and cuerpo.lower() in tr.replace(".", "").lower()          # literal (con mayúscula inicial)
+    assert any(cuerpo.lower() == c.strip(" ,").lower() for c in tr.replace(".", ",").split(","))   # cláusula completa
 
 
 def test_emojis_se_cuentan_completos_y_el_titulo_lleva_como_mucho_dos():
@@ -204,3 +204,18 @@ def test_titulos_con_emojis(monkeypatch):
     assert r["banner"] == "HUIDA TOTAL"                                  # el banner nunca lleva emojis
     textos.generar("x", "C", "auto", "clave", emojis=False)
     assert "emojis" not in vistas[1]
+
+
+def test_borrador_local_sin_repeticiones_ni_frases_incoherentes():
+    assert textos.sin_repeticiones("me empezó me empezó me empezó la moto") == "me empezó la moto"
+    assert textos.sin_repeticiones("no no no puede ser") == "no puede ser"
+    sin_puntos = ("me empezó me empezó me empezó autifano culiado como se pone chat no hermano el "
+                  "extensible o sea el contador de la moto se me fue a la cresta")
+    r = textos.generar(sin_puntos, "Jongotii", "local", "", tema="gta6", hashtags_fijos="#GTA6")
+    assert r["titulo"] == "GTA 6 | Jongotii en directo #Shorts" and "Título genérico" in r["aviso"]
+    con_puntos = "Oye chat, no lo van a creer. Me persiguió la policía por toda Vice City, hermano. ¡Qué locura!"
+    r = textos.generar(con_puntos, "Jongotii", "local", "", tema="gta6", hashtags_fijos="#GTA6")
+    assert "policía" in r["titulo"] and r["titulo"][len("GTA 6 | "):][0].isupper()
+    grosero = "Qué culiao más malo, mira cómo maneja. La moto voló por el puente de Vice City."
+    r = textos.generar(grosero, "Jongotii", "local", "")
+    assert "culiao" not in r["titulo"].lower() and "culiao" not in r["banner"].lower()

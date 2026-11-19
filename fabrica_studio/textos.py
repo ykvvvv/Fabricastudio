@@ -170,28 +170,94 @@ _VACIAS = set("a al algo ante con de del el en es eso esta este la las lo los me
               "se si su un una y ya po weon wn como más mas le te nos tu yo cuando porque qué eh ah oye".split())
 
 
+def sin_repeticiones(texto: str) -> str:
+    """Quita repeticiones seguidas de 1 a 5 palabras («me empezó me empezó me empezó» → «me empezó»),
+    típicas del habla en directo. Solo elimina repeticiones: no agrega ni cambia palabras."""
+    palabras = texto.split()
+    cambio = True
+    while cambio:
+        cambio = False
+        for n in range(5, 0, -1):
+            i = 0
+            while i + 2 * n <= len(palabras):
+                a = [w.lower().strip(".,;:!?¡¿") for w in palabras[i:i + n]]
+                b = [w.lower().strip(".,;:!?¡¿") for w in palabras[i + n:i + 2 * n]]
+                if a == b and any(len(w) > 1 for w in a):
+                    del palabras[i + n:i + 2 * n]
+                    cambio = True
+                else:
+                    i += 1
+    return " ".join(palabras)
+
+
+def _capitalizar(t: str) -> str:
+    for i, c in enumerate(t):
+        if c.isalpha():
+            return t[:i] + c.upper() + t[i + 1:]
+    return t
+
+
+# Groserías comunes: el borrador local evita elegir tramos que las contengan para título y banner
+# (la transcripción no se toca). No es censura del contenido: solo afecta qué frase se destaca.
+_GROSERIAS = set("culiao culiado culiaos culiados ctm conchetumare conchetumadre conchesumadre chucha puta puto "
+                 "putas mierda weon weón hueon hueón aweonao aweonado maricon maricón pico raja verga".split())
+
+
 def generar_local(transcripcion: str, creador: str) -> dict:
-    """Borrador sin IA: usa frases literales de la transcripción. No inventa nada."""
-    texto = _limpio(transcripcion)
+    """Borrador sin IA: usa frases literales de la transcripción (sin repeticiones). No inventa nada.
+    Si la transcripción no trae puntuación, se elige el tramo de 4 a 9 palabras con más contenido."""
+    texto = sin_repeticiones(_limpio(transcripcion))
     frases = [f.strip() for f in re.split(r"(?<=[.!?…])\s+", texto) if len(f.strip()) > 3]
     if not frases:
         return {"banner": f"CLIP DE {creador}".upper(), "titulo": f"Clip de {creador}",
                 "descripcion": f"Clip de {creador}.", "hashtags": [f"#{creador}"], "es_gaming": False}
-    # La frase con más palabras "de contenido" suele ser la más representativa.
+
     def peso(f):
-        return sum(1 for p in re.findall(r"\w+", f.lower()) if p not in _VACIAS and len(p) > 3)
-    mejor = max(frases[:12], key=peso)
-    # Para el título: una frase o cláusula COMPLETA que quepa (nunca cortada a la mitad).
+        palabras = re.findall(r"\w+", f.lower())
+        distintas = {p for p in palabras if p not in _VACIAS and len(p) > 3}
+        return len(distintas) - 10 * sum(1 for p in palabras if p in _GROSERIAS)
+
+    # Transcripción larga sin ninguna puntuación: no hay forma fiable de elegir una frase con sentido sin IA.
+    # Mejor un texto genérico correcto (no inventa nada) que una frase incoherente.
+    if len(frases) == 1 and len(texto.split()) > 15 and not re.search(r"[,;:]", texto):
+        return {"banner": f"{creador} EN DIRECTO".upper(), "titulo": f"{creador} en directo",
+                "descripcion": f"Un momento del directo de {creador} en Kick.",
+                "hashtags": [f"#{re.sub(r'[^0-9A-Za-z]', '', creador)}", "#Kick", "#Clips"], "es_gaming": False,
+                "generico": True}
+
+    # Candidatos: cláusulas completas que quepan; si no hay (transcripción sin puntuación), ventanas de palabras
+    # que no empiecen ni terminen en palabras vacías («de», «que»…).
     clausulas = [c.strip(" ,;:") for f in frases[:12] for c in re.split(r"(?<=[,;:])\s+", f)] + frases[:12]
     caben = [c.rstrip(".!?…") for c in clausulas if 12 <= len(c.rstrip(".!?…")) <= 55]
-    frase_titulo = max(caben, key=lambda c: (peso(c), -len(c))) if caben else mejor.rstrip(".!?…")
+    if not caben:
+        palabras = texto.split()[:80]
+        for n in range(9, 3, -1):
+            for i in range(0, max(1, len(palabras) - n + 1)):
+                v = palabras[i:i + n]
+                if v and v[0].lower().strip(",.") not in _VACIAS and v[-1].lower().strip(",.") not in _VACIAS:
+                    c = " ".join(v).strip(" ,;:")
+                    if 12 <= len(c) <= 55:
+                        caben.append(c.rstrip(".!?…"))
+    frase_titulo = max(caben, key=lambda c: (peso(c), -len(c))) if caben else frases[0][:55].rsplit(" ", 1)[0]
+    frase_titulo = _capitalizar(frase_titulo.strip(" ,;:"))
     titulo = f"{creador}: {frase_titulo}" if len(frase_titulo) + len(creador) + 2 <= 60 else frase_titulo
-    palabras = re.findall(r"[\wáéíóúüñÁÉÍÓÚÜÑ]+", mejor)[:BANNER_PALABRAS]
-    while len(palabras) > 2 and palabras[-1].lower() in _VACIAS:
-        palabras.pop()                      # no terminar el banner en "a", "de", "la"...
-    resumen = frases[0] if len(frases[0]) <= 140 else frases[0][:140].rsplit(" ", 1)[0] + "…"
+
+    vistas, palabras_banner = set(), []
+    for w in re.findall(r"[\wáéíóúüñÁÉÍÓÚÜÑ]+", frase_titulo):
+        if w.lower() not in vistas:
+            vistas.add(w.lower())
+            palabras_banner.append(w)
+        if len(palabras_banner) == BANNER_PALABRAS:
+            break
+    while len(palabras_banner) > 2 and palabras_banner[-1].lower() in _VACIAS:
+        palabras_banner.pop()                      # no terminar el banner en "a", "de", "la"...
+
+    resumen = frases[0] if len(frases[0]) <= 110 else frases[0][:110].rsplit(" ", 1)[0] + "…"
+    resumen = _capitalizar(resumen)
+    if resumen[-1:] not in ".!?…":
+        resumen += "."
     return {
-        "banner": " ".join(palabras),
+        "banner": " ".join(palabras_banner),
         "titulo": titulo,
         "descripcion": f"{creador}: {resumen}",
         "hashtags": [f"#{re.sub(r'[^0-9A-Za-z]', '', creador)}", "#Kick", "#Clips"],
@@ -474,5 +540,10 @@ def generar(transcripcion: str, creador: str, proveedor: str, clave: str, modelo
             aviso = f"Textos generados con el borrador local porque Gemini falló ({e.tipo}): {e}"
     elif proveedor == "gemini" and not clave:
         aviso = "Textos generados con el borrador local: no hay clave de Gemini configurada."
-    textos = normalizar(generar_local(transcripcion, creador), transcripcion, tema=tema, hashtags_fijos=hashtags_fijos)
+    borrador = generar_local(transcripcion, creador)
+    textos = normalizar(borrador, transcripcion, tema=tema, hashtags_fijos=hashtags_fijos)
+    if borrador.get("generico"):
+        aviso = (aviso + " " if aviso else "") + ("Título genérico: la transcripción no tiene puntuación y sin Gemini "
+                                                   "no se puede elegir una frase con sentido. Edítalo o regenera "
+                                                   "cuando Gemini esté disponible.")
     return {**textos, "origen": "local", "aviso": aviso}

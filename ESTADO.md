@@ -1112,3 +1112,8 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     barra «0 de 0», ya corregida: un lote cuyos clips se borraron desaparece).
   - **Revisión de Codex: pendiente** (cupo agotado hasta el 2026-11-20 16:56). **No probado** el lote con el trabajador real
     ni en el PC de Cristóbal.
+- **2026-11-19 · Claude Code (nube)** — Borrador local de textos (cuando Gemini no responde), tras un caso real
+  «me empezó me empezó me empezó autifano culiado…»: quita repeticiones seguidas (`textos.sin_repeticiones`),
+  mayúscula inicial, evita groserías al elegir la frase de título/banner, descripción más corta y, si la
+  transcripción no trae ninguna puntuación, usa un texto genérico correcto («<creador> en directo») con aviso
+  para editar o regenerar con Gemini. La transcripción no se modifica. 160 pruebas.
