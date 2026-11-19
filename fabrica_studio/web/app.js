@@ -1463,7 +1463,7 @@ const SECCIONES_PLANTILLA = [
     "Subtítulos", ["completo_sub_y", "Posición vertical"], ["completo_sub_tamano", "Tamaño"], ["completo_mayusculas", "En mayúsculas (también en vista dividida)", "check"],
     "Logo", ["completo_logo_y", "Posición vertical"], ["completo_logo_alto", "Alto (px)"]]],
   ["dividido", "Vista dividida", "dividido", ["Cámara", ["dividido_proporcion", "Alto (% del video)"],
-    "Banner", ["dividido_banner", "Mostrar tarjeta del banner", "check"],
+    "Banner", ["dividido_contexto", "Banner de contexto fijo sobre la unión (todo el video)", "check"], ["dividido_banner", "Banner arriba (tapa parte de la cámara)", "check"],
     "Subtítulos", ["dividido_sub_y", "Posición vertical"], ["dividido_sub_tamano", "Tamaño"],
     "Logo", ["dividido_logo_y", "Posición vertical"], ["dividido_logo_alto", "Alto (px)"], ["dividido_firma", "Mostrar firma bajo el logo", "check"]]],
   ["perfiles", "Perfiles", "perfil", []],

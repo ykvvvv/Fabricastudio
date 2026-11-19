@@ -509,10 +509,12 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         a = {**fab.db.ajustes(), **perfil_como_ajustes(perfil), **_valores_diseno(dict(request.query_params))}
         try:
             completo = a["estilo"] in ("completo", "dividido")
-            con_banner = {"completo": a["completo_banner"], "dividido": a["dividido_banner"]}.get(a["estilo"], True)
-            b = render.componer_banner(textos.normalizar_banner(banner) or "BANNER", a) if con_banner else None
+            texto_b = textos.normalizar_banner(banner) or "BANNER"
+            con_banner = {"completo": a["completo_banner"], "dividido": False}.get(a["estilo"], True)
+            b = render.componer_banner(texto_b, a) if con_banner else None
             if a["estilo"] == "dividido":
-                d = render.calcular_disposicion_dividido(a, b)
+                b, posicion = render.banner_dividido(texto_b, a)
+                d = render.calcular_disposicion_dividido(a, b, posicion=posicion)
             elif completo:
                 d = render.calcular_disposicion_completo(a, b)
             else:

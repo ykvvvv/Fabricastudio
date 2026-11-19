@@ -95,7 +95,7 @@ def test_muestra_con_gancho_respeta_los_tiempos_del_original(tmp_path):
     encuadre = {"dividido": {"tipo": "camara", "proporcion": 40, "paneles": [
         {"w": 320, "h": 180, "y": 0, "puntos": [(0.0, 0)], "filtro": "crop@arriba"},
         {"w": 202, "h": 360, "y": 0, "puntos": [(0.0, 200)], "filtro": "crop@abajo"}]}}
-    a = {**AJUSTES_POR_DEFECTO, "gancho": True, "gancho_segundos": 2}
+    a = {**AJUSTES_POR_DEFECTO, "gancho": True, "gancho_segundos": 2, "dividido_contexto": False}
     props = {"ancho": 640, "alto": 360, "duracion": 8.0, "fps": 30}
     for inicio, visible in ((0.0, True), (3.5, False)):
         res = render.renderizar(tmp_path, str(tmp_path / "entrada.mp4"), props, "UN GANCHO DE PRUEBA", [], a,

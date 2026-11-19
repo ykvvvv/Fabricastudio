@@ -144,7 +144,19 @@ def calcular_disposicion_completo(a: dict, banner: dict | None = None) -> dict:
     return d
 
 
-def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcion: int | None = None) -> dict:
+def banner_dividido(texto: str, a: dict) -> tuple[dict | None, str]:
+    """Banner de la vista dividida: arriba (`dividido_banner`), fijo sobre la unión de las dos partes
+    (`dividido_contexto`, algo más compacto para no tapar caras) o ninguno (entonces se usa el gancho)."""
+    if a["dividido_banner"]:
+        return componer_banner(texto, a), "arriba"
+    if a.get("dividido_contexto"):
+        compacto = {**a, "banner_tamano": min(int(a["banner_tamano"]), 72), "banner_ancho": min(int(a["banner_ancho"]), 960)}
+        return componer_banner(texto, compacto), "union"
+    return None, ""
+
+
+def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcion: int | None = None,
+                                  posicion: str = "arriba") -> dict:
     """Vista dividida: dos paneles apilados; subtítulos, logo y (opcional) banner encima.
     `proporcion` (% del panel de arriba) sustituye al ajuste, p. ej. 50 % para dos sujetos."""
     arriba = int(round(LIENZO_ALTO * int(proporcion or a["dividido_proporcion"]) / 100)) // 2 * 2
@@ -152,8 +164,9 @@ def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcio
                "paneles": [{"id": "camara", "x": 0, "y": 0, "w": LIENZO_ANCHO, "h": arriba},
                            {"id": "contenido", "x": 0, "y": arriba, "w": LIENZO_ANCHO, "h": LIENZO_ALTO - arriba}]}
     if banner:
-        d["tarjeta"] = {"x": (LIENZO_ANCHO - banner["ancho"]) // 2, "y": int(a["completo_banner_y"]),
-                        "w": banner["ancho"], "h": banner["alto"]}
+        y_b = arriba - banner["alto"] // 2 if posicion == "union" else int(a["completo_banner_y"])
+        d["tarjeta"] = {"x": (LIENZO_ANCHO - banner["ancho"]) // 2, "y": max(0, y_b),
+                        "w": banner["ancho"], "h": banner["alto"], "union": posicion == "union"}
     tamano = int(a["dividido_sub_tamano"])
     sub_y = int(a["dividido_sub_y"])
     sub_alto = round(tamano * 1.22 * 2)
@@ -173,6 +186,8 @@ def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcio
         avisos.append("El logo se sale por abajo: súbelo o reduce su tamaño.")
     if "logo" in d and sub_y + sub_alto > d["logo"]["y"]:
         avisos.append("Los subtítulos chocan con el logo.")
+    if "tarjeta" in d and d["tarjeta"]["y"] < sub_y + sub_alto and sub_y < d["tarjeta"]["y"] + d["tarjeta"]["h"]:
+        avisos.append("El banner choca con los subtítulos: baja los subtítulos o cambia el alto de la cámara.")
     d["avisos"] = avisos
     return d
 
@@ -303,8 +318,8 @@ def preparar(propiedades: dict, banner_texto: str, bloques: list[dict], a: dict,
     completo = encuadre is not None
     dividido = completo and bool(encuadre.get("dividido"))
     if dividido:
-        banner = componer_banner(banner_texto, a) if a["dividido_banner"] else None
-        d = calcular_disposicion_dividido(a, banner, encuadre["dividido"].get("proporcion"))
+        banner, posicion = banner_dividido(banner_texto, a) if banner_texto.strip() else (None, "")
+        d = calcular_disposicion_dividido(a, banner, encuadre["dividido"].get("proporcion"), posicion)
         if encuadre["dividido"].get("tipo") == "dos":
             d["paneles"][0]["id"], d["paneles"][1]["id"] = "sujeto1", "sujeto2"
         sub_kw = {"mayusculas": bool(a["completo_mayusculas"]), "borde": max(5, round(d["subtitulos"]["tamano"] * 0.1)),
@@ -438,6 +453,11 @@ def elementos_editables(d: dict, a: dict, recursos: Path) -> list[dict]:
         elementos.append({"id": "video", "nombre": "Video", "caja": dict(v),
                           "mover": regla("video_desplazamiento_y"), "tamano": regla("video_alto_max"), "ancho": None})
     if "tarjeta" in d:
+        t = d["tarjeta"]
+        if t.get("union"):     # sigue a la unión de las dos partes: se mueve con el alto de la cámara
+            elementos.append({"id": "banner", "nombre": "Banner de contexto", "caja": {k: t[k] for k in ("x", "y", "w", "h")},
+                              "mover": None, "tamano": None, "ancho": None})
+    if "tarjeta" in d and not d["tarjeta"].get("union"):
         t = d["tarjeta"]
         elementos.append({"id": "banner", "nombre": "Banner", "caja": {k: t[k] for k in ("x", "y", "w", "h")},
                           "mover": regla("completo_banner_y") if completo else regla("banner_separacion", -1),

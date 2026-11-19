@@ -145,7 +145,8 @@ def test_vista_dividida_de_punta_a_punta(fabrica, clip, monkeypatch):
     s = media.sondear(fabrica.rutas.trabajo(t["id"]) / "short.mp4")
     assert (s["ancho"], s["alto"]) == (1080, 1920)
     d = t["datos"]["disposicion"]
-    assert [p["h"] for p in d["paneles"]] == [864, 1056] and "tarjeta" not in d and "nombre" not in d
+    assert [p["h"] for p in d["paneles"]] == [864, 1056] and "nombre" not in d
+    assert d["tarjeta"]["y"] < 864 < d["tarjeta"]["y"] + d["tarjeta"]["h"]     # banner de contexto sobre la unión
 
 
 def test_sin_camara_vuelve_a_pantalla_completa_y_avisa(fabrica, clip, monkeypatch):

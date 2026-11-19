@@ -101,7 +101,8 @@ AJUSTES_POR_DEFECTO: dict = {
     "dividido_sub_tamano": 96,
     "dividido_logo_alto": 52,
     "dividido_logo_y": 1430,          # termina antes de y≈1500, la franja que tapan los botones
-    "dividido_banner": False,
+    "dividido_banner": False,         # tarjeta del banner arriba (tapa parte de la cámara)
+    "dividido_contexto": True,        # banner de contexto fijo, centrado sobre la unión de las dos partes
     # Gancho: en pantalla completa y vista dividida, el banner aparece pequeño los primeros segundos y se
     # desvanece (en la vista dividida, sobre la línea que separa las dos partes).
     "gancho": True,

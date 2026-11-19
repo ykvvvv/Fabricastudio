@@ -1,4 +1,5 @@
 from fabrica_studio import render, subtitulos
+from pathlib import Path
 from fabrica_studio.config import AJUSTES_POR_DEFECTO as A, LIENZO_ALTO
 
 
@@ -108,7 +109,8 @@ def test_editor_visual_en_vista_dividida(fabrica):
     from fabrica_studio.server import crear_app
     pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765", client=("127.0.0.1", 1))
     e = _disp(pc, estilo="dividido")
-    assert set(e) == {"subtitulos", "logo"}                       # sin banner, firma ni video arrastrable
+    assert set(e) == {"banner", "subtitulos", "logo"}             # sin firma ni video arrastrable
+    assert e["banner"]["mover"] is None                           # el banner de contexto sigue a la unión
     assert e["subtitulos"]["mover"]["ajuste"] == "dividido_sub_y" and e["logo"]["tamano"]["ajuste"] == "dividido_logo_alto"
     assert pc.get("/api/diseno/vista", params={"estilo": "dividido"}).headers["content-type"] == "image/jpeg"
 
@@ -124,7 +126,7 @@ def test_gancho_aparece_al_inicio_y_se_desvanece(tmp_path):
     encuadre = {"dividido": {"tipo": "camara", "proporcion": 40, "paneles": [
         {"w": 320, "h": 180, "y": 0, "puntos": [(0.0, 0)], "filtro": "crop@arriba"},
         {"w": 202, "h": 360, "y": 0, "puntos": [(0.0, 200)], "filtro": "crop@abajo"}]}}
-    a = {**A, "gancho": True, "gancho_segundos": 2}
+    a = {**A, "gancho": True, "gancho_segundos": 2, "dividido_contexto": False}
     props = {"ancho": 640, "alto": 360, "duracion": 5.0, "fps": 30}
     res = render.renderizar(tmp_path, "entrada.mp4", props, "UN GANCHO DE PRUEBA", [], a,
                             Rutas(tmp_path / "datos").recursos, encuadre=encuadre)
@@ -141,3 +143,15 @@ def test_gancho_aparece_al_inicio_y_se_desvanece(tmp_path):
 def test_sin_gancho_si_hay_banner_fijo(tmp_path):
     d = render.calcular_disposicion_completo(A, render.componer_banner("HOLA", A))
     assert "tarjeta" in d          # pantalla completa con banner fijo: el gancho no se añade
+
+
+def test_dividido_banner_de_contexto_fijo_en_la_union():
+    """Por defecto, la vista dividida lleva el banner fijo centrado sobre la unión y sin chocar con los subtítulos."""
+    b, posicion = render.banner_dividido("SE LE CAYÓ EL STREAM", A)
+    d = render.calcular_disposicion_dividido(A, b, posicion=posicion)
+    t, arriba = d["tarjeta"], d["paneles"][0]["h"]
+    assert posicion == "union" and t["y"] < arriba < t["y"] + t["h"] and not d["avisos"]
+    assert t["y"] + t["h"] < d["subtitulos"]["y"]
+    caja = [e for e in render.elementos_editables(d, A, Path(".")) if e["id"] == "banner"][0]
+    assert caja["mover"] is None
+    assert render.banner_dividido("X", {**A, "dividido_contexto": False})[0] is None   # entonces va el gancho

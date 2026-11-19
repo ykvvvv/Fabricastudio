@@ -1168,3 +1168,11 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     público y no se publican imágenes de clips reales).
   - **Revisión de Codex: pendiente** (cupo agotado hasta el 2026-11-20 16:56). **No probado** en el PC ni en la tablet de
     Cristóbal (la tablet real puede reproducir 4 videos a la vez más lento que la emulada).
+- **2026-11-19 · Claude Code (nube)** — **Banner de contexto fijo en la vista dividida** (pedido de Cristóbal: el
+  contexto debe verse en el video, no solo en el título). Ajuste nuevo `dividido_contexto` (sí por defecto): la
+  tarjeta del banner, algo más compacta (letra ≤ 72, ancho ≤ 960), queda **todo el video** centrada sobre la línea que
+  separa las dos partes (`render.banner_dividido`). Se usa una clave nueva y no `dividido_banner` porque el panel ya
+  había guardado `dividido_banner = false` en la base. Si se apaga, vuelve el gancho de 3 s; `dividido_banner`
+  (arriba) sigue disponible. En el editor visual el banner de contexto no se arrastra (sigue al alto de la cámara).
+  Aviso si choca con los subtítulos. Panel: casilla «Banner de contexto fijo sobre la unión» en Plantilla → Vista
+  dividida. 167 pruebas. No probado en el PC de Cristóbal.
