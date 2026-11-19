@@ -171,3 +171,15 @@ def test_campo_copiando_en_la_carpeta(fabrica, clip):
     fabrica.revisar_carpeta(ahora=1000)
     p = pc.get("/api/estado").json()["carpeta"]["pendientes"]
     assert p == [{"archivo": "nuevo.mp4", "motivo": "Esperando a que termine de copiarse…", "copiando": True}]
+
+
+def test_puerto_ocupado_detecta_otro_panel():
+    import socket
+    from fabrica_studio.server import puerto_ocupado
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); puerto = s.getsockname()[1]
+    assert puerto_ocupado(puerto) == ""
+    s.listen(1)
+    try:
+        assert puerto_ocupado(puerto) in ("otro programa usa ese puerto",) or puerto_ocupado(puerto).startswith("versión")
+    finally:
+        s.close()

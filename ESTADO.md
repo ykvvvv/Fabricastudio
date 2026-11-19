@@ -1023,3 +1023,6 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     subidas; ningún secreto en las respuestas nuevas; las rutas con `<id>` comprueban que el perfil exista antes de leer,
     escribir o borrar archivos.
   - **No probado** en la MatePad real ni con un render real de Whisper (pytest usa una transcripción fija).
+- **2026-11-19 · Claude Code (nube)** — Panel en gris tras reiniciar: había otro Fábrica Studio en el puerto 8765 y el
+  nuevo no arrancaba (WinError 10048). `server.main` ahora detecta el puerto ocupado: si es otro Fábrica Studio, lo
+  dice con su versión y abre el navegador; si es otro programa, lo explica. 146 pruebas.

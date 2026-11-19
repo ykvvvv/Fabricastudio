@@ -632,6 +632,21 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     return aplicacion
 
 
+def puerto_ocupado(puerto: int) -> str:
+    """'' si el puerto está libre; si no, qué lo ocupa ('versión X' si es otro Fábrica Studio)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        if s.connect_ex(("127.0.0.1", puerto)) != 0:
+            return ""
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/api/sesion", timeout=2) as r:
+            return f"versión {json.loads(r.read()).get('version', '?')}"
+    except Exception:
+        return "otro programa usa ese puerto"
+
+
 def main() -> None:
     import sys
 
@@ -639,6 +654,14 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):          # consolas de Windows sin UTF-8
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    ocupado = puerto_ocupado(PUERTO)
+    if ocupado:
+        print(f"\n  Ya hay un Fábrica Studio abierto en http://127.0.0.1:{PUERTO} ({ocupado}).\n"
+              "  Usa esa ventana, o ciérrala (Ctrl+C) antes de abrir otra.\n")
+        if ocupado.startswith("versión"):
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{PUERTO}")
+        sys.exit(1)
     ip = acceso.ip_red_local()
     print(f"\n  Fábrica Studio {__version__}\n  En este PC:   http://127.0.0.1:{PUERTO}"
           + (f"\n  En la tablet: http://{ip}:{PUERTO}  (pide un código de vinculación en el PC)" if ip else "")
