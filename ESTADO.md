@@ -1072,3 +1072,43 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
 - **2026-11-19 · Claude Code (nube)** — Panel en gris tras reiniciar: había otro Fábrica Studio en el puerto 8765 y el
   nuevo no arrancaba (WinError 10048). `server.main` ahora detecta el puerto ocupado: si es otro Fábrica Studio, lo
   dice con su versión y abre el navegador; si es otro programa, lo explica. 146 pruebas.
+- **2026-11-19 · Claude Code (PC Windows)** — **Encargo, fase 3: textos de GTA 6 listos para publicar** (`textos.py`,
+  `pipeline.py`, `server.py`, `web/{app.js,estilo.css}`, `tests/{conftest,test_textos,test_pipeline,test_web}.py`).
+  - **Revisión con clips reales** (transcripciones de Cristóbal leídas sin modificar nada; tema GTA 6, hashtags fijos,
+    emojis). Antes del cambio: **0 de 12** textos salieron de Gemini. Causa real: la clave usa el **plan gratuito, 20
+    pedidos al día por modelo**; el modelo elegido (`gemini-3.8-flash`, de la lista de la API) estaba saturado (503 «high
+    demand» y respuestas que no llegaban en 90 s) y los 3 reintentos sobre el mismo modelo agotaron su cuota.
+  - **Gemini más robusto** (`pedir_json`): prueba hasta 3 modelos de la lista de la API en orden (nunca nombres escritos
+    a mano); un modelo sin cuota (429), saturado (503 dos veces), sin respuesta (45 s) o retirado (404) se recuerda el tiempo
+    que pide Gemini (RetryInfo o «retry in 6h46m»; 2 min si saturado; 24 h si 404) y no se vuelve a pedir en balde; si
+    ninguno sirve, se explica hasta qué hora. Con esto, en la misma prueba: **8 de 10** con Gemini (`gemini-3.6-flash` y
+    `gemini-3-flash-preview`); los 2 clips restantes no se evaluaron porque el sistema detuvo la prueba por falta de
+    memoria. Los 8 cumplen el formato: ≤ 80 caracteres con #Shorts, mencionan GTA 6, 1–2 emojis, descripción de una frase,
+    fijos + 2–3 propios. **Contra las transcripciones completas:** 5 están respaldados («le voy a pagar 45.000, 50.000
+    pesos», «¿puedo ir a Las Vegas…?», «¡llegó una ambulancia!», «no puedo creerlo», «¿qué pasa con los 30 fps?»), 1 es
+    una interpretación leve y **2 inventaban el marco** («pelea por celos / lealtad»; «el motor / el vehículo», deducido de
+    palabras en inglés leídas de la pantalla). Se endurecieron las reglas (todo debe poder señalarse en la transcripción;
+    no nombrar lo que pasa si no se dice; no deducir de palabras en otro idioma o de pantalla). **Sin verificar con Gemini
+    real:** al repetir esos 2 clips, Gemini respondió 503 y 429 en los 3 modelos; queda pendiente cuando se renueve la
+    cuota. Ojo para «Regenerar textos» masivo: con el plan gratuito, muchos clips agotan la cuota y el resto queda con el
+    borrador local (con su aviso).
+  - **Normalización:** los emojis se cuentan completos (con tono de piel, selector de variación y uniones ZWJ), como mucho
+    2 en el título y un corte nunca deja medio emoji; la descripción queda en una frase (si la primera es una exclamación
+    corta se suma la siguiente); con GTA 6, `#Shorts` + los fijos + como mucho 3 propios; Gemini recibe los fijos para no
+    repetirlos. Instrucciones con gancho, «GTA 6» natural y sin citar palabras mal reconocidas.
+  - **«Regenerar textos» masivo:** `POST /api/textos/regenerar {ids?, incluir_editados?}` (sin `ids`: todos los sin subir).
+    Nunca toca un clip subido; omite, contados por motivo, los que están en proceso o en la cola de subida, los videos
+    largos, los que no tienen transcripción y (salvo que se pida) los editados a mano. Avance según el estado real de cada
+    clip en `/api/estado.lote_textos`; `DELETE /api/textos/lote` lo cierra. Panel: casillas en la Cola (y la del encabezado
+    para los que se ven), «Regenerar textos (N)» y «…de todos los sin subir (N)», ventana que dice con qué (Gemini con tu
+    cuota o borrador local), que no se transcribe otra vez y que lo subido no cambia; barra de progreso (solo transform) y
+    un único aviso al terminar (no uno por clip).
+  - **Vista previa del título** en el detalle: YouTube Shorts (el título) y TikTok (el texto de «Exportar», igual que
+    `exportar.texto_publicacion`: una prueba con Node compara las dos), sobre la miniatura, con los emojis del teléfono y
+    al escribir. El contador del título cuenta como el servidor (caracteres, no unidades UTF-16) y dice cuántos emojis.
+  - **Pruebas:** 157 con pytest (2 omitidas, POSIX). Playwright con datos temporales (sin trabajador ni clave de Gemini; el
+    lote se «termina» desde el script), escritorio 1440×900, tablet emulada 800×1280 (CPU 4×) y móvil 390 px: **42
+    comprobaciones bien**. Capturas en `docs/diseno/capturas-textos/` (dos de la selección se descartaron: mostraban una
+    barra «0 de 0», ya corregida: un lote cuyos clips se borraron desaparece).
+  - **Revisión de Codex: pendiente** (cupo agotado hasta el 2026-11-20 16:56). **No probado** el lote con el trabajador real
+    ni en el PC de Cristóbal.

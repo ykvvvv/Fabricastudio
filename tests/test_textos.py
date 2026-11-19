@@ -77,9 +77,45 @@ def test_gemini_elige_modelo_listado_y_tolera_formato(monkeypatch):
 
 def test_gemini_sin_cuota_cae_al_borrador_local_y_explica(monkeypatch):
     textos._modelos_cache.update(t=0)
-    c = _cliente([(429, {"error": {"message": "Quota exceeded"}})])
+    c = _cliente([(429, {"error": {"message": "Quota exceeded"}}), (429, {"error": {"message": "Quota exceeded"}})])
     r = textos.generar("Encontré una palta enorme.", "Jongottii", "auto", "clave-falsa", cliente=c)
     assert r["origen"] == "local" and "cuota" in r["aviso"]
+    assert set(textos._saturados) == {"gemini-9-flash", "gemini-9-flash-lite"}       # probó los dos de la lista
+
+
+def test_gemini_saturado_o_sin_cuota_pasa_al_siguiente_modelo_y_lo_recuerda(monkeypatch):
+    """Lo visto con la clave real: el modelo elegido respondía 503 «high demand» y luego 429 del plan gratuito."""
+    monkeypatch.setattr(textos.time, "sleep", lambda s: None)
+    textos._modelos_cache.update(t=0)
+    bueno = '{"banner":"la persecución","titulo":"Lo persiguen en GTA 6 🚓","descripcion":"Huye.","hashtags":[],"es_gaming":true}'
+    c = _cliente([(503, {"error": {"message": "high demand"}}), (503, {"error": {"message": "high demand"}}),
+                  _respuesta(bueno)])
+    r = textos.generar("me persigue la policía", "Cheta", "auto", "clave-falsa", cliente=c, tema="gta6")
+    assert r["origen"] == "gemini:gemini-9-flash-lite" and "GTA 6" in r["titulo"]
+    assert textos._saturados["gemini-9-flash"] > textos.time.time() + 60             # no se vuelve a pedir enseguida
+    c = _cliente([_respuesta(bueno)])                                                  # el siguiente va directo al otro
+    assert textos.generar("x", "C", "auto", "clave-falsa", cliente=c)["origen"] == "gemini:gemini-9-flash-lite"
+    # Un modelo que la API lista pero ya no admite usuarios nuevos (404) no se vuelve a pedir en el día.
+    textos._saturados.clear()
+    c = _cliente([(404, {"error": {"message": "no longer available to new users"}}), _respuesta(bueno)])
+    assert textos.generar("x", "C", "auto", "clave-falsa", cliente=c)["origen"] == "gemini:gemini-9-flash-lite"
+    assert textos._saturados["gemini-9-flash"] > textos.time.time() + 20 * 3600
+    # Un 429 con el tiempo que pide Gemini (RetryInfo o «retry in 6h46m7s»).
+    detalle = {"error": {"message": "Quota exceeded", "details": [{"retryDelay": "3600s"}]}}
+    assert textos._espera_pedida(textos.json.dumps(detalle), "") == 3600
+    assert round(textos._espera_pedida("{}", "Please retry in 6h46m7.13s.")) == 6 * 3600 + 46 * 60 + 7
+    # Con todos los modelos de la lista sin cuota, no se hace ningún pedido: se explica hasta cuándo.
+    textos._saturados.update({"gemini-9-flash": textos.time.time() + 600, "gemini-9-flash-lite": textos.time.time() + 900})
+    r = textos.generar("x", "C", "auto", "clave-falsa", cliente=_cliente([]))
+    assert r["origen"] == "local" and "sin cuota o saturados hasta las" in r["aviso"]
+
+
+def test_instrucciones_segun_el_modo():
+    gta = textos.instrucciones_textos("gta6", "#GTA6 #GTAVI #Gaming", emojis=True)
+    assert "SOLO 2 o 3" in gta and "#GTA6 #GTAVI #Gaming" in gta and "de 3 a 6" not in gta
+    assert "UNA sola frase" in gta and "1 o 2 emojis" in gta and "No inventes misiones" in gta
+    general = textos.instrucciones_textos()
+    assert "de 3 a 6" in general and "GTA 6 (Grand Theft Auto VI)" not in general and "emojis" not in general
 
 
 def test_los_secretos_no_llegan_a_los_mensajes():
@@ -122,6 +158,35 @@ def test_titulo_local_usa_frases_completas():
     cuerpo = t.split(": ", 1)[-1]
     assert len(t) <= 60 and cuerpo in tr.replace(".", "")                          # literal
     assert any(cuerpo == c.strip(" ,") for c in tr.replace(".", ",").split(","))   # cláusula completa, no cortada
+
+
+def test_emojis_se_cuentan_completos_y_el_titulo_lleva_como_mucho_dos():
+    familia, corredor = "\U0001F468\u200D\U0001F469\u200D\U0001F467", "\U0001F3C3\u200D♂\uFE0F"
+    assert textos.contar_emojis(f"Huye 🚓 {familia} {corredor} ⭐ 👍🏽") == 5            # cada secuencia es uno
+    t = textos.normalizar_titulo(f"😂 Se escapa {familia} de la policía 🚓 ⭐ en Vice City")
+    assert textos.contar_emojis(t) == 2 and t.startswith("😂 Se escapa " + familia) and "⭐" not in t
+    assert "  " not in t and t.endswith(" #Shorts")
+    largo = textos.normalizar_titulo("🚓 " + "persecución eterna por toda la ciudad " * 4 + "😱")
+    assert len(largo) <= 80 and largo.endswith(" #Shorts") and largo.startswith("🚓 ")
+    # Un corte sin espacios no deja restos de un emoji (unión ZWJ, selector de variación o tono de piel).
+    pegado = textos.normalizar_titulo("x" * 70 + corredor + "y" * 20)
+    assert len(pegado) <= 80 and not any(c in pegado for c in "\u200D\uFE0F")
+
+
+def test_descripcion_una_frase_y_hashtags_fijos_mas_tres_del_momento():
+    p = {"banner": "persecución", "titulo": "La policía lo persigue en GTA 6 🚓",
+         "descripcion": "Lo persigue la policía por toda la playa. Después choca. #Playa",
+         "hashtags": ["#GTA6", "#Persecucion", "#Policia", "#Choque", "#Playa", "#Extra"], "es_gaming": True}
+    r = textos.normalizar(p, "", tema="gta6", hashtags_fijos="#GTA6 #GTAVI #GTA #Gaming")
+    linea, etiquetas = r["descripcion"].split("\n")
+    assert linea == "Lo persigue la policía por toda la playa."                       # una sola frase
+    assert etiquetas == "#Shorts #GTA6 #GTAVI #GTA #Gaming #Playa #Persecucion #Policia"   # fijos + 3 propios
+    corta = textos.normalizar({**p, "descripcion": "¡Increíble! Se escapa de cinco patrullas sin chocar."}, "", tema="gta6")
+    assert corta["descripcion"].split("\n")[0] == "¡Increíble! Se escapa de cinco patrullas sin chocar."
+    muchos = ["#H" + str(i) for i in range(10)]
+    r = textos.normalizar({**p, "hashtags": muchos}, "", tema="gta6", hashtags_fijos="#GTA6 #A #B #C #D #E")
+    assert r["descripcion"].split("\n")[1].split()[-3:] == ["#Playa", "#H0", "#H1"]       # nunca más de 3 propios
+    assert len(r["descripcion"].split("\n")[1].split()) == 1 + 6 + 3                     # #Shorts + 6 fijos + 3
 
 
 def test_titulos_con_emojis(monkeypatch):

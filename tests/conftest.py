@@ -2,12 +2,20 @@ import subprocess
 
 import pytest
 
-from fabrica_studio import transcribe
+from fabrica_studio import textos, transcribe
 from fabrica_studio.config import Rutas
 from fabrica_studio.pipeline import Fabrica
 
 PALABRAS = [{"inicio": i * 0.4, "fin": i * 0.4 + 0.35, "texto": p} for i, p in enumerate(
     "Oye chat, no lo van a creer. Encontré la paltita más grande de Chile, hermano.".split())]
+
+
+@pytest.fixture(autouse=True)
+def _gemini_sin_memoria():
+    """Cada prueba empieza sin modelos de Gemini marcados como saturados o sin cuota (textos._saturados)."""
+    textos._saturados.clear()
+    yield
+    textos._saturados.clear()
 
 
 @pytest.fixture(scope="session")

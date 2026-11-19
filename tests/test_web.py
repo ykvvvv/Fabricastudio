@@ -2,6 +2,7 @@
 import re
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from fabrica_studio.server import crear_app
@@ -130,6 +131,42 @@ def test_subidas_sin_limites_del_programa_y_limites_de_youtube_explicados():
         assert f'data-accion="{accion}"' in js, accion
     assert '"/api/subir-todos"' in js and "/subir-ahora`" in js and "/cancelar-subida`" in js
     assert "webkitdirectory" in js and "Sin límite" in js
+
+
+def _funcion_js(nombre: str) -> str:
+    """El código de una función de app.js (de «function nombre(» a la llave que la cierra en su columna)."""
+    js = _texto("app.js")
+    return f"function {nombre}(" + js.split(f"\nfunction {nombre}(", 1)[1].split("\n}\n", 1)[0] + "\n}"
+
+
+def test_vista_previa_tiktok_igual_que_exportar():
+    """La vista previa del panel arma el texto de TikTok igual que «Exportar» (exportar.texto_publicacion)."""
+    import json
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("Node no está instalado")
+    from fabrica_studio.exportar import texto_publicacion
+    casos = [{"titulo": "Lo persiguen en GTA 6 🚓 #Shorts", "descripcion": "Huye de la policía.\n#Shorts #GTA6 #Policia"},
+             {"titulo": "Mismo texto #shorts", "descripcion": "mismo texto\n#Shorts"},
+             {"titulo": "Sin descripción #Shorts", "descripcion": ""},
+             {"titulo": "Familia \U0001F468\u200D\U0001F469\u200D\U0001F467 #Shorts", "descripcion": "Una frase.\n#Shorts #A  #B"}]
+    for plataforma in ("tiktok", "reels", "shorts"):
+        codigo = (_funcion_js("textoPublicacion") + f"\nconst casos = {json.dumps(casos)};"
+                  f"\nconsole.log(JSON.stringify(casos.map((c) => textoPublicacion(c, {json.dumps(plataforma)}))));")
+        salida = subprocess.run(["node", "-e", codigo], capture_output=True, text=True, encoding="utf-8", check=True).stdout
+        assert json.loads(salida) == [texto_publicacion(c, plataforma) for c in casos], plataforma
+
+
+def test_regenerar_textos_en_lote_y_vista_previa_en_el_panel():
+    js = _texto("app.js")
+    for accion in ("regenerar-elegidos", "regenerar-todos", "quitar-seleccion", "cerrar-lote"):
+        assert f'data-accion="{accion}"' in js, accion
+    assert '"/api/textos/regenerar"' in js and '"/api/textos/lote"' in js
+    assert 'id="sel-todos"' in js and "data-sel=" in js and "pintarLoteTextos()" in js
+    assert "previasPublicacion(t)" in js and "Vista previa aproximada" in js
+    # El contador del título cuenta como el servidor (caracteres, no unidades UTF-16) y cuenta emojis completos.
+    assert "[...ft.titulo.value].length" in js and "Extended_Pictographic" in js
 
 
 def test_el_panel_se_revalida_tras_actualizar(fabrica):

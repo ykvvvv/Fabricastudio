@@ -15,7 +15,8 @@ const aSegundos = (txt) => { const p = String(txt).trim().split(":").map(Number)
 const ESTADOS = { pendiente: "En espera", procesando: "Procesando", propuestas: "Momentos listos", renderizado: "Renderizado", subiendo: "Subiendo", publicado: "Subido · privado", error: "Error" };
 const dos = (n) => String(n).padStart(2, "0");
 const calma = matchMedia("(prefers-reduced-motion: reduce)");   // con «reducir movimiento» nada se anima
-let S = { cambios: {}, orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "youtube", ajustes: null };
+let S = { cambios: {}, orden: "recientes", desde: "cola", busca: "", filtro: "todos", conectado: true, dispositivos: null, sesion: null, estado: null, vista: "resumen", jid: null, detalle: null, sucio: false, pestana: "youtube", ajustes: null,
+  seleccion: new Set() };      // clips elegidos en la cola (para «Regenerar textos»)
 
 async function api(ruta, opciones = {}) {
   if (opciones.json !== undefined) {
@@ -503,7 +504,12 @@ function anunciar(antes) {
     if (!p) continue;
     const logro = p.estado !== t.estado && t.estado in LOGROS;
     S.cambios[t.id] = { logro, etapas: Object.keys(t.etapas).filter((k) => t.etapas[k]?.estado === "hecho" && p.etapas[k]?.estado !== "hecho") };
-    if (logro) avisar(`«${t.nombre}» ${LOGROS[t.estado]}.`);
+    // En un «Regenerar textos» masivo no se avisa clip por clip (serían decenas): se avisa una vez al terminar.
+    if (logro && !S.estado.lote_textos?.ids.includes(t.id)) avisar(`«${t.nombre}» ${LOGROS[t.estado]}.`);
+  }
+  const l = S.estado.lote_textos;
+  if (l?.terminado && antes.lote_textos && !antes.lote_textos.terminado) {
+    avisar(`Textos regenerados: ${l.listos} de ${l.total} listos${l.errores ? `, ${l.errores} con error` : ""}.`);
   }
 }
 
@@ -697,22 +703,80 @@ function pintarCola(m, completo) {
   if (completo || !$("#cola-cuerpo")) {
     m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">En producción</div><h1>Cola de clips</h1><p>Cada momento, en su lugar.</p></div>
         <button class="primario" data-accion="nuevo">${ic("mas")}Nuevo clip</button></div>
-      <div class="herramientas"><div class="filtros" id="cola-filtros" role="group" aria-label="Filtrar por estado"></div></div>
+      <div class="herramientas"><div class="filtros" id="cola-filtros" role="group" aria-label="Filtrar por estado"></div>
+        <div class="fila acciones-lote" id="cola-lote"></div></div>
       <div class="pila" id="cola-carpeta" style="margin-bottom:14px"></div>
-      <div class="panel"><div class="tabla-desliza"><table class="tabla-cola"><thead><tr><th scope="col">Clip</th><th scope="col">Estado</th><th scope="col">Origen</th><th scope="col">Duración</th><th scope="col"><span class="solo-lector">Acciones</span></th></tr></thead>
+      <div id="cola-progreso"></div>
+      <div class="panel"><div class="tabla-desliza"><table class="tabla-cola"><thead><tr><th scope="col" class="sel"><input type="checkbox" id="sel-todos" aria-label="Elegir todos los clips que se ven"></th>
+        <th scope="col">Clip</th><th scope="col">Estado</th><th scope="col">Origen</th><th scope="col">Duración</th><th scope="col"><span class="solo-lector">Acciones</span></th></tr></thead>
         <tbody id="cola-cuerpo"></tbody></table></div><div id="cola-vacia" class="sin-nada" hidden></div></div>`;
   }
   poner($("#cola-filtros"), FILTROS.map(([k, n, f]) => h`<button data-accion="filtro" data-foco="f-${k}" data-f="${k}" aria-pressed="${S.filtro === k}">${n} <span>${ts.filter(f).length}</span></button>`).join(""));
   poner($("#cola-carpeta"), e.carpeta.pendientes.map((p) => h`<p class="nota"><b>${p.archivo}</b> (carpeta vigilada): ${p.motivo}</p>`).join(""));
   const visibles = ts.filter(FILTROS.find(([k]) => k === S.filtro)[2]);
   const origen = { archivo: "Archivo", carpeta: "Carpeta", enlace: "Kick", momento: "Video largo" };
-  ponerLista($("#cola-cuerpo"), visibles, "tr", (t) => h`<td>${crudo(clipHtml(t))}</td><td>${crudo(pastilla(t))}</td><td>${origen[t.origen_tipo]}${t.modo === "largo" ? " · largo" : ""}</td>
+  for (const id of S.seleccion) if (!e.trabajos.some((t) => t.id === id)) S.seleccion.delete(id);   // eliminados
+  ponerLista($("#cola-cuerpo"), visibles, "tr", (t) => h`<td class="sel"><input type="checkbox" data-sel="${t.id}" data-foco="s-${t.id}" aria-label="Elegir «${t.nombre}»" ${S.seleccion.has(t.id) ? "checked" : ""}></td>
+    <td>${crudo(clipHtml(t))}</td><td>${crudo(pastilla(t))}</td><td>${origen[t.origen_tipo]}${t.modo === "largo" ? " · largo" : ""}</td>
     <td>${t.duracion ? reloj(t.duracion) : "—"}</td>
     <td>${["procesando", "subiendo"].includes(t.estado) ? "" : crudo(h`<button class="icono-boton" data-accion="quitar" data-foco="q-${t.id}" data-id="${t.id}" data-nombre="${t.nombre}" aria-label="Eliminar ${t.nombre}">${ic("papelera")}</button>`)}</td>`);
   $("#cola-vacia").hidden = visibles.length > 0;
   poner($("#cola-vacia"), `${icono("capas")}` + (S.busca ? "Ningún clip coincide con la búsqueda."
     : S.filtro !== "todos" ? "No hay clips en este estado."
     : h`Aún no hay clips. Pulsa «Nuevo clip»${e.carpeta.activa ? crudo(h` o copia un video en <code>${e.carpeta.ruta}</code>`) : ""}.`));
+  const ids = visibles.map((t) => t.id), marcados = ids.filter((id) => S.seleccion.has(id)).length, todos = $("#sel-todos");
+  todos.checked = marcados > 0 && marcados === ids.length; todos.indeterminate = marcados > 0 && marcados < ids.length;
+  const sinSubir = e.trabajos.filter(regenerable).length;
+  poner($("#cola-lote"), (S.seleccion.size ? h`<span class="pequeno">${plural(S.seleccion.size, "elegido", "elegidos")}</span>
+      <button data-accion="regenerar-elegidos" data-foco="l-elegidos">Regenerar textos (${S.seleccion.size})</button>
+      <button class="texto" data-accion="quitar-seleccion" data-foco="l-quitar">Quitar selección</button>` : "")
+    + (sinSubir ? h`<button data-accion="regenerar-todos" data-foco="l-todos">Regenerar textos de todos los sin subir (${sinSubir})</button>` : ""));
+  pintarLoteTextos();
+}
+// Lo que el servidor sí regenera (el resto lo omite y lo cuenta): sin subir, clip, terminado, fuera de la cola de subida
+// y con la transcripción hecha (los textos salen de ella).
+const regenerable = (t) => !t.youtube_id && t.modo !== "largo" && ["renderizado", "error"].includes(t.estado) && !t.subir_solicitado
+  && t.etapas.transcribir?.estado === "hecho";
+// Progreso del último «Regenerar textos» masivo, contado por el servidor con el estado real de cada clip.
+function pintarLoteTextos() {
+  const l = S.estado.lote_textos, caja = $("#cola-progreso");
+  if (!caja) return;
+  if (!l) return poner(caja, "");
+  // La estructura se crea una vez; después solo cambian el texto y el transform de la barra (que así se llena suave).
+  if (!$("#lp-barra", caja)) poner(caja, `<div class="panel lote-progreso" role="status"><div class="fila separado"><b id="lp-texto"></b><span id="lp-cerrar"></span></div>
+    <div class="barra-progreso" aria-hidden="true"><i id="lp-barra" style="transform:scaleX(0)"></i></div><p class="pequeno tenue" id="lp-nota" hidden></p></div>`);
+  $(".lote-progreso", caja).classList.toggle("terminado", l.terminado);
+  $("#lp-texto").textContent = `${l.terminado ? "Textos regenerados" : "Regenerando textos"}: ${l.listos} de ${l.total} listos${l.errores ? ` · ${l.errores} con error` : ""}`;
+  $("#lp-barra").style.transform = `scaleX(${(l.total ? (l.listos + l.errores) / l.total : 1).toFixed(3)})`;
+  if (!!$("#lp-cerrar").firstChild !== l.terminado) $("#lp-cerrar").innerHTML = l.terminado ? `<button class="texto" data-accion="cerrar-lote">Cerrar</button>` : "";
+  const nota = $("#lp-nota");
+  nota.hidden = !l.con_borrador_local;
+  nota.textContent = l.con_borrador_local ? `${plural(l.con_borrador_local, "clip quedó", "clips quedaron")} con el borrador local porque Gemini falló o no hay clave: su aviso dice el motivo.` : "";
+}
+const OMITIDOS = { subidos: "ya subidos", editados: "editados a mano", en_proceso: "en proceso", en_cola_de_subida: "en la cola de subida",
+  sin_transcripcion: "aún sin transcripción", videos_largos: "videos largos", no_existen: "que ya no existen" };
+// «Regenerar textos» de los elegidos (ids) o de todos los que no se han subido (null). Explica qué pasa y con qué.
+async function regenerarVarios(ids) {
+  const ts = S.estado.trabajos, elegidos = ids ? ts.filter((t) => ids.includes(t.id)) : ts.filter((t) => !t.youtube_id);
+  const posibles = elegidos.filter(regenerable), editados = posibles.filter((t) => t.textos.origen === "editado").length;
+  // Con «todos los sin subir» también se dice: así queda claro que lo publicado no cambia.
+  const subidos = (ids ? elegidos : ts).filter((t) => t.youtube_id).length, base = posibles.length - editados;
+  if (!posibles.length) return avisar("Ninguno de esos clips se puede regenerar ahora: están subidos, en proceso o en la cola de subida.", true);
+  const p = S.estado.proveedores, gemini = p.gemini.clave && p.textos !== "local";
+  const ok = await new Promise((resolver) => {
+    abrirModal("Regenerar textos", h`<p>Se volverán a generar el banner, el título y la descripción de ${plural(base, "clip", "clips")} con ${gemini ? "Gemini (una llamada por clip, con tu cuota)" : "el borrador local (sin IA)"} y se renderizarán de nuevo. No se transcriben otra vez.</p>
+      ${editados ? crudo(h`<label class="linea"><input type="checkbox" id="rv-editados" ${base ? "" : "checked"}> Incluir también ${plural(editados, "clip editado", "clips editados")} a mano (se pierden esos cambios)</label>`) : ""}
+      ${subidos ? crudo(h`<p class="pequeno tenue">${subidos === 1 ? "1 clip ya subido no se toca" : `${subidos} clips ya subidos no se tocan`}: sus textos ya están en YouTube.</p>`) : ""}
+      <p class="pequeno tenue">Los que estén en proceso o en la cola de subida se omiten. El avance se ve en la cola.</p>`,
+    h`<button data-accion="cerrar-modal">Cancelar</button><button class="primario" id="modal-si">Regenerar textos</button>`);
+    modalResuelve = resolver;
+    $("#modal-si").onclick = () => cerrarModal({ editados: !!$("#rv-editados")?.checked });
+  });
+  if (!ok) return;
+  const r = await api("/api/textos/regenerar", { method: "POST", json: { ids, incluir_editados: ok.editados } });
+  const omitidos = Object.entries(r.omitidos).map(([k, n]) => `${n} ${OMITIDOS[k] || k}`).join(", ");
+  avisar(`Regenerando los textos de ${plural(r.regenerando, "clip", "clips")}.${omitidos ? ` Omitidos: ${omitidos}.` : ""}`);
+  S.seleccion.clear(); refrescar();
 }
 
 function pintarBiblioteca(m, completo) {
@@ -891,6 +955,15 @@ document.addEventListener("change", intentar(async (e) => {
   avisar("Estilo cambiado: se renderiza de nuevo (no se repite la transcripción)."); refrescar();
 }));
 
+// Elegir clips en la cola (casillas): no se envía nada hasta pulsar una acción. La del encabezado elige los que se ven.
+document.addEventListener("change", (e) => {
+  const c = e.target.closest?.("[data-sel], #sel-todos");
+  if (!c) return;
+  const ids = c.id === "sel-todos" ? [...document.querySelectorAll("[data-sel]")].map((x) => x.dataset.sel) : [c.dataset.sel];
+  ids.forEach((id) => (c.checked ? S.seleccion.add(id) : S.seleccion.delete(id)));
+  pintar(false);
+});
+
 // Cambiar el perfil de un clip rehace textos y render. Si el contexto que recibiría Whisper es otro, la misma ventana
 // ofrece volver a transcribir (si no, se conserva la transcripción actual).
 async function cambiarPerfilClip(sel) {
@@ -1024,6 +1097,8 @@ function pintarTrabajo(m, completo) {
       <label>Descripción<textarea name="desc" rows="2" ${bloqueado ? "disabled" : ""}>${desc}</textarea></label>
       <label>Hashtags<input name="etiquetas" value="${etiquetas || ""}" ${bloqueado ? "disabled" : ""}></label>
       <label class="linea"><input type="checkbox" name="es_gaming" ${x.es_gaming ? "checked" : ""} ${bloqueado ? "disabled" : ""}> Es contenido de videojuegos (categoría Gaming)</label>
+      <div class="pila" style="gap:8px"><h3>Así se verá</h3>${crudo(previasPublicacion(t))}
+        <p class="pequeno tenue">Vista previa aproximada (cada app cambia su diseño); el texto es el real. Los emojis se ven con el estilo de cada teléfono.</p></div>
       <div class="fila"><button class="primario" ${bloqueado ? "disabled" : ""}>Guardar textos</button>
       <button type="button" data-accion="regenerar-textos" ${bloqueado ? "disabled" : ""}>Regenerar automáticamente</button></div>
       <p class="pequeno tenue">Editar es opcional. Cambiar el banner vuelve a renderizar; no repite la transcripción.</p>
@@ -1037,7 +1112,12 @@ function pintarTrabajo(m, completo) {
   if (accion) $(`#t-edicion [data-accion="${accion}"]`)?.focus();
   const ft = $("#form-textos");
   if (ft) {
-    const contar = () => { const n = ft.titulo.value.length; $("#c-titulo").textContent = `${n}/80`; $("#c-titulo").classList.toggle("pasado", n > 80); };
+    // Largo en caracteres como lo cuenta el servidor (un emoji de 4 bytes es 1, no 2 como en .length) y emojis completos.
+    const contar = () => {
+      const n = [...ft.titulo.value].length, e = (ft.titulo.value.match(EMOJIS) || []).length;
+      $("#c-titulo").textContent = `${n}/80 · ${e === 1 ? "1 emoji" : `${e} emojis`}`; $("#c-titulo").classList.toggle("pasado", n > 80);
+      ponerPrevias(ft.titulo.value, `${ft.desc.value}\n${ft.etiquetas.value}`);
+    };
     contar();
     ft.addEventListener("input", () => { S.sucio = true; contar(); });
     ft.addEventListener("submit", intentar(async (e) => {
@@ -1060,6 +1140,32 @@ function pintarTrabajo(m, completo) {
 
 // ---------------------------------------------------------------- exportar a otras plataformas
 const PLATAFORMAS = [["tiktok", "TikTok"], ["reels", "Instagram Reels"], ["shorts", "YouTube Shorts"]];
+// Igual que exportar.texto_publicacion (Python; una prueba compara las dos): título sin #Shorts + descripción + hashtags.
+function textoPublicacion(textos, plataforma) {
+  const titulo = (textos.titulo || "").replace(/\s*#Shorts\b/gi, "").trim();
+  const [descripcion = "", etiquetas = ""] = (textos.descripcion || "").split("\n");
+  let hashtags = etiquetas.split(/\s+/).filter(Boolean);
+  if (plataforma !== "shorts") hashtags = hashtags.filter((x) => x.toLowerCase() !== "#shorts");
+  const partes = [titulo], d = descripcion.trim();
+  if (d && !titulo.toLowerCase().includes(d.toLowerCase())) partes.push(d);
+  partes.push(hashtags.join(" "));
+  return partes.filter(Boolean).join("\n\n") + "\n";
+}
+// Un emoji completo (con tono de piel, selector de variación y lo que se le une con ZWJ), como textos.contar_emojis.
+const EMOJIS = /\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\u{FE0F})*(?:\u{200D}\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\u{FE0F})*)*/gu;
+// Vista previa del título en YouTube Shorts (el título) y en TikTok (el texto que deja «Exportar»), sobre la miniatura.
+function previasPublicacion(t) {
+  const fondo = t.tiene_video ? h`<img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="">` : "";
+  const movil = (clase, cuenta, nombre) => h`<figure class="previa-movil ${clase}"><div class="previa-pantalla">${crudo(fondo)}
+      <div class="previa-pie"><b>${cuenta}</b><p class="previa-titulo"></p></div></div><figcaption>${nombre}</figcaption></figure>`;
+  return `<div class="previas" id="t-previas">${movil("yt", `@${S.estado.youtube.canal_nombre || "tu_canal"}`, "YouTube Shorts")}${movil("tt", "@tu_cuenta", "TikTok")}</div>`;
+}
+function ponerPrevias(titulo, descripcion) {
+  const p = $("#t-previas");
+  if (!p) return;
+  $(".yt .previa-titulo", p).textContent = titulo;
+  $(".tt .previa-titulo", p).textContent = textoPublicacion({ titulo, descripcion }, "tiktok").trim();
+}
 // Se muestra la ruta dentro de la carpeta de datos (4_exportados/<plataforma>/<archivo>), no la ruta completa del PC.
 const rutaCorta = (r) => String(r).split(/[\\/]/).slice(-3).join("/");
 // Desde la tablet el panel va por http en la red de casa y el portapapeles moderno no está disponible:
@@ -1277,6 +1383,10 @@ const acciones = {
     if (S.vista === "plantilla") pintar(true);       // la vista previa muestra la firma y el logo del perfil activo
   }),
   "cerrar-perfiles": () => cerrarMenuPerfiles(),
+  "regenerar-elegidos": intentar(() => regenerarVarios([...S.seleccion])),
+  "regenerar-todos": intentar(() => regenerarVarios(null)),
+  "quitar-seleccion": () => { S.seleccion.clear(); pintar(false); },
+  "cerrar-lote": intentar(async () => { await api("/api/textos/lote", { method: "DELETE" }); refrescar(); }),
   "nuevo-perfil": () => editarPerfil(null),
   "editar-perfil": (b) => editarPerfil(S.perfiles.find((p) => p.id === b.dataset.id)),
   "duplicar-perfil": intentar(async (b) => {

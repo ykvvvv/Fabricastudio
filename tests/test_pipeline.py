@@ -349,6 +349,49 @@ def test_subir_todos_ahora_y_quitar_de_la_cola(fabrica):
     assert fabrica.subir_todos_ahora()["encolados"] == 1               # otra vez: solo «nuevo»; nada se sube dos veces
 
 
+def test_regenerar_textos_de_varios_no_toca_los_subidos(fabrica, clip):
+    t = _procesar(fabrica, fabrica.importar_archivo(clip, "a.mp4"))          # renderizado, con transcripción
+
+    def con_transcripcion(nombre, **campos):
+        x = fabrica.db.crear_trabajo(nombre, "archivo")
+        carpeta = fabrica.rutas.trabajo(x["id"])
+        carpeta.mkdir(parents=True)
+        (carpeta / "transcripcion.json").write_text('{"texto": "hola", "palabras": [], "segmentos": []}', encoding="utf-8")
+        fabrica.db.actualizar(x["id"], **campos)
+        return fabrica.db.trabajo(x["id"])
+    subido = con_transcripcion("subido", estado="publicado", youtube_id="v1",
+                               textos={"titulo": "Ya en YouTube #Shorts", "origen": "gemini:x"})
+    editado = con_transcripcion("editado", estado="renderizado", textos={"titulo": "Mío #Shorts", "origen": "editado"})
+    con_transcripcion("en_cola", estado="renderizado", subir_solicitado=True, textos={"titulo": "x", "origen": "local"})
+    con_transcripcion("procesando", estado="procesando")
+    sin = fabrica.db.crear_trabajo("sin_transcripcion", "archivo")
+    fabrica.db.actualizar(sin["id"], estado="error")
+
+    r = fabrica.regenerar_textos_varios()                                     # todos los que no se han subido
+    assert r == {"regenerando": 1, "omitidos": {"editados": 1, "en_cola_de_subida": 1, "en_proceso": 1,
+                                                "sin_transcripcion": 1}}
+    assert fabrica.db.trabajo(subido["id"])["textos"]["titulo"] == "Ya en YouTube #Shorts"
+    assert fabrica.db.trabajo(editado["id"])["textos"]["origen"] == "editado"   # lo editado a mano no se pisa
+    p = fabrica.progreso_lote_textos()
+    assert (p["total"], p["listos"], p["terminado"]) == (1, 0, False)
+    fabrica._ejecutar(fabrica.db.trabajo(t["id"]))                            # el trabajador lo procesa
+    p = fabrica.progreso_lote_textos()
+    assert (p["listos"], p["errores"], p["terminado"]) == (1, 0, True) and fabrica.transcripciones["n"] == 1
+    assert fabrica.db.trabajo(t["id"])["textos"]["titulo"] == t["textos"]["titulo"]   # misma transcripción, mismo borrador
+
+    # Elegidos a mano: el subido tampoco se toca aunque se pida; con incluir_editados, el editado sí.
+    r = fabrica.regenerar_textos_varios([subido["id"], editado["id"], "no-existe"], incluir_editados=True)
+    assert r == {"regenerando": 1, "omitidos": {"no_existen": 1, "subidos": 1}}
+    s = fabrica.db.trabajo(subido["id"])
+    assert s["estado"] == "publicado" and s["textos"]["titulo"] == "Ya en YouTube #Shorts"
+    assert fabrica.db.trabajo(editado["id"])["textos"] == {}
+    fabrica.eliminar(editado["id"])                                           # sus clips se borran: el lote desaparece
+    assert fabrica.progreso_lote_textos() is None and fabrica.lote_textos is None
+    fabrica.regenerar_textos_varios([t["id"]])
+    fabrica.cerrar_lote_textos()
+    assert fabrica.progreso_lote_textos() is None
+
+
 def test_sin_suspender_no_falla_fuera_de_windows():
     from fabrica_studio.pipeline import sin_suspender
     with sin_suspender() as s:

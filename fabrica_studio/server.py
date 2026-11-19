@@ -266,6 +266,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
                 "proveedores": _proveedores(), "subida_automatica": a["subida_automatica"], "estilo": a["estilo"],
                 "subidas_pausadas_hasta": a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0,
                 "proxima_subida": (lambda x: x if x > time.time() else 0)(fab.db.proxima_subida()),
+                "lote_textos": fab.progreso_lote_textos(),      # último «Regenerar textos» masivo, o null
                 # Lo justo para el selector de la barra superior y los nombres en la cola; el detalle, en /api/perfiles.
                 "perfil_activo": fab.db.perfil_activo()["id"],
                 "perfiles": [{**{k: p[k] for k in ("id", "nombre", "firma", "tema", "estilo")},
@@ -297,6 +298,20 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         if not isinstance(c, dict):
             raise ErrorEtapa("Datos no válidos.", "entrada")
         return c
+
+    @app.post("/api/textos/regenerar")
+    async def regenerar_textos_varios(request: Request):
+        """Regenerar textos de varios clips: {ids: [...]} o, sin ids, todos los que no se han subido."""
+        c = await _objeto(request)
+        ids = c.get("ids")
+        if ids is not None and not (isinstance(ids, list) and all(isinstance(i, str) for i in ids)):
+            raise ErrorEtapa("La lista de clips no es válida.", "entrada")
+        return fab.regenerar_textos_varios(ids, bool(c.get("incluir_editados", False)))
+
+    @app.delete("/api/textos/lote")
+    def cerrar_lote_textos():
+        fab.cerrar_lote_textos()
+        return {"ok": True}
 
     @app.post("/api/subir-todos")
     def subir_todos():

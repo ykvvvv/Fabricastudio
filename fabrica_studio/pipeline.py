@@ -101,6 +101,7 @@ class Fabrica:
         self._vistos: dict[str, tuple] = {}       # carpeta vigilada: archivo -> (tamaño, mtime, desde)
         self.carpeta_estado: dict[str, str] = {}  # archivo -> motivo por el que aún no se importa
         self.progreso: dict[str, str] = {}        # trabajo -> texto de avance (no persistente)
+        self.lote_textos: dict | None = None      # último «Regenerar textos» masivo: {ids, inicio} (no persistente)
 
     # ------------------------------------------------------------ perfiles de creador
     def perfil_de(self, t: dict) -> dict:
@@ -658,6 +659,63 @@ class Fabrica:
         t = self.db.trabajo(jid)
         self.db.actualizar(jid, textos={}, estado="pendiente", error="", error_tipo="",
                            avisos=[x for x in t["avisos"] if not x.startswith("Textos generados")])
+
+    def regenerar_textos_varios(self, ids: list[str] | None = None, incluir_editados: bool = False) -> dict:
+        """«Regenerar textos» de varios clips: los elegidos o, sin `ids`, todos los que no se han subido. Nunca toca un
+        clip ya subido. Se omiten, contados por motivo, los que están en proceso o en la cola de subida, los videos
+        largos, los que aún no tienen transcripción y, salvo que se pida, los editados a mano. Cada uno vuelve a la cola
+        (textos nuevos y render; no se transcribe otra vez) y el lote se sigue con progreso_lote_textos()."""
+        todos = {t["id"]: t for t in self.db.trabajos()}
+        elegidos = [todos[i] for i in dict.fromkeys(ids) if i in todos] if ids is not None \
+            else [t for t in todos.values() if not t["youtube_id"]]
+        omitidos: dict[str, int] = {}
+        if ids is not None and len(elegidos) < len(set(ids)):
+            omitidos["no_existen"] = len(set(ids)) - len(elegidos)
+        lote = []
+        for t in sorted(elegidos, key=lambda t: t["creado"]):
+            motivo = ("subidos" if t["youtube_id"] else "videos_largos" if t["modo"] == "largo"
+                      else "en_proceso" if t["estado"] in ("pendiente", "procesando", "subiendo")
+                      else "en_cola_de_subida" if t["subir_solicitado"]
+                      else "sin_transcripcion" if not (self.rutas.trabajo(t["id"]) / "transcripcion.json").exists()
+                      else "editados" if t["textos"].get("origen") == "editado" and not incluir_editados else "")
+            if not motivo:
+                try:
+                    self.regenerar_textos(t["id"])
+                    lote.append(t["id"])
+                except ErrorEtapa:              # empezó a procesarse entre la lectura y ahora
+                    motivo = "en_proceso"
+            if motivo:
+                omitidos[motivo] = omitidos.get(motivo, 0) + 1
+        if lote:
+            self.lote_textos = {"ids": lote, "inicio": time.time()}
+        return {"regenerando": len(lote), "omitidos": omitidos}
+
+    def progreso_lote_textos(self) -> dict | None:
+        """Avance del último «Regenerar textos» masivo según el estado real de cada clip (no se estima nada)."""
+        lote = self.lote_textos
+        if not lote:
+            return None
+        listos = errores = local = quitados = 0
+        for jid in lote["ids"]:
+            t = self.db.trabajo(jid)
+            if not t:
+                quitados += 1                   # se eliminó mientras tanto: ya no cuenta
+                continue
+            etapa = t["etapas"].get("textos", {})
+            if t["estado"] == "error" and t["actualizado"] >= lote["inicio"]:
+                errores += 1
+            elif t["estado"] in ("renderizado", "publicado") and t["textos"] and etapa.get("t", 0) >= lote["inicio"]:
+                listos += 1
+                local += t["textos"].get("origen") == "local"
+        total = len(lote["ids"]) - quitados
+        if not total:                           # se eliminaron todos sus clips: no queda nada que mostrar
+            self.lote_textos = None
+            return None
+        return {"ids": lote["ids"], "total": total, "listos": listos, "errores": errores,
+                "con_borrador_local": local, "terminado": listos + errores >= total}
+
+    def cerrar_lote_textos(self) -> None:
+        self.lote_textos = None
 
     def editar_subtitulos(self, jid: str, bloques: list) -> None:
         self._editable(jid)
