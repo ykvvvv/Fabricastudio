@@ -983,6 +983,22 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     7. .exe 0.5.0: `fabrica_studio/__init__.py`, `empaquetado/version.txt`, `.github/workflows/windows.yml` si falla.
        En este PC no está `gh` (GitHub CLI): para seguir la ejecución y bajar el instalador hace falta instalarlo e iniciar
        sesión, o que Cristóbal descargue el artefacto desde el navegador.
+    8. **Estadísticas** (añadida por Cristóbal el 2026-11-18; **va después de la 6 y antes de la 7**, para que el instalador
+       la incluya: orden 3 → 4 → 5 → 6 → 8 → 7). Tabla de instantáneas por video subido (fecha, vistas, me gusta,
+       comentarios) sincronizada con `videos.list` (`part=statistics`, hasta 50 IDs por llamada; `youtube.readonly` ya
+       está entre los alcances de `youtube.py`) cada 6 h con el panel abierto y con «Actualizar ahora», respetando la pausa
+       por cuota y guardando la hora y los errores reales de cada sincronización; estadísticas de la fábrica desde la
+       base (por estado y perfil, subidos por día, tasa de errores, tiempo por etapa, estilos, recortes automáticos);
+       `GET /api/estadisticas?perfil=&desde=&hasta=`; herramienta MCP `estadisticas` de solo lectura; sección
+       «Estadísticas» en el panel (filtros, tarjetas con cambio frente al periodo anterior, gráficos SVG propios, tabla de
+       los mejores Shorts con enlace a YouTube Studio, estado de la sincronización, TikTok «No disponible hasta aprobar la
+       app de TikTok», estados vacíos). Archivos: `db.py`, `youtube.py`, `pipeline.py`, `server.py`, `mcp_servidor.py`,
+       `web/{index.html,app.js,estilo.css,iconos.js}`, `tests/test_estadisticas.py` (nuevo). **Pendiente de decidir con
+       Cristóbal antes de empezarla:** YouTube Analytics API (tiempo de visualización y retención), que exige habilitarla en
+       Google Cloud y volver a conectar YouTube con `yt-analytics.readonly`. Notas para entonces: los Shorts se suben en
+       privado, así que sus vistas serán casi cero hasta que se hagan públicos en YouTube Studio (se mostrará tal cual);
+       hoy cada etapa guarda solo la hora de su último cambio, así que el tiempo por etapa se medirá con precisión en los
+       clips que se procesen desde que se registre también el inicio, y para los antiguos solo con lo que haya, sin estimar.
   - **Codex:** según el último registro, el cupo de ChatGPT estaba agotado hasta el 2026-11-20 16:56; se comprueba antes
     del commit de cada fase y, si no hay cupo, la revisión queda pendiente aquí.
 - **2026-11-18 · Claude Code (PC Windows)** — **Encargo, fase 1: perfiles de creador** (`config.py`, `db.py`, `pipeline.py`,
