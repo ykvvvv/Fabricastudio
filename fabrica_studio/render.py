@@ -177,6 +177,22 @@ def calcular_disposicion_dividido(a: dict, banner: dict | None = None, proporcio
     return d
 
 
+def preparar_gancho(banner_texto: str, a: dict, d: dict, duracion: float) -> dict:
+    """Banner pequeño de los primeros segundos: en la vista dividida, centrado sobre la línea que separa
+    las dos partes; en pantalla completa, en la posición del banner."""
+    a_g = {**a, "banner_tamano": int(a.get("gancho_tamano", 62)), "banner_ancho": 900}
+    tarjeta = componer_banner(banner_texto, a_g)
+    if d.get("estilo") == "dividido":
+        y = d["paneles"][0]["h"] - tarjeta["alto"] // 2
+    else:
+        y = int(a["completo_banner_y"])
+    y = max(20, min(y, LIENZO_ALTO - tarjeta["alto"] - 20))
+    d_g = {"tarjeta": {"x": (LIENZO_ANCHO - tarjeta["ancho"]) // 2, "y": y, "w": tarjeta["ancho"], "h": tarjeta["alto"]}}
+    imagen = dibujar_capa(d_g, tarjeta, a_g, Path("."))
+    segundos = max(1.0, min(float(a.get("gancho_segundos", 3)), max(1.0, duracion - 0.5)))
+    return {"imagen": imagen, "x": d_g["tarjeta"]["x"], "y": y, "h": tarjeta["alto"], "segundos": segundos}
+
+
 def cargar_logo(recursos: Path, alto: int) -> Image.Image:
     """Logo del usuario (recortando sus márgenes transparentes) o un rótulo de texto por defecto."""
     ruta = recursos / "logo.png"
@@ -282,6 +298,12 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
         banner = componer_banner(banner_texto, a)
         d = calcular_disposicion(ancho, alto, a, banner)
         sub_kw = {}
+    gancho = None
+    # El gancho solo se usa cuando no hay banner fijo (vista dividida o pantalla completa sin banner).
+    if completo and a.get("gancho") and banner_texto.strip() and "tarjeta" not in d:
+        gancho = preparar_gancho(banner_texto, a, d, propiedades["duracion"])
+        gancho["imagen"].save(carpeta / "gancho.png")
+        d["gancho"] = {k: gancho[k] for k in ("x", "y", "h", "segundos")}
     dibujar_capa(d, banner, a, recursos).save(carpeta / "capa.png")
     (carpeta / "subtitulos.ass").write_text(
         a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"], resaltar=bool(a.get("sub_resaltar")),
@@ -324,10 +346,19 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
         filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
     if propiedades.get("fps", 0) > 60:
         filtros += ",fps=60"
-    filtros += (f",pad={LIENZO_ANCHO}:{LIENZO_ALTO}:{v['x']}:{v['y']}:black[v];"
-                "[v][1:v]overlay=0:0[c];[c]ass=subtitulos.ass:fontsdir=fuentes,format=yuv420p[out]")
+    filtros += f",pad={LIENZO_ANCHO}:{LIENZO_ALTO}:{v['x']}:{v['y']}:black[v];"
+    entradas = ["-i", entrada, "-i", "capa.png"]
+    if gancho:
+        s_g = gancho["segundos"]
+        entradas += ["-loop", "1", "-t", f"{s_g + 0.1:.2f}", "-i", "gancho.png"]
+        filtros += (f"[v][1:v]overlay=0:0[c0];[2:v]format=rgba,fade=t=in:st=0:d=0.25:alpha=1,"
+                    f"fade=t=out:st={max(0.3, s_g - 0.45):.2f}:d=0.45:alpha=1[g];"
+                    "[c0][g]overlay=0:0:eof_action=pass[c];")
+    else:
+        filtros += "[v][1:v]overlay=0:0[c];"
+    filtros += "[c]ass=subtitulos.ass:fontsdir=fuentes,format=yuv420p[out]"
     temporal = "render_tmp.mp4"
-    cmd = [herramienta("ffmpeg"), "-y", "-v", "error", "-i", entrada, "-i", "capa.png",
+    cmd = [herramienta("ffmpeg"), "-y", "-v", "error", *entradas,
            "-filter_complex", filtros, "-map", "[out]", "-map", "0:a:0?",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-profile:v", "high",
            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",

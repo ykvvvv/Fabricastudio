@@ -111,3 +111,33 @@ def test_editor_visual_en_vista_dividida(fabrica):
     assert set(e) == {"subtitulos", "logo"}                       # sin banner, firma ni video arrastrable
     assert e["subtitulos"]["mover"]["ajuste"] == "dividido_sub_y" and e["logo"]["tamano"]["ajuste"] == "dividido_logo_alto"
     assert pc.get("/api/diseno/vista", params={"estilo": "dividido"}).headers["content-type"] == "image/jpeg"
+
+
+def test_gancho_aparece_al_inicio_y_se_desvanece(tmp_path):
+    """Vista dividida: el banner pequeño se ve sobre la unión de las dos partes y desaparece a los segundos."""
+    import subprocess
+    from PIL import Image
+    from fabrica_studio.config import Rutas
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:r=30:d=5",
+                    "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-shortest", "-pix_fmt", "yuv420p",
+                    str(tmp_path / "entrada.mp4")], check=True)
+    encuadre = {"dividido": {"tipo": "camara", "proporcion": 40, "paneles": [
+        {"w": 320, "h": 180, "y": 0, "puntos": [(0.0, 0)], "filtro": "crop@arriba"},
+        {"w": 202, "h": 360, "y": 0, "puntos": [(0.0, 200)], "filtro": "crop@abajo"}]}}
+    a = {**A, "gancho": True, "gancho_segundos": 2}
+    props = {"ancho": 640, "alto": 360, "duracion": 5.0, "fps": 30}
+    res = render.renderizar(tmp_path, "entrada.mp4", props, "UN GANCHO DE PRUEBA", [], a,
+                            Rutas(tmp_path / "datos").recursos, encuadre=encuadre)
+    g = res["disposicion"]["gancho"]
+    assert g["segundos"] == 2 and (tmp_path / "gancho.png").exists()
+    y = g["y"] + g["h"] // 2
+    for t, blanco in ((1.0, True), (3.5, False)):
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", str(t), "-i", str(tmp_path / "short.mp4"),
+                        "-frames:v", "1", str(tmp_path / f"f{t}.png")], check=True)
+        r, gr, b = Image.open(tmp_path / f"f{t}.png").convert("RGB").getpixel((g["x"] + 12, y))
+        assert (min(r, gr, b) > 200) == blanco, (t, r, gr, b)
+
+
+def test_sin_gancho_si_hay_banner_fijo(tmp_path):
+    d = render.calcular_disposicion_completo(A, render.componer_banner("HOLA", A))
+    assert "tarjeta" in d          # pantalla completa con banner fijo: el gancho no se añade

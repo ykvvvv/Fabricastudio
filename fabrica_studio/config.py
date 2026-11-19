@@ -101,6 +101,11 @@ AJUSTES_POR_DEFECTO: dict = {
     "dividido_logo_alto": 52,
     "dividido_logo_y": 1430,          # termina antes de y≈1500, la franja que tapan los botones
     "dividido_banner": False,
+    # Gancho: en pantalla completa y vista dividida, el banner aparece pequeño los primeros segundos y se
+    # desvanece (en la vista dividida, sobre la línea que separa las dos partes).
+    "gancho": True,
+    "gancho_segundos": 3,
+    "gancho_tamano": 62,
     "dividido_firma": False,
     # --- Transcripción ---
     "whisper_modelo": "small",        # tiny, base, small, medium, large-v3...
@@ -162,6 +167,7 @@ LIMITES: dict = {
     "completo_sub_tamano": (24, 180), "completo_logo_alto": (20, 400), "completo_logo_y": (200, 1900),
     "dividido_proporcion": (30, 60), "dividido_sub_y": (200, 1850), "dividido_sub_tamano": (24, 180),
     "dividido_logo_alto": (20, 300), "dividido_logo_y": (200, 1900),
+    "gancho_segundos": (1, 10), "gancho_tamano": (30, 120),
     "momentos_cantidad": (1, 20), "subidas_max_dia": (0, 100), "subidas_intervalo_min": (0, 1440),
     "recorte_auto_segundos": (0, 180), "segundos_estable": (0, 600),
 }
@@ -173,7 +179,7 @@ COLORES = ("banner_color", "sub_color_resalte", "nombre_color")
 
 # Ajustes que, al cambiar, obligan a renderizar de nuevo (pero no a transcribir).
 AJUSTES_DE_DISENO = [k for k in AJUSTES_POR_DEFECTO if k.split("_")[0] in
-                     ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo", "dividido")] + [
+                     ("video", "banner", "sub", "logo", "nombre", "mostrar", "completo", "dividido", "gancho")] + [
                          "creador", "firma", "recortar_bordes", "estilo"]
 
 LIENZO_ANCHO = 1080

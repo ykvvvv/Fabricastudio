@@ -1117,3 +1117,10 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   mayúscula inicial, evita groserías al elegir la frase de título/banner, descripción más corta y, si la
   transcripción no trae ninguna puntuación, usa un texto genérico correcto («<creador> en directo») con aviso
   para editar o regenerar con Gemini. La transcripción no se modifica. 160 pruebas.
+- **2026-11-19 · Claude Code (nube)** — **Banner de gancho**: en la vista dividida (y en pantalla completa sin banner
+  fijo) el banner aparece pequeño los primeros `gancho_segundos` (3 por defecto, 1–10) y se desvanece (aparece en
+  0,25 s y se va en 0,45 s). En la vista dividida va centrado sobre la línea que separa las dos partes. Ajustes nuevos
+  en `config.py`: `gancho` (sí/no), `gancho_segundos`, `gancho_tamano` (letra, 30–120); forman parte de la huella de
+  render. `render.preparar_gancho` dibuja `gancho.png` y FFmpeg lo superpone con `fade` de alfa. Si el estilo ya
+  tiene banner fijo no se añade. **Pendiente para el panel (Claude del PC):** interruptor y control de segundos
+  en Diseño. 162 pruebas. No probado en el PC de Cristóbal.
