@@ -65,6 +65,17 @@ const iniciales = (n) => (String(n || "?").replace(/^@/, "").trim().slice(0, 2) 
 const avatarPerfil = (p, clase = "") => (p?.logo ? h`<span class="avatar ${clase}" aria-hidden="true"><img src="/api/perfiles/${p.id}/logo?v=${p.v}" alt=""></span>`
   : h`<span class="avatar ${clase}" aria-hidden="true">${iniciales(p?.nombre)}</span>`);
 const opcionesPerfil = (elegido) => S.estado.perfiles.map((p) => h`<option value="${p.id}" ${p.id === elegido ? "selected" : ""}>${p.nombre}${p.tema === "gta6" ? " · GTA 6" : ""}</option>`).join("");
+// Subidas. YouTube pone sus propios topes y el programa no los controla: este texto se muestra donde se decide subir.
+const LIMITES_YOUTUBE = "YouTube tiene sus propios límites diarios (la cuota de la API de tu proyecto de Google y los videos por día de tu canal) que Fábrica Studio no controla: si se alcanzan, las subidas se pausan solas hasta el día siguiente y siguen sin duplicar nada.";
+// Renderizados que aún no están en YouTube, del más antiguo al más reciente.
+const esperanSubir = () => S.estado.trabajos.filter((t) => t.estado === "renderizado" && !t.youtube_id).sort((a, b) => a.creado - b.creado);
+function estadoSubida(t) {
+  if (!t.subir_solicitado) return "";
+  const pausa = S.estado.subidas_pausadas_hasta;
+  if (pausa) return `YouTube pausó las subidas por su límite diario: este Short sube cuando termine la pausa (${horaSubida(pausa)}).`;
+  if (t.subir_ya) return "Subida prioritaria: empieza en cuanto termine lo que se está procesando.";
+  return S.estado.proxima_subida ? `En cola para subir: con el ritmo de publicación, la próxima subida es ${horaSubida(S.estado.proxima_subida)}.` : "En cola para subir…";
+}
 // Nombre del perfil de un clip; si se eliminó, el que tenía (el clip conserva una copia de sus valores).
 const nombrePerfil = (t) => perfilPorId(t.perfil)?.nombre || (t.perfil_copia ? `${t.perfil_copia} (perfil eliminado)` : "—");
 
@@ -198,10 +209,12 @@ function nuevoClip(pestana = "enlace") {
   let modo = pestana, archivos = [];
   abrirModal("Añadir un clip", h`<div class="modal-pestanas" role="tablist">
       <button role="tab" id="np-enlace" aria-controls="nc-enlace" data-p="enlace">Enlace de Kick</button><button role="tab" id="np-archivo" aria-controls="nc-archivo" data-p="archivo">Archivo de video</button></div>
-    <div id="nc-enlace" role="tabpanel" aria-labelledby="np-enlace"><label>Enlace público del clip<textarea id="nc-urls" rows="3" placeholder="https://kick.com/…"></textarea>
-      <span>Puedes pegar varios, uno por línea. Si Kick bloquea la descarga, se indicará el motivo.</span></label></div>
-    <div id="nc-archivo" role="tabpanel" aria-labelledby="np-archivo"><label class="soltar" id="nc-soltar">${ic("subir")}<span id="nc-elegidos">Arrastra videos aquí o pulsa para elegirlos</span><small>MP4, MOV, MKV o WebM</small>
-      <input type="file" id="nc-archivos" class="solo-lector" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm,.m4v" multiple></label></div>
+    <div id="nc-enlace" role="tabpanel" aria-labelledby="np-enlace"><label>Enlaces públicos de clips o videos<textarea id="nc-urls" rows="4" placeholder="https://kick.com/…"></textarea>
+      <span>Sin límite: pega todos los que quieras, uno por línea. Si Kick bloquea alguna descarga, se indica el motivo de esa.</span></label></div>
+    <div id="nc-archivo" class="pila" role="tabpanel" aria-labelledby="np-archivo"><label class="soltar" id="nc-soltar">${ic("subir")}<span id="nc-elegidos">Arrastra videos aquí o pulsa para elegirlos</span><small>MP4, MOV, MKV, WebM o M4V · sin límite de cantidad</small>
+      <input type="file" id="nc-archivos" class="solo-lector" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm,.m4v" multiple></label>
+      <div class="fila" id="nc-carpeta-fila"><label class="boton">${ic("subir")}Elegir una carpeta completa<input type="file" id="nc-carpeta" class="solo-lector" webkitdirectory multiple></label>
+        <span class="pequeno tenue">Se añaden todos sus videos (también los de sus subcarpetas).</span></div></div>
     <div class="campos"><label>Perfil de creador<select id="nc-perfil" aria-describedby="nc-perfil-ayuda">${crudo(opcionesPerfil(S.estado.perfil_activo))}</select></label>
       <label>Tipo de video<select id="nc-modo"><option value="clip">Clip ya seleccionado: se convierte completo en un Short</option>
       <option value="largo">Video largo: transcribir y proponer momentos para recortar</option></select></label></div>
@@ -212,7 +225,18 @@ function nuevoClip(pestana = "enlace") {
   const pestanas = () => ["enlace", "archivo"].forEach((p) => { $(`#np-${p}`).setAttribute("aria-selected", p === modo); $(`#nc-${p}`).hidden = p !== modo; });
   pestanas();
   $("#modal .modal-pestanas").addEventListener("click", (e) => { const b = e.target.closest("[data-p]"); if (b) { modo = b.dataset.p; pestanas(); } });
-  const elegir = (lista) => { archivos = [...lista]; $("#nc-elegidos").textContent = archivos.length ? archivos.map((f) => f.name).join(", ") : "Arrastra videos aquí o pulsa para elegirlos"; };
+  // Solo los formatos que acepta el servidor (media.EXTENSIONES); el resto se cuenta y se dice.
+  const elegir = (lista, carpeta = "") => {
+    const todos = [...lista]; archivos = todos.filter((f) => /\.(mp4|mov|mkv|webm|m4v)$/i.test(f.name));
+    const omitidos = todos.length - archivos.length;
+    const que = carpeta ? `${plural(archivos.length, "video", "videos")} de la carpeta «${carpeta}»`
+      : archivos.length > 3 ? `${plural(archivos.length, "video elegido", "videos elegidos")}` : archivos.map((f) => f.name).join(", ");
+    $("#nc-elegidos").textContent = !todos.length ? "Arrastra videos aquí o pulsa para elegirlos"
+      : !archivos.length ? "Ninguno es un video MP4, MOV, MKV, WebM o M4V."
+        : que + (omitidos ? ` (se ${omitidos === 1 ? "omite" : "omiten"} ${plural(omitidos, "archivo que no es video", "archivos que no son video")})` : "");
+  };
+  $("#nc-carpeta").addEventListener("change", (e) => elegir(e.target.files, e.target.files[0]?.webkitRelativePath.split("/")[0] || ""));
+  if (!("webkitdirectory" in document.createElement("input"))) $("#nc-carpeta-fila").hidden = true;   // navegadores sin selector de carpetas
   const soltar = $("#nc-soltar");
   ["dragover", "dragenter"].forEach((ev) => soltar.addEventListener(ev, (e) => { e.preventDefault(); soltar.classList.add("encima"); }));
   ["dragleave", "drop"].forEach((ev) => soltar.addEventListener(ev, (e) => { if (ev === "drop" || !soltar.contains(e.relatedTarget)) soltar.classList.remove("encima"); }));
@@ -582,6 +606,27 @@ function pintarLateral() {
   poner($("#menu-lista"), h`<a href="#ajustes" data-accion="ir-ajustes" data-p="cuenta">${ic("ajustes")}Cuenta</a>${s.sesion_iniciada ? crudo(h`<button data-accion="cerrar-sesion">${ic("salir")}Cerrar sesión</button>`) : ""}`);
 }
 
+// Resumen: los Shorts renderizados sin subir, con «Subir ahora» para el más antiguo, «Elegir otro…» y «Subir todos».
+function pintarSubidas(yt) {
+  const caja = $("#r-subir"), lista = esperanSubir(), destinados = lista.filter((t) => t.publicar);
+  caja.hidden = !yt.canal_id || !lista.length;
+  if (caja.hidden) return poner(caja, "");
+  const primero = destinados.find((t) => !t.subir_ya), pausa = S.estado.subidas_pausadas_hasta;
+  const prioritarios = lista.filter((t) => t.subir_ya).length, conRitmo = lista.filter((t) => t.subir_solicitado && !t.subir_ya).length;
+  const situacion = pausa ? `YouTube pausó las subidas por su límite diario hasta ${horaSubida(pausa)}.`
+    : [prioritarios && `${plural(prioritarios, "va", "van")} primero en la cola`, conRitmo && `${conRitmo} con el ritmo de publicación (próxima: ${S.estado.proxima_subida ? horaSubida(S.estado.proxima_subida) : "ahora"})`]
+      .filter(Boolean).join(" · ") || "Ninguno está en la cola de subida todavía.";
+  poner(caja, h`<div class="subir-cabeza"><div class="conexion-icono">${ic("youtube")}</div>
+      <div><h2>${plural(lista.length, "Short renderizado", "Shorts renderizados")} sin subir</h2><p>${situacion}</p></div></div>
+    ${primero ? crudo(h`<div class="subir-primero"><span class="miniatura"><img src="/media/${primero.id}/miniatura.jpg?v=${primero.actualizado}" alt="" loading="lazy"></span>
+      <span class="fila-subir-texto"><small>El más antiguo que espera</small><b>${primero.nombre}</b><small>${primero.textos.titulo || etiquetaOrigen(primero)}</small></span>
+      <button class="primario" data-accion="subir-ahora" data-id="${primero.id}" data-foco="r-subir-ahora">${ic("subir")}Subir ahora</button></div>`)
+      : crudo(`<p class="pequeno tenue">${destinados.length ? "Todos los que esperan ya van primero en la cola." : "Los que quedan se importaron sin destinar a YouTube: puedes subirlos uno a uno con «Elegir»."}</p>`)}
+    <div class="fila"><button data-accion="elegir-subida" data-foco="r-elegir">Elegir otro…</button>
+      ${destinados.length ? crudo(h`<button data-accion="subir-todos" data-foco="r-todos">Subir todos ahora (${destinados.length})</button>`) : ""}</div>
+    <p class="pequeno tenue">Siempre en privado, al canal «${yt.canal_nombre}». «Subir ahora» se salta el ritmo de publicación del programa, no el límite diario de YouTube.</p>`);
+}
+
 // Hora de la próxima subida (la API da segundos desde 1970; 0 = se puede subir ya). Como mucho es al día siguiente.
 function horaSubida(s) {
   const d = new Date(s * 1000), hora = d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -594,6 +639,7 @@ function pintarResumen(m, completo) {
     m.innerHTML = h`<div class="cabecera"><div><div class="antetitulo">Tu espacio creativo</div><h1>Tu estudio</h1><p>De un buen momento a tu próximo Short.</p></div>
         <button class="primario" data-accion="nuevo">${ic("mas")}Nuevo clip</button></div>
       <div class="cifras" id="r-cifras"></div>
+      <section class="panel subir-panel" id="r-subir" aria-label="Subir a YouTube" hidden></section>
       <div class="dos-columnas"><div class="panel">
           <div class="panel-titulo"><div><h2>Un enlace. Un nuevo clip.</h2><p>Añade un momento de tu stream a la cola.</p></div></div>
           <form class="entrada" id="r-form"><div class="entrada-caja">${ic("enlace")}<input id="r-url" type="url" aria-label="Enlace del clip de Kick" placeholder="Pega un enlace de Kick…" autocomplete="off" required>
@@ -635,6 +681,7 @@ function pintarResumen(m, completo) {
   else poner($("#r-recientes"), `<div class="sin-nada">${icono("capas")}${S.busca ? "Ningún clip coincide con la búsqueda." : "Aún no hay clips. Pega un enlace arriba para empezar."}</div>`);
   poner($("#r-pie"), h`<span>${cola ? `${plural(cola, "clip", "clips")} en cola` : "No hay clips en cola"}</span><span>${e.carpeta.activa ? "Carpeta vigilada activa" : ""}</span>`);
   poner($("#r-perfil"), opcionesPerfil(e.perfil_activo));      // se rehace solo si cambian los perfiles o el activo
+  pintarSubidas(yt);
   $("#r-estilo").textContent = NOMBRE_ESTILO[e.estilo] || NOMBRE_ESTILO.clasico;
   poner($("#r-youtube"), h`<div class="conexion-icono">${ic("youtube")}</div><div><h3>${yt.canal_id ? `Canal de destino: ${yt.canal_nombre}` : "Tu canal, en el mismo lugar"}</h3>
       <p>${yt.canal_id ? `Subida automática ${e.subida_automatica ? "activa" : "desactivada"}. Todo se sube en privado.` : yt.conectado ? "Cuenta conectada. Falta confirmar el canal de destino." : "Conecta YouTube para recibir tus Shorts en privado."}${e.proxima_subida > 0 ? ` Próxima subida: ${horaSubida(e.proxima_subida)}.` : ""}</p></div>
@@ -911,8 +958,16 @@ function pintarTrabajo(m, completo) {
   const pasos = ETAPAS.map(([k, n]) => h`<li class="${t.etapas[k]?.estado || ""}"><span class="punto"></span><span>${n}</span><span>${t.etapas[k]?.detalle || ""}</span></li>`).join("");
   let botones = "";
   if (t.estado === "error") botones += `<button class="primario" data-accion="reintentar" data-foco="b-reintentar">Reintentar</button>`;
+  if (t.estado === "renderizado" && !t.youtube_id) {
+    if (!yt.canal_id) botones += t.subir_solicitado ? "" : `<a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">Conectar YouTube para subir</a>`;
+    else {
+      if (!t.subir_ya) botones += h`<button class="primario" data-accion="subir-ahora" data-foco="b-subir-ahora">${ic("subir")}Subir ahora</button>`;
+      // Con un ritmo de publicación que haría esperar, también se puede dejar en la cola normal.
+      if (!t.subir_solicitado && S.estado.proxima_subida && !S.estado.subidas_pausadas_hasta) botones += `<button data-accion="subir" data-foco="b-subir">Añadir a la cola (con el ritmo)</button>`;
+      if (t.subir_solicitado) botones += `<button data-accion="cancelar-subida" data-foco="b-cancelar-subida">Quitar de la cola de subida</button>`;
+    }
+  }
   if (t.estado === "renderizado" && !t.subir_solicitado) {
-    botones += yt.canal_id ? h`<button class="primario" data-accion="subir" data-foco="b-subir">Subir en privado a ${yt.canal_nombre}</button>` : `<a class="boton" href="#ajustes" data-accion="ir-ajustes" data-p="youtube">Conectar YouTube para subir</a>`;
     botones += `<button data-accion="renderizar" data-foco="b-render">Renderizar de nuevo</button>`;
     if (!t.youtube_id) botones += h`<button data-accion="editar-tiempos" data-foco="b-tiempos">${ic("tijera")}Editar tiempos</button>`;
   }
@@ -938,7 +993,7 @@ function pintarTrabajo(m, completo) {
   if (!["procesando", "subiendo"].includes(t.estado)) botones += `<button class="texto peligro" data-accion="eliminar" data-foco="b-eliminar">Eliminar</button>`;
   const sal = t.salida;
   const destino = t.youtube_id ? "Subido en privado" : t.subir_solicitado || t.estado === "subiendo" ? "En cola para subir en privado" : t.publicar ? "Sin subir" : "No destinado a YouTube";
-  poner($("#t-estado"), h`<div class="fila">${crudo(pastilla(t))}<span class="tenue pequeno">${t.progreso || (t.subir_solicitado ? "En cola para subir…" : "")}</span></div>
+  poner($("#t-estado"), h`<div class="fila">${crudo(pastilla(t))}<span class="tenue pequeno">${t.progreso || estadoSubida(t)}</span></div>
     ${t.error ? crudo(h`<p class="nota mal" role="alert">${t.error}</p>`) : ""}
     ${crudo(encuadreAuto(t))}
     ${t.avisos.map((a) => crudo(h`<p class="nota">${a}</p>`))}
@@ -1173,9 +1228,41 @@ const acciones = {
   "restaurar-subtitulos": accionTrabajo("restaurar-subtitulos", "Subtítulos restaurados."),
   subir: intentar(async () => {
     const yt = S.estado.youtube;
-    if (!await confirmar("Subir a YouTube", `Se subirá este Short en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}).`, "Subir en privado")) return;
-    await api(`/api/trabajos/${S.jid}/subir`, { method: "POST" }); avisar("Subida en cola."); refrescar();
+    if (!await confirmar("Añadir a la cola de subida", `Se subirá en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}) cuando le toque según el ritmo de publicación: la próxima subida es ${horaSubida(S.estado.proxima_subida)}. Para no esperar, usa «Subir ahora».`, "Añadir a la cola")) return;
+    await api(`/api/trabajos/${S.jid}/subir`, { method: "POST" }); avisar("En la cola de subida."); refrescar();
   }),
+  // «Subir ahora»: primero en la cola y sin el ritmo del programa; la pausa por el límite de YouTube se respeta.
+  "subir-ahora": intentar(async (b) => {
+    const t = S.estado.trabajos.find((x) => x.id === (b.dataset.id || S.jid)), yt = S.estado.youtube, pausa = S.estado.subidas_pausadas_hasta;
+    if (!t) return;
+    const cuando = pausa ? `cuando termine la pausa de YouTube por su límite diario (${horaSubida(pausa)})` : "en cuanto termine lo que se está procesando";
+    if (!await confirmar("Subir ahora", `«${t.nombre}» se subirá en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}) ${cuando}, sin esperar el ritmo de publicación.`, "Subir ahora en privado")) return;
+    await api(`/api/trabajos/${t.id}/subir-ahora`, { method: "POST" });
+    avisar(`«${t.nombre}» va primero en la cola de subida: sube ${cuando}.`); refrescar();
+  }),
+  "cancelar-subida": intentar(async (b) => {
+    await api(`/api/trabajos/${b.dataset.id || S.jid}/cancelar-subida`, { method: "POST" });
+    avisar("Quitado de la cola de subida: puedes editarlo o subirlo cuando quieras."); refrescar();
+  }),
+  "subir-todos": intentar(async () => {
+    const yt = S.estado.youtube, todos = esperanSubir(), destinados = todos.filter((t) => t.publicar), pausa = S.estado.subidas_pausadas_hasta;
+    if (!destinados.length) return avisar("No hay Shorts renderizados esperando subida.", true);
+    const omitidos = todos.length - destinados.length;
+    if (!await confirmar("Subir todos ahora", `Se subirán en PRIVADO al canal «${yt.canal_nombre}» (${yt.canal_id}) ${plural(destinados.length, "Short renderizado", "Shorts renderizados")}, del más antiguo al más reciente, sin esperar el ritmo de publicación.`
+      + (omitidos ? ` Se ${omitidos === 1 ? "omite" : "omiten"} ${plural(omitidos, "clip importado", "clips importados")} como «no destinar a YouTube».` : "")
+      + (pausa ? ` Ahora mismo YouTube tiene las subidas en pausa hasta ${horaSubida(pausa)}.` : "") + ` ${LIMITES_YOUTUBE}`, "Subir todos en privado")) return;
+    const r = await api("/api/subir-todos", { method: "POST" });
+    avisar(`${plural(r.encolados, "Short en cola", "Shorts en cola")} para subir en privado${r.pausa_hasta ? `, cuando termine la pausa de YouTube (${horaSubida(r.pausa_hasta)})` : ""}.`); refrescar();
+  }),
+  // Lista para elegir qué subir ahora (el Resumen propone el más antiguo).
+  "elegir-subida": () => {
+    const lista = esperanSubir(), yt = S.estado.youtube;
+    abrirModal("Elegir qué subir ahora", h`<p>Shorts renderizados que aún no están en YouTube, del más antiguo al más reciente. Se suben en privado al canal «${yt.canal_nombre}».</p>
+      <div class="lista-subir">${lista.map((t) => crudo(h`<div class="fila-subir"><span class="miniatura"><img src="/media/${t.id}/miniatura.jpg?v=${t.actualizado}" alt="" loading="lazy"></span>
+        <span class="fila-subir-texto"><b>${t.nombre}</b><small>${t.textos.titulo || etiquetaOrigen(t)}</small>${t.publicar ? "" : crudo(`<small>Importado sin destinar a YouTube</small>`)}${t.subir_solicitado ? crudo(h`<small>${estadoSubida(t)}</small>`) : ""}</span>
+        ${t.subir_ya ? crudo(`<span class="pastilla proceso">Primero en la cola</span>`) : crudo(h`<button class="primario" data-accion="subir-ahora" data-id="${t.id}">Subir ahora</button>`)}</div>`))}</div>`,
+    `<button data-accion="cerrar-modal">Cerrar</button>`);
+  },
   eliminar: intentar(async () => {
     if (!await confirmar("Eliminar el trabajo", "Se eliminará el trabajo y sus archivos intermedios de este PC. No borra nada de YouTube.", "Eliminar", true)) return;
     await api(`/api/trabajos/${S.jid}`, { method: "DELETE" }); location.hash = S.desde;
@@ -1542,7 +1629,9 @@ async function pintarAjustes(m) {
         <label>Minutos entre subidas<input type="number" name="subidas_intervalo_min" min="0" max="1440" step="1" value="${v.subidas_intervalo_min}" aria-describedby="ayuda-ritmo"></label>
         <label>Recortar clips más largos de (s)<select name="recorte_auto_segundos" aria-describedby="ayuda-recorte">${[...new Set([0, 60, 180, v.recorte_auto_segundos])].map((x) => crudo(h`<option value="${x}" ${x === v.recorte_auto_segundos ? "selected" : ""}>${x ? `${x} s` : "Nunca"}</option>`))}</select></label>
       </div>
-      <p class="pequeno tenue" id="ayuda-ritmo">0 = sin límite o sin espera. Las subidas esperan su turno; el resto de la cola sigue procesándose.</p>
+      <p class="pequeno tenue" id="ayuda-ritmo">Ritmo de publicación de Fábrica Studio: 0 en «Máximo de subidas por día» = sin máximo; 0 en «Minutos entre subidas» = sin espera. Con los dos en 0, cada Short sube en cuanto está listo. Mientras una subida espera su turno, el resto de la cola sigue procesándose, y «Subir ahora» (en el Resumen y en cada clip) se salta este ritmo.</p>
+      <p class="pequeno" id="ritmo-ahora" role="status"></p>
+      <p class="nota" id="limites-youtube">${LIMITES_YOUTUBE}</p>
       <p class="pequeno tenue" id="ayuda-recorte">Si un clip dura más, se conserva su mejor tramo (puedes cambiarlo en «Editar tiempos»). 180 s es el máximo de un Short.</p>
       <div><button>Guardar</button></div></form>`;
   } else if (S.pestana === "proveedores") {
@@ -1610,6 +1699,13 @@ async function pintarAjustes(m) {
     await api("/api/ajustes", { method: "PUT", json: cambios }); avisar(mensaje); refrescar();
   }));
   guardarForm("#form-pub", "Publicación guardada."); guardarForm("#form-prov", "Proveedores guardados.");
+  // El ritmo en palabras, mientras se escribe (0 = sin límite).
+  const ritmo = () => {
+    const f = $("#form-pub"), max = +f.subidas_max_dia.value, min = +f.subidas_intervalo_min.value;
+    $("#ritmo-ahora").textContent = !max && !min ? "Ahora: sin límite del programa. Cada Short sube en cuanto está listo."
+      : `Ahora: ${max ? `hasta ${plural(max, "subida", "subidas")} cada 24 h` : "sin máximo por día"}, ${min ? `con ${min} min entre una y otra` : "sin espera entre una y otra"}.`;
+  };
+  if ($("#form-pub")) { ritmo(); $("#form-pub").addEventListener("input", ritmo); }
 
   $("#form-clave")?.addEventListener("submit", async (e) => {
     e.preventDefault();

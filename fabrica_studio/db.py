@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS trabajos (
     avisos TEXT NOT NULL DEFAULT '[]',
     publicar INTEGER NOT NULL DEFAULT 1,
     subir_solicitado INTEGER NOT NULL DEFAULT 0,
+    subir_ya REAL NOT NULL DEFAULT 0,   -- «Subir ahora»: hora en que se pidió (0 = no). Va primero y sin el ritmo.
     textos TEXT NOT NULL DEFAULT '{}',
     datos TEXT NOT NULL DEFAULT '{}',
     youtube_id TEXT NOT NULL DEFAULT '',
@@ -135,7 +136,19 @@ class DB:
         self._c.row_factory = sqlite3.Row
         self._c.execute("PRAGMA journal_mode=WAL")
         self._c.executescript(_ESQUEMA)
+        self._migrar_columnas()
         self._migrar_perfiles()
+
+    def _migrar_columnas(self) -> None:
+        """Columnas añadidas después de crear la tabla: las bases de antes no las tienen."""
+        with self._lock:
+            columnas = {r["name"] for r in self._c.execute("PRAGMA table_info(trabajos)")}
+            if "subir_ya" not in columnas:
+                try:
+                    self._c.execute("ALTER TABLE trabajos ADD COLUMN subir_ya REAL NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError as e:      # el panel y el servidor MCP arrancaron a la vez
+                    if "duplicate column" not in str(e):
+                        raise
 
     # ---------- trabajos ----------
     def _fila(self, r: sqlite3.Row | None) -> dict | None:
@@ -223,12 +236,28 @@ class DB:
             desde = max(desde, recientes[-a["subidas_max_dia"]] + 86400)    # cuando la más antigua cumpla 24 h
         return desde
 
-    def siguiente(self) -> dict | None:
-        """Siguiente trabajo que necesita al trabajador (el más antiguo primero).
-        Las subidas esperan su turno según el ritmo de publicación o la pausa por límite diario;
-        mientras tanto se sigue procesando y renderizando."""
-        subir = time.time() >= self.proxima_subida()
+    def turno_subida(self) -> float:
+        """Turno para un «Subir ahora» nuevo: la hora actual, pero siempre después del último pedido (en Windows con
+        Python 3.12 el reloj avanza a saltos de ~15 ms y dos pedidos seguidos podían empatar)."""
         with self._lock:
+            ultimo = self._c.execute("SELECT COALESCE(MAX(subir_ya), 0) FROM trabajos").fetchone()[0]
+        return max(time.time(), ultimo + 0.001)
+
+    def siguiente(self) -> dict | None:
+        """Siguiente trabajo que necesita al trabajador.
+        1. «Subir ahora», en el orden en que se pidió: antes que todo y sin esperar el ritmo de publicación del
+           programa. La pausa por el límite diario de YouTube sí se respeta (subir igual fallaría).
+        2. El más antiguo pendiente de procesar, o listo para subir si el ritmo y la pausa lo permiten; mientras
+           una subida espera su turno se sigue procesando y renderizando."""
+        ahora = time.time()
+        pausa = self.ajustes()["subidas_pausadas_hasta"] > ahora
+        subir = ahora >= self.proxima_subida()
+        with self._lock:
+            if not pausa:
+                urgente = self._c.execute("SELECT * FROM trabajos WHERE estado='renderizado' AND subir_solicitado=1 "
+                                          "AND subir_ya>0 ORDER BY subir_ya LIMIT 1").fetchone()
+                if urgente:
+                    return self._fila(urgente)
             return self._fila(self._c.execute(
                 "SELECT * FROM trabajos WHERE estado='pendiente'"
                 + (" OR (estado='renderizado' AND subir_solicitado=1)" if subir else "")

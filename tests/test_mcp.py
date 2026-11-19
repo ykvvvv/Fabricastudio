@@ -70,6 +70,18 @@ def test_perfiles_por_mcp(fab_mcp, clip):
     assert next(p for p in _llamar("listar_perfiles")["perfiles"] if p["id"] == beto["id"])["clips"] == 1
 
 
+def test_importar_sin_tope_y_subir_ahora_por_mcp(fab_mcp, tmp_path):
+    rutas = [str(tmp_path / f"no_existe_{i}.mp4") for i in range(60)]            # antes se cortaba en 50
+    r = _llamar("importar_archivos", rutas=rutas)
+    assert len(r["resultados"]) == 60 and r["importados"] == 0
+    t = fab_mcp.db.crear_trabajo("listo", "archivo")
+    fab_mcp.db.actualizar(t["id"], estado="renderizado")
+    assert _llamar("subir_a_youtube", id=t["id"], ahora=True)["tipo"] == "configuracion"
+    fab_mcp.db.guardar_ajustes({"youtube_canal_id": "UC_ok"})
+    assert _llamar("subir_a_youtube", id=t["id"], ahora=True)["ok"]
+    assert fab_mcp.db.trabajo(t["id"])["subir_ya"] > 0
+
+
 def test_protocolo_mcp_real_por_stdio(tmp_path):
     """Arranca el servidor como lo haría Claude Code y llama herramientas por el protocolo MCP."""
     from mcp.client.session import ClientSession

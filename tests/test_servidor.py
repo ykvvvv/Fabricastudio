@@ -183,3 +183,19 @@ def test_puerto_ocupado_detecta_otro_panel():
         assert puerto_ocupado(puerto) in ("otro programa usa ese puerto",) or puerto_ocupado(puerto).startswith("versión")
     finally:
         s.close()
+
+
+def test_subir_ahora_quitar_de_la_cola_y_subir_todos_por_la_api(fabrica):
+    pc, tablet, _ = _clientes(fabrica)
+    t = fabrica.db.crear_trabajo("listo", "archivo")
+    fabrica.db.actualizar(t["id"], estado="renderizado", textos={"titulo": "x #Shorts", "descripcion": "", "es_gaming": False})
+    r = pc.post(f"/api/trabajos/{t['id']}/subir-ahora")
+    assert r.status_code == 409 and r.json()["tipo"] == "configuracion"        # sin canal confirmado
+    fabrica.db.guardar_ajustes({"youtube_canal_id": "UC_ok"})
+    r = pc.post(f"/api/trabajos/{t['id']}/subir-ahora").json()
+    assert r["subir_ya"] is True and r["subir_solicitado"] is True
+    assert pc.post(f"/api/trabajos/{t['id']}/cancelar-subida").json()["subir_ya"] is False
+    assert pc.post(f"/api/trabajos/{t['id']}/cancelar-subida").status_code == 400   # ya no estaba en la cola
+    assert pc.post("/api/subir-todos").json() == {"encolados": 1, "omitidos": 0, "pausa_hasta": 0}
+    assert pc.get("/api/estado").json()["trabajos"][0]["subir_ya"] is True
+    assert tablet.post("/api/subir-todos").status_code == 401                 # sin vincular, nada

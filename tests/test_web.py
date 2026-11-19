@@ -120,6 +120,18 @@ def test_campos_de_publicacion_son_ajustes_reales():
     assert "e.proxima_subida > 0 ? ` Próxima subida: ${horaSubida(e.proxima_subida)}.`" in js
 
 
+def test_subidas_sin_limites_del_programa_y_limites_de_youtube_explicados():
+    """«Subir ahora», «Subir todos», quitar de la cola, importar una carpeta y el aviso de los límites de YouTube."""
+    js = _texto("app.js")
+    assert "const LIMITES_YOUTUBE =" in js and "no controla" in js
+    publicacion = js.split('id="form-pub"')[1].split("</form>")[0]
+    assert "${LIMITES_YOUTUBE}" in publicacion and "= sin máximo" in publicacion and "= sin espera" in publicacion
+    for accion in ("subir-ahora", "subir-todos", "elegir-subida", "cancelar-subida"):
+        assert f'data-accion="{accion}"' in js, accion
+    assert '"/api/subir-todos"' in js and "/subir-ahora`" in js and "/cancelar-subida`" in js
+    assert "webkitdirectory" in js and "Sin límite" in js
+
+
 def test_el_panel_se_revalida_tras_actualizar(fabrica):
     """Sin esto el navegador seguía usando un app.js viejo después de un git pull."""
     pc = TestClient(crear_app(fabrica, iniciar_hilos=False), base_url="http://127.0.0.1:8765")

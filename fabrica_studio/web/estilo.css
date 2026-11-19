@@ -599,6 +599,26 @@ input[type=checkbox]:disabled { opacity: .45; cursor: not-allowed; }
 .galeria > .logro::after { border-radius: var(--radio); }
 @keyframes brillo { 22% { opacity: 1; } }
 
+/* ---------------------------------------------------------------- subir a YouTube: Resumen y lista para elegir */
+.subir-panel { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; border-color: #4a3f35; background: linear-gradient(120deg, #1a1715, #141415 60%); }
+.subir-cabeza { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.subir-cabeza h2 { font-size: 15px; }
+.subir-cabeza p { font-size: 12px; color: var(--apagado); margin-top: 3px; overflow-wrap: anywhere; }
+.subir-primero, .fila-subir { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.subir-primero { border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; background: #141415; }
+.subir-primero > .primario { margin-left: auto; flex: none; }
+.fila-subir-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.fila-subir-texto b { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fila-subir-texto small { font-size: 12px; color: var(--apagado); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-subir { display: flex; flex-direction: column; }
+.fila-subir { padding: 10px 0; border-bottom: 1px solid var(--borde-suave); }
+.fila-subir:last-child { border-bottom: 0; }
+.fila-subir > .primario, .fila-subir > .pastilla { flex: none; }
+@media (max-width: 680px) {
+  .subir-primero { flex-wrap: wrap; }
+  .subir-primero > .primario { margin-left: 0; width: 100%; }
+}
+
 /* ---------------------------------------------------------------- perfiles de creador */
 .avatar { overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: contain; padding: 3px; display: block; }

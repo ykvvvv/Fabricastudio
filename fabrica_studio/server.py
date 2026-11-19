@@ -219,6 +219,7 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         return {**{k: t[k] for k in ("id", "creado", "actualizado", "nombre", "origen_tipo", "estado", "etapa",
                                      "etapas", "error", "error_tipo", "avisos", "publicar", "subir_solicitado",
                                      "textos", "youtube_id", "modo")},
+                "subir_ya": bool(t["subir_ya"]),          # «Subir ahora»: va primero, sin el ritmo de publicación
                 "origen_ref": t["origen_ref"] if t["origen_tipo"] == "enlace" else Path(t["origen_ref"]).name,
                 "salida": t["datos"].get("salida"), "copia": t["datos"].get("copia", ""),
                 "estilo": t["datos"].get("estilo", ""), "duracion": _duracion(t),
@@ -297,6 +298,11 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
             raise ErrorEtapa("Datos no válidos.", "entrada")
         return c
 
+    @app.post("/api/subir-todos")
+    def subir_todos():
+        """«Subir ahora» para todos los renderizados que esperan (siempre en privado, al canal confirmado)."""
+        return fab.subir_todos_ahora()
+
     # ------------------------------------------------------------ perfiles de creador
     @app.get("/api/perfiles")
     def perfiles():
@@ -362,7 +368,8 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
 
     @app.post("/api/trabajos/{jid}/{accion}")
     def accion(jid: str, accion: str):
-        acciones = {"reintentar": fab.reintentar, "subir": fab.solicitar_subida,
+        acciones = {"reintentar": fab.reintentar, "subir": fab.solicitar_subida, "subir-ahora": fab.subir_ahora,
+                    "cancelar-subida": fab.cancelar_subida,
                     "renderizar": fab.renderizar_de_nuevo, "regenerar-textos": fab.regenerar_textos,
                     "restaurar-subtitulos": fab.restaurar_subtitulos, "retranscribir": fab.retranscribir, "proponer-momentos": fab.proponer_de_nuevo}
         if accion not in acciones:

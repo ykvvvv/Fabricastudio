@@ -140,8 +140,8 @@ def _importar_uno(ruta: str, modo: str, subir: bool) -> dict:
                            "completo en Short) o 'largo' (VOD: propone momentos). subir_a_youtube: si al terminar "
                            "puede subirse (siempre en privado). No modifica ni mueve los archivos originales.")
 def importar_archivos(rutas: list[str], modo: str = "clip", subir_a_youtube: bool = False) -> dict:
-    resultados = [_importar_uno(r, modo, subir_a_youtube) for r in rutas[:50]]
-    return {"resultados": resultados, "panel_activo": panel_activo()}
+    resultados = [_importar_uno(r, modo, subir_a_youtube) for r in rutas]       # sin tope: cada uno con su resultado
+    return {"resultados": resultados, "importados": sum(r["ok"] for r in resultados), "panel_activo": panel_activo()}
 
 
 @servidor.tool(description="Importa todos los videos (mp4, mov, mkv, webm, m4v) de una carpeta del PC, sin "
@@ -213,9 +213,10 @@ def crear_clip_de_momento(id: str, inicio: float, fin: float) -> dict:
 
 
 @servidor.tool(description="Pide subir un clip renderizado a YouTube. SIEMPRE en privado y al canal confirmado; "
-                           "nunca dos veces el mismo clip. Lo ejecuta el panel.")
-def subir_a_youtube(id: str) -> dict:
-    return _accion(fabrica().solicitar_subida, id)
+                           "nunca dos veces el mismo clip. Lo ejecuta el panel. ahora=True: va primero y sin esperar el "
+                           "ritmo de publicación del programa (la pausa por el límite diario de YouTube sí se respeta).")
+def subir_a_youtube(id: str, ahora: bool = False) -> dict:
+    return _accion(fabrica().subir_ahora if ahora else fabrica().solicitar_subida, id)
 
 
 @servidor.tool(description="Exporta un Short para 'tiktok', 'reels' o 'shorts': copia el MP4 a 4_exportados/ con "

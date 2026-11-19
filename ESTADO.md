@@ -1023,6 +1023,36 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     subidas; ningún secreto en las respuestas nuevas; las rutas con `<id>` comprueban que el perfil exista antes de leer,
     escribir o borrar archivos.
   - **No probado** en la MatePad real ni con un render real de Whisper (pytest usa una transcripción fija).
+- **2026-11-18 · Claude Code (PC Windows)** — **Encargo, fase 2: «Subir ahora» y sin topes del programa** (`db.py`,
+  `pipeline.py`, `server.py`, `mcp_servidor.py`, `web/{app.js,estilo.css}`, `tests/{test_pipeline,test_servidor,test_mcp,test_web}.py`).
+  Nota: entre la fase 1 y esta, la sesión de la nube hizo `28dc3b4` (aviso si el puerto ya está ocupado, en `server.main()`);
+  no choca con nada de este encargo.
+  - **Cola:** columna nueva `trabajos.subir_ya` (hora del pedido; migración con `ALTER TABLE` para las bases existentes).
+    `db.siguiente()` atiende primero los «Subir ahora» en el orden pedido y sin el ritmo de publicación del programa; la
+    **pausa por el límite diario de YouTube sí se respeta**. Turnos siempre crecientes (`db.turno_subida`): en Windows con
+    Python 3.12 el reloj avanza a saltos de ~15 ms y dos pedidos seguidos podían empatar.
+  - **Acciones:** `subir_ahora` (privado, canal confirmado, nunca dos veces: pedirlo otra vez no cambia su turno),
+    `subir_todos_ahora` (renderizados sin subir, del más antiguo al más reciente; omite los importados «sin destinar a
+    YouTube»), `cancelar_subida` (quitar de la cola mientras espera; nuevo, para poder deshacer «Subir todos»). Una subida
+    que falla o termina pierde la prioridad; una pausada por cuota la conserva. API: `POST /api/trabajos/<id>/subir-ahora`,
+    `…/cancelar-subida`, `POST /api/subir-todos`; cada clip trae `subir_ya`. MCP: `subir_a_youtube(id, ahora=True)` y
+    `importar_archivos` sin el tope de 50.
+  - **Panel:** tarjeta en el Resumen con el más antiguo que espera y «Subir ahora», «Elegir otro…» (lista) y «Subir todos
+    ahora (N)»; en el detalle, «Subir ahora», «Añadir a la cola (con el ritmo)» si el ritmo haría esperar y «Quitar de la
+    cola de subida», con el estado en palabras (prioritaria, con el ritmo y su hora, pausa de YouTube). Toda confirmación
+    nombra el canal y su ID y dice «en privado». Ajustes → Publicación explica «0 = sin máximo / sin espera», muestra el
+    ritmo en palabras mientras se escribe y avisa que YouTube tiene sus propios límites diarios que el programa no
+    controla (también en «Subir todos»). «Nuevo clip»: «Elegir una carpeta completa» (incluye subcarpetas; se omiten y se
+    cuentan los archivos que no son video; se oculta si el navegador no lo admite) y textos de «sin límite» para enlaces
+    y archivos.
+  - **Pruebas:** 150 con pytest (2 omitidas, POSIX); nuevas: «subir ahora» se salta el ritmo pero no la pausa y no
+    duplica; va primero en el orden pedido; «subir todos» + quitar de la cola; API; MCP sin tope y con `ahora`; textos del
+    panel. Playwright con datos temporales (servidor sin trabajador: **nada se subió a YouTube**), escritorio 1440×900 y
+    tablet emulada 800×1280 (CPU 4×): **56 comprobaciones bien**. Capturas en `docs/diseno/capturas-subidas/`.
+  - **Revisión de Codex: pendiente** (cupo agotado hasta el 2026-11-20 16:56). Revisión propia con la lista de AGENTS.md:
+    privacidad y canal sin cambios (se sube por el mismo `subir()`), sin duplicados (`youtube_id` se comprueba al pedir y al
+    subir), sin secretos nuevos, errores reanudables (la pausa por cuota conserva el turno).
+  - **No probado** con YouTube real: ni «Subir ahora» con el límite diario de verdad ni en el PC de Cristóbal.
 - **2026-11-19 · Claude Code (nube)** — Panel en gris tras reiniciar: había otro Fábrica Studio en el puerto 8765 y el
   nuevo no arrancaba (WinError 10048). `server.main` ahora detecta el puerto ocupado: si es otro Fábrica Studio, lo
   dice con su versión y abre el navegador; si es otro programa, lo explica. 146 pruebas.

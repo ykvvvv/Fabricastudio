@@ -230,7 +230,7 @@ class Fabrica:
         carpeta.mkdir(parents=True, exist_ok=True)
         perfil = self.perfil_de(t)
         a = {**self.db.ajustes(), **perfil_como_ajustes(perfil)}     # el perfil del clip, no el activo
-        self.db.actualizar(jid, estado="procesando", error="", error_tipo="", subir_solicitado=False)
+        self.db.actualizar(jid, estado="procesando", error="", error_tipo="", subir_solicitado=False, subir_ya=0)
 
         # 1. Importar (solo los enlaces descargan aquí).
         entrada = self._entrada(carpeta)
@@ -494,7 +494,7 @@ class Fabrica:
     def subir(self, jid: str) -> None:
         t = self.db.trabajo(jid)
         if t["youtube_id"]:
-            self.db.actualizar(jid, estado="publicado", subir_solicitado=False)
+            self.db.actualizar(jid, estado="publicado", subir_solicitado=False, subir_ya=0)
             return
         a = self.db.ajustes()
         carpeta = self.rutas.trabajo(jid)
@@ -512,7 +512,7 @@ class Fabrica:
                                  bool(a["contenido_para_ninos"]), dict(t["subida"]), guardar, progreso)
         if not vid:
             raise ErrorEtapa("YouTube no devolvió el ID del video; revisa YouTube Studio antes de reintentar.", "incierto")
-        self.db.actualizar(jid, youtube_id=vid, estado="publicado",
+        self.db.actualizar(jid, youtube_id=vid, estado="publicado", subir_ya=0,
                            subida={"canal_id": a["youtube_canal_id"], "terminado": time.time(), "privacidad": "private"})
         self.db.marcar_etapa(jid, "subir", "hecho", f"privado · {vid}")
         self.progreso.pop(jid, None)
@@ -569,7 +569,7 @@ class Fabrica:
         mensaje = sin_secretos(mensaje)
         etapa = t["etapa"] or "importar"
         self.db.marcar_etapa(jid, etapa, "error", mensaje[:200])
-        self.db.actualizar(jid, estado="error", error=mensaje, error_tipo=tipo, subir_solicitado=False)
+        self.db.actualizar(jid, estado="error", error=mensaje, error_tipo=tipo, subir_solicitado=False, subir_ya=0)
         self.progreso.pop(jid, None)
 
     # ------------------------------------------------------------ acciones del panel
@@ -582,15 +582,51 @@ class Fabrica:
         else:
             self.db.actualizar(jid, estado="pendiente", error="", error_tipo="")
 
-    def solicitar_subida(self, jid: str) -> None:
-        t = self._trabajo(jid)
+    def _se_puede_subir(self, t: dict) -> None:
         if t["youtube_id"]:
             raise ErrorEtapa("Este Short ya se subió; no se sube dos veces.", "duplicado")
         if t["estado"] != "renderizado":
             raise ErrorEtapa("El Short aún no está renderizado.", "entrada")
         if not self.db.ajustes()["youtube_canal_id"]:
             raise ErrorEtapa("Primero conecta YouTube y confirma el canal en Ajustes.", "configuracion")
+
+    def solicitar_subida(self, jid: str) -> None:
+        """A la cola de subida: sube cuando le toque según el ritmo de publicación."""
+        self._se_puede_subir(self._trabajo(jid))
         self.db.actualizar(jid, subir_solicitado=True)
+
+    def subir_ahora(self, jid: str) -> dict:
+        """Sube este clip antes que todo lo demás, sin esperar el ritmo de publicación del programa.
+        No se salta la pausa por el límite diario de YouTube y la subida es la de siempre: privada y al canal
+        confirmado, una sola vez. Pedirlo dos veces no cambia su turno."""
+        t = self._trabajo(jid)
+        self._se_puede_subir(t)
+        self.db.actualizar(jid, subir_solicitado=True, subir_ya=t["subir_ya"] or self.db.turno_subida())
+        return self.db.trabajo(jid)
+
+    def subir_todos_ahora(self) -> dict:
+        """«Subir ahora» para todos los renderizados sin subir, del más antiguo al más reciente. Se omiten los
+        importados como «no destinar a YouTube»; la pausa por el límite diario de YouTube se respeta."""
+        a = self.db.ajustes()
+        if not a["youtube_canal_id"]:
+            raise ErrorEtapa("Primero conecta YouTube y confirma el canal en Ajustes.", "configuracion")
+        listos = sorted((t for t in self.db.trabajos() if t["estado"] == "renderizado" and not t["youtube_id"]),
+                        key=lambda t: t["creado"])
+        destinados = [t for t in listos if t["publicar"]]
+        base = self.db.turno_subida()
+        for i, t in enumerate(destinados):
+            if not t["subir_ya"]:                      # los que ya iban primero conservan su turno
+                self.db.actualizar(t["id"], subir_solicitado=True, subir_ya=base + i / 1000)
+        pausa = a["subidas_pausadas_hasta"] if a["subidas_pausadas_hasta"] > time.time() else 0
+        return {"encolados": len(destinados), "omitidos": len(listos) - len(destinados), "pausa_hasta": pausa}
+
+    def cancelar_subida(self, jid: str) -> dict:
+        """Quita un clip de la cola de subida mientras espera (una subida que ya empezó no se interrumpe)."""
+        t = self._trabajo(jid)
+        if t["estado"] != "renderizado" or not t["subir_solicitado"]:
+            raise ErrorEtapa("Este clip no está esperando para subir.", "entrada")
+        self.db.actualizar(jid, subir_solicitado=False, subir_ya=0)
+        return self.db.trabajo(jid)
 
     def _editable(self, jid: str) -> dict:
         t = self._trabajo(jid)

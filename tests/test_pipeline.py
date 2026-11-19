@@ -269,6 +269,86 @@ def test_ritmo_de_publicacion(fabrica, clip, monkeypatch):
     assert fabrica.db.siguiente()["id"] == t3["id"]
 
 
+def _listo(fabrica, nombre, creado, publicar=True, **extra):
+    """Clip ya renderizado sin pasar por FFmpeg: para probar la cola de subidas (YouTubeFalso no lee el archivo)."""
+    t = fabrica.db.crear_trabajo(nombre, "archivo", publicar=publicar)
+    fabrica.db.actualizar(t["id"], creado=creado, estado="renderizado",
+                          textos={"titulo": f"{nombre} #Shorts", "descripcion": "", "es_gaming": False}, **extra)
+    return fabrica.db.trabajo(t["id"])
+
+
+def test_subir_ahora_se_salta_el_ritmo_pero_no_la_pausa_de_youtube(fabrica, clip, monkeypatch):
+    fabrica.youtube = YouTubeFalso()
+    t = _procesar(fabrica, fabrica.importar_archivo(clip, "a.mp4"))   # antes de congelar el reloj
+    ahora = 1_800_000_000.0
+    monkeypatch.setattr("fabrica_studio.db.time.time", lambda: ahora)
+    fabrica.db.guardar_ajustes({"youtube_canal_id": "UC_ok", "subidas_max_dia": 1, "subidas_intervalo_min": 60})
+    previa = fabrica.db.crear_trabajo("previa", "archivo")
+    fabrica.db.actualizar(previa["id"], estado="publicado", youtube_id="v0", subida={"terminado": ahora - 60})
+    fabrica.solicitar_subida(t["id"])
+    assert fabrica.db.siguiente() is None                 # con el ritmo, espera: ya hubo 1 subida hoy y hace 1 min
+
+    fabrica.subir_ahora(t["id"])
+    assert fabrica.db.trabajo(t["id"])["subir_ya"] == ahora
+    fabrica.db.guardar_ajustes({"subidas_pausadas_hasta": int(ahora) + 3600})       # límite diario de YouTube
+    assert fabrica.db.siguiente() is None                 # la pausa de YouTube no se salta
+    fabrica.reanudar_subidas()
+    sig = fabrica.db.siguiente()
+    assert sig["id"] == t["id"]
+    fabrica._ejecutar(sig)
+    t = fabrica.db.trabajo(t["id"])
+    assert t["estado"] == "publicado" and t["youtube_id"] == "vid1" and t["subir_ya"] == 0
+    assert fabrica.youtube.subidas == [("short.mp4", t["textos"]["titulo"], "UC_ok")]     # una vez, al canal confirmado
+    with pytest.raises(ErrorEtapa) as e:
+        fabrica.subir_ahora(t["id"])
+    assert e.value.tipo == "duplicado" and len(fabrica.youtube.subidas) == 1
+    assert fabrica.db.siguiente() is None
+
+
+def test_subir_ahora_va_primero_en_el_orden_pedido_y_no_duplica(fabrica):
+    fabrica.youtube = YouTubeFalso()
+    fabrica.db.guardar_ajustes({"youtube_canal_id": "UC_ok", "subidas_max_dia": 0, "subidas_intervalo_min": 0})
+    a, b, c = (_listo(fabrica, n, creado=1000 + i) for i, n in enumerate("abc"))
+    pendiente = fabrica.db.crear_trabajo("por_procesar", "archivo")
+    fabrica.db.actualizar(pendiente["id"], creado=1)                  # el más antiguo de todos
+    fabrica.solicitar_subida(a["id"])                                  # cola normal
+    fabrica.subir_ahora(c["id"])
+    fabrica.subir_ahora(b["id"])
+    fabrica.subir_ahora(c["id"])                                       # pedirlo otra vez no cambia su turno
+    orden = []
+    while (sig := fabrica.db.siguiente()) and sig["estado"] == "renderizado":
+        orden.append(sig["nombre"])
+        fabrica.subir(sig["id"])
+    assert orden == ["c", "b"] and sig["id"] == pendiente["id"]       # «Subir ahora» primero; luego lo más antiguo
+    assert [s[1] for s in fabrica.youtube.subidas] == ["c #Shorts", "b #Shorts"]
+
+
+def test_subir_todos_ahora_y_quitar_de_la_cola(fabrica):
+    fabrica.youtube = YouTubeFalso()
+    with pytest.raises(ErrorEtapa) as e:
+        fabrica.subir_todos_ahora()
+    assert e.value.tipo == "configuracion"                             # sin canal confirmado, nada
+    fabrica.db.guardar_ajustes({"youtube_canal_id": "UC_ok", "subidas_max_dia": 1, "subidas_intervalo_min": 600})
+    nuevo = _listo(fabrica, "nuevo", creado=2000)
+    viejo = _listo(fabrica, "viejo", creado=1000)
+    local = _listo(fabrica, "solo_local", creado=1500, publicar=False)    # importado sin destinar a YouTube
+    _listo(fabrica, "ya_subido", creado=500, youtube_id="v9")
+    fabrica.db.actualizar(fabrica.db.trabajos()[-1]["id"], estado="publicado")
+    fabrica.db.guardar_ajustes({"subidas_pausadas_hasta": 4_000_000_000})
+    r = fabrica.subir_todos_ahora()
+    assert (r["encolados"], r["omitidos"], r["pausa_hasta"]) == (2, 1, 4_000_000_000)
+    assert fabrica.db.siguiente() is None                              # la pausa de YouTube se respeta
+    fabrica.reanudar_subidas()
+    fabrica.cancelar_subida(nuevo["id"])                               # quitarlo de la cola antes de que suba
+    with pytest.raises(ErrorEtapa):
+        fabrica.cancelar_subida(nuevo["id"])
+    fabrica.subir(fabrica.db.siguiente()["id"])
+    assert [s[1] for s in fabrica.youtube.subidas] == ["viejo #Shorts"]
+    assert fabrica.db.siguiente() is None                              # «nuevo» salió de la cola; el ritmo no importa aquí
+    assert not fabrica.db.trabajo(local["id"])["subir_solicitado"] and fabrica.db.trabajo(viejo["id"])["youtube_id"]
+    assert fabrica.subir_todos_ahora()["encolados"] == 1               # otra vez: solo «nuevo»; nada se sube dos veces
+
+
 def test_sin_suspender_no_falla_fuera_de_windows():
     from fabrica_studio.pipeline import sin_suspender
     with sin_suspender() as s:
