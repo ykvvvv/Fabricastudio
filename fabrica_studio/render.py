@@ -10,7 +10,7 @@ import shutil
 import time
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from .config import FUENTE_BLACK, FUENTE_BOLD, LIENZO_ALTO, LIENZO_ANCHO
 from .errores import ErrorEtapa
@@ -212,6 +212,26 @@ def cargar_logo(recursos: Path, alto: int) -> Image.Image:
     return logo.resize((ancho, alto), Image.LANCZOS)
 
 
+def recortar_margenes(img: Image.Image) -> Image.Image:
+    """Logo subido sin márgenes: los transparentes o, si no tiene transparencia, los de un fondo liso (las cuatro
+    esquinas del mismo color). Una foto, sin fondo liso, queda igual."""
+    img = img.convert("RGBA")
+    caja = img.getchannel("A").getbbox()
+    if not caja:
+        raise ErrorEtapa("El logo es completamente transparente: no se vería nada.", "entrada")
+    if caja != (0, 0, *img.size):
+        return img.crop(caja)
+    w, h = img.size
+    fondo = img.getpixel((0, 0))
+    esquinas = [img.getpixel(p) for p in ((w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    if any(max(abs(x - y) for x, y in zip(e, fondo)) > 16 for e in esquinas):
+        return img
+    # Mayor diferencia de color con el fondo, por encima del ruido de compresión (JPG): lo que queda es el logo.
+    r, g, b, _ = ImageChops.difference(img, Image.new("RGBA", img.size, fondo)).split()
+    caja = ImageChops.lighter(ImageChops.lighter(r, g), b).point(lambda v: 255 if v > 24 else 0).getbbox()
+    return img.crop(caja) if caja else img
+
+
 def dibujar_capa(d: dict, banner: dict, a: dict, recursos: Path) -> Image.Image:
     """Capa transparente con la tarjeta, el banner, el logo y el nombre."""
     capa = Image.new("RGBA", (LIENZO_ANCHO, LIENZO_ALTO), (0, 0, 0, 0))
@@ -271,13 +291,13 @@ def _nitidez(factor: float) -> str:
     return f",unsharp=5:5:{fuerza:.2f}:5:5:0.0"
 
 
-def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str, bloques: list[dict],
-               a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None,
-               encuadre: dict | None = None) -> dict:
-    """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas.
+MUESTRA_ANCHO, MUESTRA_ALTO, MUESTRA_FPS, MUESTRA_CUADROS = 540, 960, 30, 180   # «Clip de ejemplo»: 6 s
 
-    `recorte` ({w, h, x, y}) quita bordes negros del original antes de componer.
-    `encuadre` (resultado de reencuadre.analizar) activa el estilo pantalla completa."""
+
+def preparar(propiedades: dict, banner_texto: str, bloques: list[dict], a: dict, recursos: Path,
+             recorte: dict | None = None, encuadre: dict | None = None, muestra: bool = False) -> dict:
+    """Todo lo que define la imagen, sin escribir nada: la capa (Pillow), los subtítulos ASS, las órdenes de
+    encuadre (sendcmd) y los filtros de FFmpeg. Con `muestra`, la salida es de 540×960 a 30 cuadros por segundo."""
     from . import reencuadre
     ancho, alto = (recorte["w"], recorte["h"]) if recorte else (propiedades["ancho"], propiedades["alto"])
     completo = encuadre is not None
@@ -302,16 +322,14 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     # El gancho solo se usa cuando no hay banner fijo (vista dividida o pantalla completa sin banner).
     if completo and a.get("gancho") and banner_texto.strip() and "tarjeta" not in d:
         gancho = preparar_gancho(banner_texto, a, d, propiedades["duracion"])
-        gancho["imagen"].save(carpeta / "gancho.png")
         d["gancho"] = {k: gancho[k] for k in ("x", "y", "h", "segundos")}
-    dibujar_capa(d, banner, a, recursos).save(carpeta / "capa.png")
-    (carpeta / "subtitulos.ass").write_text(
-        a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"], resaltar=bool(a.get("sub_resaltar")),
-              color_resalte=a.get("sub_color_resalte", "#53FC18"), **sub_kw), encoding="utf-8")
-    _preparar_fuentes(carpeta)
+    capa = dibujar_capa(d, banner, a, recursos)
+    ass = a_ass(bloques, d["subtitulos"]["tamano"], d["subtitulos"]["y"], resaltar=bool(a.get("sub_resaltar")),
+                color_resalte=a.get("sub_color_resalte", "#53FC18"), **sub_kw)
 
     v = d["video"]
-    filtros = "[0:v]"
+    ordenes_encuadre = None
+    filtros = "[0:v]" + (f"fps={MUESTRA_FPS}," if muestra else "")
     if recorte:
         filtros += f"crop={recorte['w']}:{recorte['h']}:{recorte['x']}:{recorte['y']},"
     if dividido:
@@ -321,8 +339,7 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
         for pn in paneles:
             if len(pn["puntos"]) > 1:
                 ordenes.append(reencuadre.comandos_sendcmd(pn["puntos"], pn["filtro"]))
-        cmd_txt = "".join(ordenes)
-        (carpeta / "encuadre.cmd").write_text(cmd_txt or "0.000 crop@arriba x 0;\n", encoding="utf-8")
+        ordenes_encuadre = "".join(ordenes) or "0.000 crop@arriba x 0;\n"
         filtros += "sendcmd=f=encuadre.cmd,split=2[fa][fb];"
         salidas = []
         for k, (pn, etiqueta, lienzo_p) in enumerate(zip(paneles, ("fa", "fb"), d["paneles"])):
@@ -337,40 +354,66 @@ def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str
     elif completo:
         vw, vh = reencuadre.ventana(ancho, alto, int(a["completo_zoom"]) / 100)
         puntos = reencuadre.trayectoria(encuadre, vw)
-        (carpeta / "encuadre.cmd").write_text(reencuadre.comandos_sendcmd(puntos), encoding="utf-8")
+        ordenes_encuadre = reencuadre.comandos_sendcmd(puntos)
         y0 = (alto - vh) // 2 // 2 * 2
         filtros += (f"sendcmd=f=encuadre.cmd,crop@encuadre=w={vw}:h={vh}:x={int(puntos[0][1]) // 2 * 2}:y={y0},"
                     f"scale={LIENZO_ANCHO}:{LIENZO_ALTO}:flags=lanczos,setsar=1{_nitidez(LIENZO_ALTO / vh)}")
         d["encuadre"] = {"ventana": [vw, vh], "movimientos": len(puntos)}
     else:
         filtros += f"scale={v['w']}:{v['h']}:flags=lanczos,setsar=1"
-    if propiedades.get("fps", 0) > 60:
+    if propiedades.get("fps", 0) > 60 and not muestra:
         filtros += ",fps=60"
+    # La muestra conserva los tiempos del original (subtítulos y encuadre sincronizados) y los pone a cero al final.
+    final = f"setpts=PTS-STARTPTS,scale={MUESTRA_ANCHO}:{MUESTRA_ALTO}," if muestra else ""
     filtros += f",pad={LIENZO_ANCHO}:{LIENZO_ALTO}:{v['x']}:{v['y']}:black[v];"
-    entradas = ["-i", entrada, "-i", "capa.png"]
-    if gancho:
+    if gancho:                     # tercera entrada: gancho.png, que aparece y se desvanece con su alfa
         s_g = gancho["segundos"]
-        entradas += ["-loop", "1", "-t", f"{s_g + 0.1:.2f}", "-i", "gancho.png"]
         filtros += (f"[v][1:v]overlay=0:0[c0];[2:v]format=rgba,fade=t=in:st=0:d=0.25:alpha=1,"
                     f"fade=t=out:st={max(0.3, s_g - 0.45):.2f}:d=0.45:alpha=1[g];"
                     "[c0][g]overlay=0:0:eof_action=pass[c];")
     else:
         filtros += "[v][1:v]overlay=0:0[c];"
-    filtros += "[c]ass=subtitulos.ass:fontsdir=fuentes,format=yuv420p[out]"
+    filtros += f"[c]ass=subtitulos.ass:fontsdir=fuentes,{final}format=yuv420p[out]"
+    return {"capa": capa, "ass": ass, "encuadre": ordenes_encuadre, "filtros": filtros, "disposicion": d, "gancho": gancho}
+
+
+def renderizar(carpeta: Path, entrada: str, propiedades: dict, banner_texto: str, bloques: list[dict],
+               a: dict, recursos: Path, salida: str = "short.mp4", recorte: dict | None = None,
+               encuadre: dict | None = None, muestra: float | None = None) -> dict:
+    """Genera `salida` dentro de `carpeta` y devuelve sus propiedades comprobadas.
+
+    `recorte` ({w, h, x, y}) quita bordes negros del original antes de componer.
+    `encuadre` (resultado de reencuadre.analizar) activa el estilo pantalla completa.
+    `muestra` (segundo de inicio): solo 6 s, a 540×960 y calidad baja, sin audio ni miniatura."""
+    p = preparar(propiedades, banner_texto, bloques, a, recursos, recorte, encuadre, muestra is not None)
+    p["capa"].save(carpeta / "capa.png")
+    (carpeta / "subtitulos.ass").write_text(p["ass"], encoding="utf-8")
+    if p["encuadre"] is not None:
+        (carpeta / "encuadre.cmd").write_text(p["encuadre"], encoding="utf-8")
+    entradas = ["-i", entrada, "-i", "capa.png"]
+    if p["gancho"]:
+        p["gancho"]["imagen"].save(carpeta / "gancho.png")
+        entradas += ["-loop", "1", "-t", f"{p['gancho']['segundos'] + 0.1:.2f}", "-i", "gancho.png"]
+    _preparar_fuentes(carpeta)
+    if muestra is None:
+        antes, esperado = [], (LIENZO_ANCHO, LIENZO_ALTO)
+        despues = ["-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-profile:v", "high",
+                   "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-t", f"{propiedades['duracion']:.3f}"]
+    else:
+        antes, esperado = ["-ss", f"{muestra:.3f}", "-copyts", "-start_at_zero"], (MUESTRA_ANCHO, MUESTRA_ALTO)
+        despues = ["-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-frames:v", str(MUESTRA_CUADROS)]
     temporal = "render_tmp.mp4"
-    cmd = [herramienta("ffmpeg"), "-y", "-v", "error", *entradas,
-           "-filter_complex", filtros, "-map", "[out]", "-map", "0:a:0?",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-profile:v", "high",
-           "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
-           "-movflags", "+faststart", "-t", f"{propiedades['duracion']:.3f}", temporal]
+    cmd = [herramienta("ffmpeg"), "-y", "-v", "error", *antes, *entradas,       # -ss solo afecta a la primera entrada
+           "-filter_complex", p["filtros"], "-map", "[out]", *despues, "-movflags", "+faststart", temporal]
     ejecutar(cmd, cwd=carpeta)
     resultado = sondear(carpeta / temporal)
-    if (resultado["ancho"], resultado["alto"]) != (LIENZO_ANCHO, LIENZO_ALTO) or resultado["codec_video"] != "h264":
+    if (resultado["ancho"], resultado["alto"]) != esperado or resultado["codec_video"] != "h264":
         raise ErrorEtapa(f"El render no tiene el formato esperado: {resultado}", "interno")
     reemplazar(carpeta / temporal, carpeta / salida)   # el archivo final solo aparece si está completo
-    ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{min(1.0, resultado['duracion'] / 2):.2f}",
-              "-i", salida, "-frames:v", "1", "-vf", "scale=360:-2", "miniatura.jpg"], cwd=carpeta)
-    return {"propiedades": resultado, "disposicion": d, "recorte": recorte}
+    if muestra is None:
+        ejecutar([herramienta("ffmpeg"), "-y", "-v", "error", "-ss", f"{min(1.0, resultado['duracion'] / 2):.2f}",
+                  "-i", salida, "-frames:v", "1", "-vf", "scale=360:-2", "miniatura.jpg"], cwd=carpeta)
+    return {"propiedades": resultado, "disposicion": p["disposicion"], "recorte": recorte}
 
 
 def elementos_editables(d: dict, a: dict, recursos: Path) -> list[dict]:

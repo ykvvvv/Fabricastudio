@@ -70,7 +70,10 @@ def test_campos_de_la_plantilla_son_ajustes_reales():
     """Un campo con la clave mal escrita se guardaría en vacío: el servidor ignora claves desconocidas."""
     from fabrica_studio.config import AJUSTES_POR_DEFECTO
     bloque = _texto("app.js").split("const SECCIONES_PLANTILLA = [")[1].split("\n];")[0]
-    claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in ("auto", "clasico", "completo", "dividido")]   # opciones de «estilo»
+    # Secciones: [id, nombre, icono, [campos…]]; las del encargo, en la barra lateral y en este orden.
+    secciones = re.findall(r'^  \["([a-z]+)", "[^"]+", "[a-z]+", \[', bloque, re.M)
+    assert secciones == ["encuadre", "banner", "subtitulos", "marca", "completo", "dividido", "perfiles"]
+    claves = [c for c in re.findall(r'\["([a-z_]+)", "', bloque) if c not in secciones]
     assert len(claves) > 20 and len(claves) == len(set(claves))
     assert set(claves) <= set(AJUSTES_POR_DEFECTO), set(claves) - set(AJUSTES_POR_DEFECTO)
 

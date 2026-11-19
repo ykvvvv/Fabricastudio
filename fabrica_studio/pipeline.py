@@ -22,6 +22,7 @@ from . import edicion, exportar, importar, media, momentos, reencuadre, render, 
 from .config import AJUSTES_DE_DISENO, CAMPOS_PERFIL, Rutas
 from .db import DB, perfil_como_ajustes
 from .errores import ErrorEtapa, sin_secretos
+from .muestras import Muestras
 from .youtube import YouTube
 
 log = logging.getLogger("fabrica.pipeline")
@@ -102,6 +103,7 @@ class Fabrica:
         self.carpeta_estado: dict[str, str] = {}  # archivo -> motivo por el que aún no se importa
         self.progreso: dict[str, str] = {}        # trabajo -> texto de avance (no persistente)
         self.lote_textos: dict | None = None      # último «Regenerar textos» masivo: {ids, inicio} (no persistente)
+        self.muestras = Muestras(self)            # «Clip de ejemplo» de la Plantilla (hilo propio)
 
     # ------------------------------------------------------------ perfiles de creador
     def perfil_de(self, t: dict) -> dict:
@@ -983,6 +985,7 @@ class Fabrica:
             h = threading.Thread(target=objetivo, daemon=True)
             h.start()
             self._hilos.append(h)
+        self.muestras.iniciar()
 
     def detener(self) -> None:
         self._parar.set()

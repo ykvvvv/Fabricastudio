@@ -1380,7 +1380,8 @@ const acciones = {
     await api(`/api/perfiles/${b.dataset.id}/activar`, { method: "POST" });
     avisar(`Perfil activo: «${perfilPorId(b.dataset.id)?.nombre}». Los clips que importes desde ahora lo usarán; los ya importados conservan el suyo.`);
     await refrescar();
-    if (S.vista === "plantilla") pintar(true);       // la vista previa muestra la firma y el logo del perfil activo
+    // La maqueta muestra la firma y el logo del perfil activo; los cambios sin guardar de la plantilla se conservan.
+    if (S.vista === "plantilla") $("#form-plantilla")?._perfil?.();
   }),
   "cerrar-perfiles": () => cerrarMenuPerfiles(),
   "regenerar-elegidos": intentar(() => regenerarVarios([...S.seleccion])),
@@ -1418,7 +1419,19 @@ const acciones = {
     const r = await api("/api/proveedores/gemini");
     $("#gemini-info").textContent = r.clave ? `Clave válida. Modelo que se usará: ${r.elegido}. Disponibles: ${r.modelos.join(", ")}` : "No hay clave configurada.";
   }),
-  "logo-quitar": intentar(async () => { await api("/api/logo", { method: "DELETE" }); avisar("Logo quitado."); const f = $("#form-plantilla"); f._logo(false); f._vista(); }),
+  "logo-quitar": intentar(async () => { await api("/api/logo", { method: "DELETE" }); avisar("Logo general quitado."); const f = $("#form-plantilla"); f._logos(false); f._vista(); }),
+  "logo-perfil-quitar": intentar(async () => {
+    const p = perfilActivo();
+    await api(`/api/perfiles/${p.id}/logo`, { method: "DELETE" }); await refrescar();
+    avisar(`Logo de «${p.nombre}» quitado: usará el logo general.`); const f = $("#form-plantilla"); f._logos(); f._vista();
+  }),
+  "atajos-plantilla": () => abrirModal("Atajos de la plantilla", `<dl class="atajos">
+      <dt><kbd>Ctrl</kbd> + <kbd>S</kbd></dt><dd>Guardar el diseño</dd>
+      <dt><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd></dt><dd>Deshacer / rehacer</dd>
+      <dt><kbd>Alt</kbd> + <kbd>1</kbd> … <kbd>7</kbd></dt><dd>Ir a una sección (Encuadre … Perfiles)</dd>
+      <dt>Flechas</dt><dd>Mover el elemento elegido en la maqueta (con <kbd>Mayús</kbd>, de 10 en 10)</dd>
+      <dt><kbd>+</kbd> / <kbd>−</kbd></dt><dd>Agrandar o achicar el elemento elegido</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Soltar el elemento</dd></dl>`, `<button class="primario" data-accion="cerrar-modal">Entendido</button>`),
   "restablecer": intentar(async () => {
     if (!await confirmar("Restablecer la plantilla", "Todos los valores de la plantilla volverán a los iniciales y se guardarán. Tu logo no se toca.", "Restablecer", true)) return;
     const { defecto } = S.ajustes; const cambios = {};
@@ -1427,50 +1440,62 @@ const acciones = {
   }),
 };
 
-// ---------------------------------------------------------------- plantilla (fase 3 del panel)
-// Cada campo es un ajuste real de config.py; la vista previa la dibuja el PC (/api/diseno/vista) con los
-// valores del formulario, guardados o no. Campo: [clave, etiqueta, tipo = "number", opciones].
+// ---------------------------------------------------------------- plantilla: secciones, vista previa y propiedades
+// Cada campo es un ajuste real de config.py; la vista previa la dibuja el PC (/api/diseno/vista) con los valores del
+// formulario, guardados o no. Sección: [id, nombre, icono, campos]; un texto entre los campos abre un grupo.
+// Campo: [clave, etiqueta, tipo = "number"].
 const SECCIONES_PLANTILLA = [
-  ["Encuadre", [
-    ["estilo", "Estilo de encuadre", "select", [["auto", "Automático (recomendado): elige el mejor encuadre"], ["clasico", "Clásico: video completo centrado con tarjeta"], ["completo", "Pantalla completa: recorte 9:16 que sigue los rostros"], ["dividido", "Vista dividida: cámara arriba, contenido abajo"]]],
-    ["video_desplazamiento_y", "Video: desplazamiento vertical (px)"], ["video_alto_max", "Video: alto máximo (px)"],
-    ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
-  ["Pantalla completa", [
-    ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"], ["completo_banner_y", "Banner: posición vertical"],
-    ["completo_sub_y", "Subtítulos: posición vertical"], ["completo_sub_tamano", "Subtítulos: tamaño"],
-    ["completo_logo_y", "Logo: posición vertical"], ["completo_logo_alto", "Logo: alto (px)"],
-    ["completo_banner", "Mostrar tarjeta del banner arriba", "check"], ["completo_mayusculas", "Subtítulos en mayúsculas", "check"]]],
-  ["Vista dividida", [
-    ["dividido_proporcion", "Cámara: % del alto"], ["dividido_sub_y", "Subtítulos: posición vertical"],
-    ["dividido_sub_tamano", "Subtítulos: tamaño"], ["dividido_logo_y", "Logo: posición vertical"],
-    ["dividido_logo_alto", "Logo: alto (px)"], ["dividido_banner", "Mostrar tarjeta del banner", "check"],
-    ["dividido_firma", "Mostrar firma bajo el logo", "check"]]],
-  ["Banner superior", [
-    ["banner_color", "Color del texto", "color"], ["banner_tamano", "Tamaño de letra"], ["banner_ancho", "Ancho de la tarjeta"],
-    ["banner_separacion", "Separación del video"], ["banner_radio", "Redondeo de esquinas"]]],
-  ["Subtítulos", [
-    ["sub_tamano", "Tamaño"], ["sub_desplazamiento", "Distancia bajo el video"], ["sub_palabras_max", "Palabras por bloque"],
-    ["sub_caracteres_max", "Caracteres por bloque"], ["sub_color_resalte", "Color de la palabra activa", "color"],
-    ["sub_resaltar", "Resaltar en color la palabra que se está diciendo", "check"]]],
-  ["Marca y nombre", [      // el nombre y la firma son del perfil de creador (vista Perfiles)
-    ["nombre_tamano", "Firma: tamaño"],
-    ["nombre_color", "Firma: color", "color"], ["logo_alto", "Logo: alto (px)"], ["logo_separacion", "Logo: separación"],
-    ["mostrar_logo", "Mostrar logo", "check"], ["mostrar_nombre", "Mostrar firma bajo el logo", "check"]]],
+  ["encuadre", "Encuadre", "recorte", [["estilo", "Estilo de encuadre", "estilo"],
+    "Video", ["video_desplazamiento_y", "Desplazamiento vertical (px)"], ["video_alto_max", "Alto máximo (px)"],
+    "Clip original", ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
+  ["banner", "Banner", "texto", ["Texto", ["banner_tamano", "Tamaño de letra"], ["banner_color", "Color del texto", "color"],
+    "Tarjeta", ["banner_ancho", "Ancho"], ["banner_radio", "Redondeo de esquinas"], ["banner_separacion", "Separación del video"]]],
+  ["subtitulos", "Subtítulos", "subtitulos", ["Texto", ["sub_tamano", "Tamaño"], ["sub_desplazamiento", "Distancia bajo el video"],
+    "Bloques", ["sub_palabras_max", "Palabras por bloque"], ["sub_caracteres_max", "Caracteres por bloque"],
+    "Palabra activa", ["sub_resaltar", "Resaltar en color la palabra que se está diciendo", "check"], ["sub_color_resalte", "Color", "color"]]],
+  ["marca", "Logo y marca", "marca", ["Logo", ["mostrar_logo", "Mostrar logo", "check"], ["logo_alto", "Alto (px)"], ["logo_separacion", "Separación"],
+    "Firma", ["mostrar_nombre", "Mostrar firma bajo el logo", "check"], ["nombre_tamano", "Tamaño"], ["nombre_color", "Color", "color"]]],
+  ["completo", "Pantalla completa", "completo", ["Imagen", ["completo_zoom", "Zoom (%; 100 = sin zoom extra)"],
+    "Banner", ["completo_banner", "Mostrar tarjeta del banner arriba", "check"], ["completo_banner_y", "Posición vertical"],
+    "Subtítulos", ["completo_sub_y", "Posición vertical"], ["completo_sub_tamano", "Tamaño"], ["completo_mayusculas", "En mayúsculas (también en vista dividida)", "check"],
+    "Logo", ["completo_logo_y", "Posición vertical"], ["completo_logo_alto", "Alto (px)"]]],
+  ["dividido", "Vista dividida", "dividido", ["Cámara", ["dividido_proporcion", "Alto (% del video)"],
+    "Banner", ["dividido_banner", "Mostrar tarjeta del banner", "check"],
+    "Subtítulos", ["dividido_sub_y", "Posición vertical"], ["dividido_sub_tamano", "Tamaño"],
+    "Logo", ["dividido_logo_y", "Posición vertical"], ["dividido_logo_alto", "Alto (px)"], ["dividido_firma", "Mostrar firma bajo el logo", "check"]]],
+  ["perfiles", "Perfiles", "perfil", []],
 ];
-const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, campos]) => campos.map(([k, n]) => [k, n])));
+// Nombre de cada ajuste con su grupo («Banner: posición vertical»): lo dicen el editor visual y el lector de pantalla.
+const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, , , campos]) => {
+  let grupo = "";
+  return campos.flatMap((c) => (typeof c === "string" ? ((grupo = c), []) : [[c[0], grupo ? `${grupo}: ${c[1][0].toLowerCase()}${c[1].slice(1)}` : c[1]]]));
+}));
 const NOMBRE_ESTILO = { auto: "Automático: el mejor encuadre para cada clip", clasico: "Clásico: video completo con tarjeta", completo: "Pantalla completa con seguimiento",
   dividido: "Vista dividida: cámara arriba, contenido abajo" };
-// Secciones que solo se ven con su estilo de encuadre.
-const SECCION_ESTILO = { "Pantalla completa": ["pl-completo", "completo"], "Vista dividida": ["pl-dividido", "dividido"] };
-// Con «auto» cada clip puede terminar en cualquiera de los encuadres: se ven todas sus secciones.
-const seVeSeccion = (estilo, e) => estilo === e || estilo === "auto";
-const seccionesEstilo = (estilo) => {
-  Object.values(SECCION_ESTILO).forEach(([id, e]) => { $(`#${id}`).hidden = !seVeSeccion(estilo, e); });
-  $("#pl-auto-nota").hidden = estilo !== "auto";
+const ESTILOS_PLANTILLA = [["auto", "Automático", "El mejor encuadre para cada clip"], ["clasico", "Clásico", "Video completo con tarjeta"],
+  ["completo", "Pantalla completa", "Recorte 9:16 que sigue los rostros"], ["dividido", "Vista dividida", "Cámara arriba, contenido abajo"]];
+const NOMBRE_CORTO = Object.fromEntries(ESTILOS_PLANTILLA);
+const COLORES_PLANTILLA = [["#E3222A", "Rojo"], ["#53FC18", "Verde Kick"], ["#FFD400", "Amarillo"], ["#FF7A00", "Naranjo"],
+  ["#2F9BFF", "Azul"], ["#B04BFF", "Morado"], ["#FFFFFF", "Blanco"], ["#111111", "Negro"]];
+const MUESTRAS_CMP = ["clasico", "completo", "dividido", "auto"];        // tarjetas de «Comparar en video»
+
+// Un número con límites lleva deslizador (para el dedo o el ratón) y su valor editable (el teclado usa el número).
+const campoPlantilla = ([k, n, tipo = "number"], v, lim) => {
+  if (tipo === "check") return h`<label class="linea"><input type="checkbox" role="switch" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`;
+  if (tipo === "estilo") return h`<fieldset class="estilos"><legend>${n}</legend>${ESTILOS_PLANTILLA.map(([x, t, d]) => crudo(h`<label class="estilo-op">
+      <input type="radio" name="${k}" value="${x}" ${x === v[k] ? "checked" : ""}><span><b>${t}</b><small>${d}</small></span></label>`))}</fieldset>`;
+  if (tipo === "color") {
+    const actual = String(v[k]).toLowerCase();
+    return h`<fieldset class="color-campo"><legend>${n}</legend><div class="muestras-color">${COLORES_PLANTILLA.map(([c, nombre]) => crudo(h`<button type="button"
+        class="muestra-color" style="--c:${c}" data-color="${c.toLowerCase()}" data-para="${k}" aria-pressed="${c.toLowerCase() === actual}" title="${nombre}" aria-label="${nombre}"></button>`))}
+      <input type="color" name="${k}" value="${actual}" aria-label="${n}: otro color"><input class="hex" data-hex="${k}" value="${actual.toUpperCase()}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${n}: código del color"></div></fieldset>`;
+  }
+  const r = lim?.[k];
+  if (!r) return h`<label>${n}<input name="${k}" type="number" value="${v[k]}"></label>`;
+  return h`<div class="deslizador"><label for="pl-${k}">${n}</label><div class="fila-deslizador">
+      <input type="range" data-par="${k}" min="${r[0]}" max="${r[1]}" value="${v[k]}" tabindex="-1" aria-hidden="true">
+      <input id="pl-${k}" name="${k}" type="number" min="${r[0]}" max="${r[1]}" value="${v[k]}"></div></div>`;
 };
-const campoPlantilla = ([k, n, tipo = "number", ops], v, lim) => (tipo === "check" ? h`<label class="linea"><input type="checkbox" role="switch" name="${k}" ${v[k] ? "checked" : ""}> ${n}</label>`
-  : tipo === "select" ? h`<label>${n}<select name="${k}">${ops.map(([x, t]) => crudo(h`<option value="${x}" ${x === v[k] ? "selected" : ""}>${t}</option>`))}</select></label>`
-    : h`<label>${n}<input name="${k}" type="${tipo}" value="${v[k]}" ${crudo(lim?.[k] ? `min="${lim[k][0]}" max="${lim[k][1]}"` : "")}></label>`);
 
 async function pintarPlantilla(m) {
   let a;
@@ -1480,30 +1505,64 @@ async function pintarPlantilla(m) {
   }
   if (S.vista !== "plantilla") return;     // se cambió de vista mientras llegaban los datos
   const v = a.valores;
-  const seccion = ([titulo, campos]) => {
-    const de = (...tipos) => campos.filter((c) => tipos.includes(c[2] || "number")).map((c) => crudo(campoPlantilla(c, v, a.limites)));
-    const [id, e] = SECCION_ESTILO[titulo] || [];
-    return h`<fieldset ${id ? crudo(`id="${id}"${seVeSeccion(v.estilo, e) ? "" : " hidden"}`) : ""}><legend>${titulo}</legend>
-      ${titulo === "Banner superior" ? crudo(`<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`) : ""}
-      ${de("select")}${titulo === "Encuadre" ? crudo(h`<p class="pequeno tenue" id="pl-auto-nota" ${v.estilo === "auto" ? "" : crudo("hidden")}>Cada clip elige al renderizar entre cámara arriba y contenido abajo, dos personas en pantalla dividida, pantalla completa siguiendo al protagonista o el clásico. La vista previa muestra el clásico; abajo se ajustan también la pantalla completa y la vista dividida.</p>`) : ""}<div class="campos">${de("number", "text", "color")}</div>${de("check")}
-      ${titulo === "Marca y nombre" ? crudo(h`<p class="nota">Nombre y firma: del perfil activo «${perfilActivo()?.nombre}» (${perfilActivo()?.firma || "sin firma: se usa el nombre"}). Se cambian en <a href="#perfiles">Perfiles</a>; la vista previa muestra los suyos.</p>
-        <p class="pequeno tenue" id="pl-logo-nota"></p>
-        <div class="fila"><label class="boton" style="flex-direction:row;color:var(--texto)">${ic("subir")}Subir logo general (PNG)<input type="file" id="logo" accept="image/png,image/webp,image/jpeg" hidden></label>
-        <button type="button" data-accion="logo-quitar" id="pl-logo-quitar">Quitar logo</button></div>`) : ""}</fieldset>`;
+  let activa = "encuadre";
+  try { const g = localStorage.getItem("fabrica.plantilla.seccion"); if (SECCIONES_PLANTILLA.some(([id]) => id === g)) activa = g; } catch (e) { /* sin almacenamiento: la primera */ }
+  const extra = {
+    encuadre: `<p class="pequeno tenue" id="pl-auto-nota"></p>`,
+    banner: `<label>Texto de ejemplo (solo para esta vista previa; no se guarda)<input id="pl-banner" maxlength="64" value="ASÍ SE VERÁ TU BANNER"></label>`,
+    marca: `<p class="pequeno tenue" id="pl-firma-nota"></p><div class="logos" id="pl-logos"></div>`,
+    completo: `<p class="nota pl-uso" id="pl-uso-completo"></p>`, dividido: `<p class="nota pl-uso" id="pl-uso-dividido"></p>`,
+    perfiles: `<div class="pila" id="pl-perfiles"></div>`,
   };
+  const pieza = (c) => (typeof c === "string" ? h`<h3 class="pl-grupo">${c}</h3>` : campoPlantilla(c, v, a.limites));
+  const seccion = ([id, nombre, , campos]) => h`<section class="pl-seccion" data-seccion="${id}" aria-labelledby="pl-t-${id}" ${id === activa ? "" : crudo("hidden")}>
+      <h2 id="pl-t-${id}" tabindex="-1">${nombre}</h2>${crudo(extra[id] || "")}${campos.map((c) => crudo(pieza(c)))}</section>`;
+  const reproducir = calma.matches ? "controls" : "autoplay";      // con «reducir movimiento», las muestras no arrancan solas
   m.innerHTML = h`<form id="form-plantilla"><div class="cabecera"><div><div class="antetitulo">Identidad del canal</div><h1>Tu plantilla</h1><p>Un formato reconocible en todos tus clips.</p></div>
-      <div class="fila"><span class="pastilla" id="pl-estado" role="status"></span><button type="button" class="texto" data-accion="restablecer">Restablecer</button><button class="primario">${ic("check")}Guardar diseño</button></div></div>
-    <div class="plantilla"><div class="panel pl-form">${SECCIONES_PLANTILLA.map((s) => crudo(seccion(s)))}</div>
-      <aside class="panel pl-vista" aria-label="Editor visual de la plantilla"><div class="panel-titulo"><div><h2>Editor visual</h2><p>Toca un elemento y arrástralo.</p></div>
-          <div class="fila" style="gap:2px;flex-wrap:nowrap"><button type="button" class="icono-boton" id="pl-deshacer" aria-label="Deshacer" title="Deshacer (Ctrl+Z)" disabled>${ic("deshacer")}</button><button type="button" class="icono-boton" id="pl-rehacer" aria-label="Rehacer" title="Rehacer (Ctrl+Y)" disabled>${ic("rehacer")}</button></div></div>
-        <div class="formato-escena"><div class="pl-lienzo"><img id="pl-img" alt="Maqueta del Short con los valores del formulario" width="540" height="960">
-          <div class="pl-capa" id="pl-capa" role="group" aria-label="Elementos de la plantilla"><i class="pl-guia h" hidden></i><i class="pl-guia v" hidden></i><i class="pl-guia v" hidden></i></div></div></div>
-        <p class="error" id="pl-error" role="alert"></p><p class="pl-avisos" id="pl-avisos"></p><p class="solo-lector" id="pl-lector" role="status"></p>
-        <div class="panel-pie"><span>Flechas para mover (con Mayús, de 10 en 10); + y − para el tamaño; Esc para soltar.</span></div></aside></div></form>`;
+      <div class="fila"><span class="pastilla" id="pl-estado" role="status"></span><button type="button" class="texto" data-accion="atajos-plantilla">Atajos</button>
+        <button type="button" class="texto" data-accion="restablecer">Restablecer</button><button class="primario" aria-keyshortcuts="Control+S">${ic("check")}Guardar diseño</button></div></div>
+    <div class="pl-marco">
+      <nav class="pl-nav" aria-label="Secciones de la plantilla">${SECCIONES_PLANTILLA.map(([id, nombre, icono], i) => crudo(h`<button type="button" data-seccion="${id}" aria-keyshortcuts="Alt+${i + 1}">${ic(icono)}<span>${nombre}</span></button>`))}</nav>
+      <div class="panel pl-centro">
+        <div class="pl-modos"><div class="segmentado" role="tablist" aria-label="Vista previa">
+            <button type="button" role="tab" id="pl-m-diseno" aria-controls="pl-diseno" aria-selected="true">Diseño</button><button type="button" role="tab" id="pl-m-comparar" aria-controls="pl-comparar" aria-selected="false" tabindex="-1">Comparar en video</button></div>
+          <div class="fila pl-historial"><button type="button" class="icono-boton" id="pl-deshacer" aria-label="Deshacer" title="Deshacer (Ctrl+Z)" disabled>${ic("deshacer")}</button><button type="button" class="icono-boton" id="pl-rehacer" aria-label="Rehacer" title="Rehacer (Ctrl+Y)" disabled>${ic("rehacer")}</button></div></div>
+        <div id="pl-diseno" class="pl-vista" role="tabpanel" aria-labelledby="pl-m-diseno"><p class="pl-vista-de" id="pl-vista-de"></p>
+          <div class="formato-escena"><div class="pl-lienzo"><img id="pl-img" alt="Maqueta del Short con los valores del formulario" width="540" height="960">
+            <div class="pl-capa" id="pl-capa" role="group" aria-label="Elementos de la plantilla"><i class="pl-guia h" hidden></i><i class="pl-guia v" hidden></i><i class="pl-guia v" hidden></i></div></div></div>
+          <p class="error" id="pl-error" role="alert"></p><p class="pl-avisos" id="pl-avisos"></p><p class="solo-lector" id="pl-lector" role="status"></p>
+          <div class="panel-pie"><span>Toca un elemento y arrástralo. Con teclado: flechas para mover (con Mayús, de 10 en 10), + y − para el tamaño, Esc para soltar.</span></div></div>
+        <div id="pl-comparar" class="pl-comparar" role="tabpanel" aria-labelledby="pl-m-comparar" hidden>
+          <div class="cmp-cabeza"><label>Clip de ejemplo<select id="cmp-clip" disabled><option>Cargando tus clips…</option></select></label>
+            <div class="cmp-avance" role="status"><span id="cmp-texto"></span><span class="barra-progreso" id="cmp-barra" hidden><i style="transform:scaleX(0)"></i></span></div></div>
+          <div class="cmp-rejilla" id="cmp-rejilla">${MUESTRAS_CMP.map((e) => crudo(h`<div class="cmp-tarjeta" data-estilo="${e}" data-fase="en_espera" role="group" aria-label="${NOMBRE_CORTO[e]}">
+              <p class="cmp-titulo"><b>${NOMBRE_CORTO[e]}</b><small></small></p>
+              <div class="cmp-video"><video muted loop playsinline preload="auto" ${crudo(reproducir)} aria-label="Muestra en video: ${NOMBRE_CORTO[e]}"></video><span class="cmp-fase"></span>
+                <button type="button" class="cmp-usar" data-usar="${e}">Usar este estilo</button></div></div>`))}</div>
+          <ul class="cmp-notas" id="cmp-notas"></ul>
+          <p class="pequeno tenue">Muestras de 6 s en baja calidad (540×960) hechas en este PC con los valores de la plantilla, guardados o no. El Short de verdad no cambia.</p></div>
+      </div>
+      <aside class="panel pl-props" aria-label="Propiedades de la sección">${SECCIONES_PLANTILLA.map((s) => crudo(seccion(s)))}</aside>
+    </div></form>`;
 
-  const f = $("#form-plantilla"), img = $("#pl-img"), panel = $(".pl-vista"), estado = $("#pl-estado"), error = $("#pl-error"), capa = $("#pl-capa");
-  const valores = () => { const c = {}; f.querySelectorAll("[name]").forEach((i) => { c[i.name] = i.type === "checkbox" ? i.checked : i.value; }); return c; };
-  const escribir = (cambios) => Object.entries(cambios).forEach(([k, x]) => { if (f[k].type === "checkbox") f[k].checked = x; else f[k].value = x; });
+  const f = $("#form-plantilla"), img = $("#pl-img"), panel = $("#pl-diseno"), estado = $("#pl-estado"), error = $("#pl-error"), capa = $("#pl-capa");
+  const valores = () => {
+    const c = {};
+    f.querySelectorAll("[name]").forEach((i) => { if (i.type !== "radio" || i.checked) c[i.name] = i.type === "checkbox" ? i.checked : i.value; });
+    return c;
+  };
+  // Al cambiar un valor por código (deshacer, editor visual, muestras de color) se ponen al día su deslizador y su código.
+  const alDia = (k) => {
+    const x = String(f.elements[k].value), r = f.querySelector(`[data-par="${k}"]`), hx = f.querySelector(`[data-hex="${k}"]`);
+    if (r) r.value = x;
+    if (hx && document.activeElement !== hx) hx.value = x.toUpperCase();
+    f.querySelectorAll(`[data-para="${k}"]`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.color === x.toLowerCase()));
+  };
+  const escribir = (cambios) => Object.entries(cambios).forEach(([k, x]) => {
+    const i = f.elements[k];
+    if (i.type === "checkbox") i.checked = x; else i.value = x;
+    alDia(k);
+  });
   const decir = (texto) => { $("#pl-lector").textContent = texto; };            // para lectores de pantalla
   let guardado = JSON.stringify(valores());
   const marcar = (recien = false) => {
@@ -1511,12 +1570,64 @@ async function pintarPlantilla(m) {
     estado.className = `pastilla ${sucio ? "listo" : "subido"} ${recien ? "recien" : ""}`;
     estado.innerHTML = sucio ? "Cambios sin guardar" : recien ? `${icono("check")}Guardado` : "";
   };
-  const logo = (propio) => {
-    $("#pl-logo-quitar").hidden = !propio;
-    const delPerfil = perfilActivo()?.logo ? ` El perfil activo «${perfilActivo().nombre}» tiene su propio logo: es el que muestra la vista previa.` : "";
-    $("#pl-logo-nota").textContent = (propio ? "Logo general: lo usan los perfiles sin logo propio. Los márgenes transparentes se recortan automáticamente."
-      : "Sin logo general: los perfiles sin logo propio muestran el rótulo de texto «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.") + delPerfil;
+
+  // ---- Secciones. La maqueta enseña el encuadre de la sección que se edita (pantalla completa o dividida).
+  const estiloVista = () => ({ completo: "completo", dividido: "dividido" })[activa] || f.elements.estilo.value;
+  const notasEstilo = () => {
+    const e = f.elements.estilo.value, ev = estiloVista();
+    $("#pl-auto-nota").textContent = e === "auto" ? "Cada clip elige al renderizar entre cámara arriba y contenido abajo, dos personas en pantalla dividida, pantalla completa siguiendo al protagonista o el clásico. En «Comparar en video» ves qué elige con un clip tuyo." : "";
+    for (const s of ["completo", "dividido"]) {
+      const nota = $(`#pl-uso-${s}`);
+      nota.hidden = [s, "auto"].includes(e);
+      nota.textContent = `Se usa con «${NOMBRE_CORTO[s]}» y con «Automático»; ahora el estilo es «${NOMBRE_CORTO[e]}». La maqueta muestra este encuadre mientras editas esta sección.`;
+    }
+    $("#pl-vista-de").textContent = `Maqueta: ${NOMBRE_CORTO[ev === "auto" ? "clasico" : ev]}${ev !== e ? " (el encuadre de esta sección)" : e === "auto" ? " (Automático cambia según el clip)" : ""}`;
+    f.querySelectorAll(".cmp-tarjeta").forEach((t) => {
+      const si = t.dataset.estilo === e, b = $(".cmp-usar", t);
+      t.classList.toggle("en-uso", si); b.disabled = si; b.textContent = si ? "Estilo elegido" : "Usar este estilo";
+    });
   };
+  function irSeccion(id, enfocar = false) {
+    const antes = estiloVista();
+    activa = id;
+    f.querySelectorAll(".pl-nav [data-seccion]").forEach((b) => {
+      const si = b.dataset.seccion === id;
+      b.classList.toggle("activa", si);
+      if (si) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+    });
+    f.querySelectorAll(".pl-seccion").forEach((s) => { s.hidden = s.dataset.seccion !== id; });
+    try { localStorage.setItem("fabrica.plantilla.seccion", id); } catch (e) { /* no se recuerda entre visitas */ }
+    if (id === "perfiles") pintarPerfilesPl();
+    if (enfocar) $(`#pl-t-${id}`).focus({ preventScroll: true });
+    notasEstilo();
+    if (estiloVista() !== antes) vista();
+    const sec = $(`.pl-seccion[data-seccion="${id}"]`);
+    if (animar()) gsap.from(sec, { y: 6, opacity: 0, duration: 0.2, ease: "power2.out", clearProps: "transform,opacity" });
+  }
+
+  // ---- Logos (general y del perfil activo) y perfiles.
+  let logoGeneral = a.logo_propio, version = Date.now();
+  function pintarLogos(recorte = null) {
+    const p = perfilActivo();
+    $("#pl-firma-nota").innerHTML = h`Nombre y firma: del perfil activo «${p?.nombre}» (${p?.firma || "sin firma: se usa el nombre"}). Se cambian en <a href="#perfiles">Perfiles</a>.`;
+    const caja = (titulo, texto, src, entrada, quitar) => h`<div class="logo-caja"><span class="logo-muestra">${src ? crudo(h`<img src="${src}" alt="">`) : crudo(`<small>Sin logo</small>`)}</span>
+      <div class="pila"><div><b>${titulo}</b><small>${texto}</small></div><div class="fila"><label class="boton">${ic("subir")}Subir…<input type="file" id="${entrada}" accept="image/png,image/webp,image/jpeg" hidden></label>
+        ${src ? crudo(h`<button type="button" data-accion="${quitar}">Quitar</button>`) : ""}</div></div></div>`;
+    $("#pl-logos").innerHTML = caja("Logo general", logoGeneral ? "Lo usan los perfiles sin logo propio." : "Sin logo general: los perfiles sin logo propio muestran el rótulo «KICK». Sube el logo oficial en PNG transparente si tienes permiso para usarlo.",
+      logoGeneral ? `/api/logo?v=${version}` : "", "logo", "logo-quitar")
+      + (p ? caja(`Logo de «${p.nombre}»`, p.logo ? "Solo para los clips de este perfil; es el que muestra la maqueta." : "Este perfil usa el logo general.",
+        p.logo ? `/api/perfiles/${p.id}/logo?v=${p.v}` : "", "logo-perfil", "logo-perfil-quitar") : "")
+      + (recorte ? h`<p class="pequeno tenue" role="status">${recorte.antes.join("×") === recorte.despues.join("×") ? `La imagen no tenía márgenes que quitar (${recorte.despues.join("×")} px).`
+        : `Márgenes quitados: ${recorte.antes.join("×")} → ${recorte.despues.join("×")} px.`}</p>` : "");
+  }
+  function pintarPerfilesPl() {
+    const activo = S.estado.perfil_activo;
+    $("#pl-perfiles").innerHTML = h`<p class="pequeno tenue">La maqueta usa el nombre, la firma y el logo del perfil activo. Cada clip conserva el perfil con el que se importó; las muestras en video usan el del clip.</p>
+      <ul class="pl-lista-perfiles">${S.estado.perfiles.map((p) => crudo(h`<li>${crudo(avatarPerfil(p))}<div><b>${p.nombre}</b><small>${p.firma || "Sin firma"} · ${p.logo ? "logo propio" : "logo general"}</small>
+          ${p.estilo ? crudo(h`<small class="alerta">Sus clips usan siempre «${NOMBRE_CORTO[p.estilo] || p.estilo}»: el estilo de la plantilla no se les aplica.</small>`) : ""}</div>
+        ${p.id === activo ? crudo(`<span class="pastilla subido">Activo</span>`) : crudo(h`<button type="button" data-accion="activar-perfil" data-id="${p.id}">Activar</button>`)}</li>`))}</ul>
+      <a class="boton" href="#perfiles">${ic("perfil")}Editar perfiles</a>`;
+  }
 
   // ---- Historial de la sesión: cada entrada guarda solo los campos que cambiaron (formulario o editor visual).
   let ultimo = valores(), hist = [], pos = 0, espera;
@@ -1527,10 +1638,10 @@ async function pintarPlantilla(m) {
     if (Object.keys(antes).length) { hist.length = pos; hist.push({ antes, despues }); pos++; }
     ultimo = ahora; botones();
   };
-  // Tras cualquier cambio: aviso de «sin guardar» y, después de una pausa, historial + maqueta y disposición nuevas.
+  // Tras cualquier cambio: aviso de «sin guardar» y, después de una pausa, historial, maqueta y muestras nuevas.
   const cambio = (pausa = 250) => {
-    marcar(); seccionesEstilo(f.estilo.value);
-    clearTimeout(espera); espera = setTimeout(() => { registrar(); vista(); }, pausa);
+    marcar(); notasEstilo();
+    clearTimeout(espera); espera = setTimeout(() => { registrar(); vista(); pedirMuestras(); }, pausa);
   };
   const historia = (atras) => {
     clearTimeout(espera); registrar();                    // un cambio aún sin anotar entra antes al historial
@@ -1538,7 +1649,7 @@ async function pintarPlantilla(m) {
     const e = atras ? hist[--pos] : hist[pos++];
     escribir(atras ? e.antes : e.despues); ultimo = valores(); botones();
     decir(atras ? "Cambio deshecho." : "Cambio rehecho.");
-    marcar(); seccionesEstilo(f.estilo.value); vista();
+    marcar(); notasEstilo(); vista(); pedirMuestras();
   };
   $("#pl-deshacer").onclick = () => historia(true); $("#pl-rehacer").onclick = () => historia(false);
 
@@ -1550,7 +1661,7 @@ async function pintarPlantilla(m) {
     return r;
   };
   const vista = async () => {
-    const n = ++turno, q = new URLSearchParams({ ...valores(), banner: $("#pl-banner").value });
+    const n = ++turno, q = new URLSearchParams({ ...valores(), estilo: estiloVista(), banner: $("#pl-banner").value });
     panel.classList.add("cargando");
     try {
       const [imagen, d] = await Promise.all([pedir("vista", q).then((r) => r.blob()), pedir("disposicion", q).then((r) => r.json())]);
@@ -1675,27 +1786,144 @@ async function pintarPlantilla(m) {
     cambio();
   });
 
-  f._vista = vista; f._logo = logo; f._historia = historia;      // para las acciones del logo y los atajos de teclado
-  f.addEventListener("input", (e) => { if (e.target.name || e.target.id === "pl-banner") cambio(); });
+  // ---- Comparar en video (muestras.py): 6 s de un clip real por estilo, con los valores del formulario sin guardar.
+  // El PC las hace de a una en segundo plano y las guarda por huella: un cambio solo rehace la muestra afectada.
+  const cmp = { abierta: false, n: 0, firma: "", reloj: 0, clips: null }, rejilla = $("#cmp-rejilla");
+  const enCurso = (e) => ["preparando", "analizando", "generando"].includes(e.fase);
+  async function abrirComparar() {
+    if (!cmp.clips) {
+      try {
+        const e = await api("/api/diseno/muestras?clips=1");
+        if (!f.isConnected) return;
+        cmp.clips = e.clips;
+        const elegir = $("#cmp-clip"), hecho = (c) => ["renderizado", "subiendo", "publicado"].includes(c.estado);
+        if (!e.clips.length) {
+          elegir.innerHTML = `<option>Sin clips todavía</option>`;
+          $("#cmp-texto").textContent = "Aún no hay clips para usar de ejemplo: importa uno y, cuando esté listo, vuelve aquí.";
+          return;
+        }
+        elegir.innerHTML = e.clips.map((c, i) => h`<option value="${c.id}">${c.nombre}${c.titulo ? ` · ${c.titulo}` : ""}${i === 0 && hecho(c) ? " (el último renderizado)" : ""}</option>`).join("");
+        elegir.value = e.clips.some((c) => c.id === e.clip?.id) ? e.clip.id : e.clips[0].id;
+        elegir.disabled = false;
+      } catch (err) { $("#cmp-texto").textContent = err.message; return; }
+    }
+    cmp.firma = ""; pedirMuestras();
+  }
+  async function pedirMuestras() {
+    if (!cmp.abierta || !cmp.clips?.length) return;
+    const val = valores(), clip = $("#cmp-clip").value, firma = JSON.stringify([clip, val]);
+    if (firma === cmp.firma) return;
+    cmp.firma = firma;
+    try { pintarMuestras(await api("/api/diseno/muestras", { method: "POST", json: { clip, valores: val } })); }
+    catch (err) { cmp.firma = ""; $("#cmp-texto").textContent = err.message; return; }
+    seguirMuestras();
+  }
+  function seguirMuestras() {
+    clearTimeout(cmp.reloj);
+    cmp.reloj = setTimeout(async () => {
+      if (!cmp.abierta || !f.isConnected) return;
+      try { const e = await api("/api/diseno/muestras"); pintarMuestras(e); if (enCurso(e)) seguirMuestras(); } catch (err) { seguirMuestras(); }
+    }, 800);
+  }
+  function pintarMuestras(e) {
+    if (e.n < cmp.n || !f.isConnected) return;
+    cmp.n = e.n;
+    const ms = e.muestras || {}, todas = Object.values(ms), listas = todas.filter((x) => x.estado === "lista").length;
+    // «Automático» y una «Vista dividida» imposible con este clip muestran el video del estilo en que terminan.
+    const de = { clasico: "clasico", completo: "completo", dividido: e.dividido?.estilo || "dividido", auto: e.auto?.estilo || "" };
+    $("#cmp-texto").textContent = e.fase === "error" ? e.error : e.fase === "generando" ? `Generando muestras: ${listas} de ${todas.length} listas…`
+      : e.fase === "lista" ? `Muestras listas de «${e.clip.nombre}», desde el segundo ${Math.floor(e.inicio)}.` : e.texto || "";
+    $("#cmp-texto").classList.toggle("error", e.fase === "error");
+    $("#cmp-barra").hidden = !enCurso(e);
+    $("#cmp-barra i").style.transform = `scaleX(${todas.length ? listas / todas.length : 0})`;
+    rejilla.querySelectorAll(".cmp-tarjeta").forEach((t) => {
+      const s = ms[de[t.dataset.estilo]] || {}, video = $("video", t);
+      if (s.url && video.dataset.url !== s.url) { video.dataset.url = s.url; video.src = s.url; }
+      t.dataset.fase = s.estado || "en_espera";
+      $(".cmp-fase", t).textContent = { en_espera: "En cola", generando: "Generando…", error: "No se pudo hacer" }[s.estado] || (s.estado ? "" : "En cola");
+      if (s.estado === "error") $(".cmp-fase", t).title = s.error;
+      $(".cmp-titulo small", t).textContent = t.dataset.estilo === "auto" && e.auto ? `elige ${NOMBRE_CORTO[e.auto.estilo]}`
+        : t.dataset.estilo === "dividido" && e.dividido?.estilo === "completo" ? "sale en pantalla completa" : "";
+    });
+    $("#cmp-notas").innerHTML = [e.auto && h`<li><b>Automático</b> elige «${NOMBRE_CORTO[e.auto.estilo]}» para este clip: ${e.auto.motivo}.</li>`,
+      e.dividido?.motivo && h`<li><b>Vista dividida</b>: ${e.dividido.motivo}.</li>`, e.aviso && h`<li>${e.aviso}</li>`,
+      ...todas.filter((x) => x.estado === "error").map((x) => h`<li class="error">${x.error}</li>`)].filter(Boolean).join("");
+  }
+  // Las muestras se ven a la vez: cuando llega una nueva, todas vuelven al principio.
+  rejilla.addEventListener("loadeddata", () => {
+    if (calma.matches) return;
+    rejilla.querySelectorAll("video").forEach((x) => { if (x.readyState >= 2) { x.currentTime = 0; x.play().catch(() => {}); } });
+  }, true);
+  const ponerModo = (comparar) => {
+    cmp.abierta = comparar;
+    [["#pl-m-diseno", !comparar], ["#pl-m-comparar", comparar]].forEach(([s, si]) => { $(s).setAttribute("aria-selected", si); $(s).tabIndex = si ? 0 : -1; });
+    $("#pl-diseno").hidden = comparar; $("#pl-comparar").hidden = !comparar;
+    rejilla.querySelectorAll("video").forEach((x) => { if (comparar && x.src && !calma.matches) x.play().catch(() => {}); else x.pause(); });
+    if (!comparar) return clearTimeout(cmp.reloj);
+    abrirComparar();
+    $("#pl-comparar").scrollIntoView({ block: "nearest", behavior: calma.matches ? "auto" : "smooth" });   // las cuatro a la vista
+  };
+  $(".pl-modos [role=tablist]").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const otro = cmp.abierta ? "#pl-m-diseno" : "#pl-m-comparar";
+    ponerModo(!cmp.abierta); $(otro).focus();
+  });
+
+  // ---- Eventos del formulario.
+  f.addEventListener("click", (e) => {
+    const t = e.target;
+    const s = t.closest(".pl-nav [data-seccion]"); if (s) return irSeccion(s.dataset.seccion);
+    // Muestras de color, estilos y casillas son cambios de un toque: cada uno es un paso propio de «deshacer».
+    const muestra = t.closest("[data-color]");
+    if (muestra) { escribir({ [muestra.dataset.para]: muestra.dataset.color }); return cambio(0); }
+    const usar = t.closest("[data-usar]");
+    if (usar) { escribir({ estilo: usar.dataset.usar }); decir(`Estilo elegido: ${NOMBRE_CORTO[usar.dataset.usar]}. Guarda el diseño para usarlo.`); return cambio(0); }
+    if (t.closest("#pl-m-diseno")) ponerModo(false);
+    else if (t.closest("#pl-m-comparar")) ponerModo(true);
+  });
+  f.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset.par) { f.elements[t.dataset.par].value = t.value; return cambio(); }
+    if (t.dataset.hex) {
+      const x = t.value.trim();
+      if (/^#[0-9a-f]{6}$/i.test(x)) { f.elements[t.dataset.hex].value = x.toLowerCase(); alDia(t.dataset.hex); cambio(); }
+      return;
+    }
+    if (t.name) { alDia(t.name); cambio(["checkbox", "radio"].includes(t.type) ? 0 : 250); } else if (t.id === "pl-banner") cambio();
+  });
+  f.addEventListener("change", intentar(async (e) => {
+    const t = e.target;
+    if (t.id === "cmp-clip") { cmp.firma = ""; return pedirMuestras(); }
+    if (!["logo", "logo-perfil"].includes(t.id) || !t.files[0]) return;
+    const datos = new FormData(), p = perfilActivo(), general = t.id === "logo";
+    datos.append("archivo", t.files[0]);
+    const r = await api(general ? "/api/logo" : `/api/perfiles/${p.id}/logo`, { method: "POST", body: datos });
+    if (general) logoGeneral = true; else await refrescar();
+    version = Date.now(); pintarLogos(r.recorte); vista();
+    avisar(general ? "Logo general actualizado." : `Logo de «${p.nombre}» actualizado.`);
+  }));
   f.addEventListener("submit", intentar(async (e) => {
     e.preventDefault();
     clearTimeout(espera); registrar();
     S.ajustes.valores = (await api("/api/ajustes", { method: "PUT", json: valores() })).valores;
     guardado = JSON.stringify(valores()); marcar(true); avisar("Diseño guardado. Se aplica a los próximos renders."); vista(); refrescar();
   }));
-  $("#logo").addEventListener("change", intentar(async (e) => {
-    const datos = new FormData(); datos.append("archivo", e.target.files[0]);
-    await api("/api/logo", { method: "POST", body: datos }); avisar("Logo actualizado."); logo(true); vista();
-  }));
-  logo(a.logo_propio); marcar(); vista();
-  // Misma curva y ritmo que la entrada del acceso (fase 2 del login).
-  if (animar()) gsap.from("#form-plantilla fieldset:not([hidden]), .pl-vista", { y: 10, opacity: 0, duration: 0.3, ease: "power3.out", stagger: 0.05, clearProps: "all" });
+  f._vista = vista; f._historia = historia; f._seccion = irSeccion;      // para las acciones y los atajos de teclado
+  f._logos = (general) => { if (general !== undefined) logoGeneral = general; version = Date.now(); pintarLogos(); };
+  f._perfil = () => { pintarLogos(); if (activa === "perfiles") pintarPerfilesPl(); vista(); };   // se activó otro perfil
+  pintarLogos(); irSeccion(activa); marcar(); vista();
+  if (animar()) gsap.from(".pl-nav, .pl-centro, .pl-props", { y: 10, opacity: 0, duration: 0.3, ease: "power3.out", stagger: 0.05, clearProps: "transform,opacity" });
 }
-// Deshacer y rehacer en la Plantilla. Dentro de un campo de texto manda el deshacer propio del navegador.
+// Atajos de la Plantilla: Ctrl+S guarda; Ctrl+Z y Ctrl+Y (o Ctrl+Mayús+Z) deshacen y rehacen; Alt+1…7 cambian de sección.
+// Dentro de un campo de texto, deshacer es el del navegador.
 document.addEventListener("keydown", (e) => {
-  const f = $("#form-plantilla"), tecla = e.key.toLowerCase();
-  if (!f || !(e.ctrlKey || e.metaKey) || (tecla !== "z" && tecla !== "y") || !$("#modal-fondo").hidden) return;
-  if (e.target.matches?.("input:not([type=checkbox]):not([type=color]), textarea")) return;
+  const f = $("#form-plantilla"), tecla = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey;
+  if (!f || !$("#modal-fondo").hidden) return;
+  if (ctrl && tecla === "s") { e.preventDefault(); f.requestSubmit(); return; }
+  const n = e.altKey && !ctrl && /^Digit([1-7])$/.exec(e.code);
+  if (n) { e.preventDefault(); f._seccion(SECCIONES_PLANTILLA[n[1] - 1][0], true); return; }
+  if (!ctrl || (tecla !== "z" && tecla !== "y")) return;
+  if (e.target.matches?.("input:not([type=checkbox]):not([type=color]):not([type=radio]):not([type=range]), textarea")) return;
   e.preventDefault(); f._historia(tecla === "z" && !e.shiftKey);
 });
 

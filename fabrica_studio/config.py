@@ -46,10 +46,11 @@ class Rutas:
         self.renderizados = self.base / "2_shorts_renderizados"
         self.procesados = self.base / "3_procesados_ok"
         self.exportados = self.base / "4_exportados"
+        self.muestras = self.base / "muestras"   # «Clip de ejemplo» de la Plantilla (se borran solas las viejas)
 
     def crear(self) -> None:
         for p in (self.base, self.trabajos, self.secretos, self.modelos, self.recursos, self.perfiles,
-                  self.crudos, self.renderizados, self.procesados, self.exportados):
+                  self.crudos, self.renderizados, self.procesados, self.exportados, self.muestras):
             p.mkdir(parents=True, exist_ok=True)
 
     def trabajo(self, job_id: str) -> Path:

@@ -1124,3 +1124,41 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
   render. `render.preparar_gancho` dibuja `gancho.png` y FFmpeg lo superpone con `fade` de alfa. Si el estilo ya
   tiene banner fijo no se añade. **Pendiente para el panel (Claude del PC):** interruptor y control de segundos
   en Diseño. 162 pruebas. No probado en el PC de Cristóbal.
+- **2026-11-19 · Claude Code (PC Windows)** — **Encargo, fase 4: Plantilla profesional con ejemplo en video**
+  (`muestras.py` nuevo, `render.py`, `server.py`, `pipeline.py`, `config.py`, `web/{app.js,estilo.css,iconos.js}`,
+  `tests/{test_muestras.py (nuevo),test_web.py}`, `CLAUDE.md`).
+  - **Editor:** barra lateral fija con 7 secciones (Encuadre, Banner, Subtítulos, Logo y marca, Pantalla completa, Vista
+    dividida, Perfiles), vista previa grande en el centro (maqueta hasta 400 px de ancho, o «Comparar en video») y panel de
+    propiedades a la derecha, con grupos («Tarjeta», «Palabra activa», «Logo»…). Números con deslizador + valor editable
+    (límites de `LIMITES`), colores con 8 muestras + selector + código, estilo de encuadre en tarjetas, «Cambios sin
+    guardar / Guardado». Atajos: Ctrl+S, Ctrl+Z / Ctrl+Y, Alt+1…7 y los del editor visual (lista en «Atajos»). En la sección
+    Pantalla completa o Vista dividida la maqueta muestra ese encuadre (sin cambiar el estilo elegido) y avisa si el estilo
+    elegido no los usa. Tablet: secciones en una fila arriba y dos columnas; móvil: una columna. El editor visual (arrastrar,
+    teclado, imán, deshacer) es el mismo; deshacer separa cada toque (muestra de color, estilo, casilla).
+  - **Logos:** al subir se quitan los márgenes transparentes o de fondo liso (`render.recortar_margenes`; una foto queda
+    igual; un logo todo transparente se rechaza) y el panel muestra la imagen y «Márgenes quitados: 400×300 → 200×100 px».
+    En «Logo y marca», el logo general y el del perfil activo (subir y quitar); en «Perfiles», cada perfil con su logo y un
+    aviso si tiene un estilo fijo que ignora el de la plantilla. Activar un perfil ya no borra los cambios sin guardar.
+  - **Comparar en video** (`muestras.py`): con un clip elegido (por defecto, el último renderizado), Clásico, Pantalla
+    completa, Vista dividida y Automático en video: 6 s desde justo antes de la primera frase, 540×960, `ultrafast` CRF 30,
+    sin audio. `render.renderizar(muestra=inicio)` comparte con el render real la preparación (`render.preparar`) y conserva
+    los tiempos del original (`-ss -copyts -start_at_zero` + `setpts`), así que subtítulos y encuadre van sincronizados
+    (comprobado con un clip real: el mismo fotograma y la misma palabra resaltada que su short.mp4). Se hacen de a una, en un
+    hilo propio, en `datos/muestras/` (carpetas temporales propias; se guardan los 40 archivos usados más recientemente).
+    **Huella** = video de entrada + tramo + capa + subtítulos + órdenes de encuadre + filtros: un ajuste que no cambia un
+    estilo no rehace su muestra (p. ej. el zoom de pantalla completa solo rehace esa). Automático y una Vista dividida
+    imposible muestran la muestra del estilo en que terminan, con el motivo real de `reencuadre.decidir`. Si el clip no tiene
+    análisis de rostros, se calcula una vez y se guarda en la carpeta de muestras, nunca en la del clip. «Usar este estilo»
+    lo elige en la plantilla (falta guardar). API: `POST /api/diseno/muestras {clip?, valores}` (valores de diseño validados
+    como al guardar; lo demás se ignora), `GET /api/diseno/muestras[?clips=1]`, `GET /api/diseno/muestras/<huella>.mp4`;
+    `GET /api/logo`. Límite conocido (anotado en el código): un solo pedido para todo el programa; si el PC y la tablet
+    comparan a la vez, ven el mismo.
+  - **Pruebas:** 160 con pytest (2 omitidas, POSIX); nuevas: las muestras no cambian short.mp4, los archivos ni la fila del
+    clip; caché por huella (mismos ajustes = ningún render; zoom = solo pantalla completa; alto máximo = solo clásico y solo
+    si cambia la imagen); servidor (validación, sin clips, archivos con nombre de huella); recorte de logos. Playwright con
+    copias de 3 clips reales (solo se leyeron sus datos) en escritorio 1440×900 y tablet emulada 800×1280 (CPU 4×) + móvil
+    390 px: **63 de 63**, incluido que el short.mp4 y el estado de esos clips no cambian. Un render de muestra tarda ~4,5 s
+    en este PC. Capturas en `docs/diseno/capturas-plantilla-pro/` (la comparación, con un clip sintético: el repositorio es
+    público y no se publican imágenes de clips reales).
+  - **Revisión de Codex: pendiente** (cupo agotado hasta el 2026-11-20 16:56). **No probado** en el PC ni en la tablet de
+    Cristóbal (la tablet real puede reproducir 4 videos a la vez más lento que la emulada).

@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import secrets
 import shutil
 import tempfile
@@ -17,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, acceso, cuentas, media, render, textos
-from .config import AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
+from .config import AJUSTES_DE_DISENO, AJUSTES_POR_DEFECTO, FUENTES, LIMITES, LIENZO_ALTO, LIENZO_ANCHO, PUERTO, WEB, Rutas
 from .db import perfil_como_ajustes
 from .errores import ErrorEtapa, sin_secretos
 from .pipeline import MENSAJE_COPIANDO, Fabrica
@@ -355,10 +356,11 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
     def subir_logo_perfil(pid: str, archivo: UploadFile = File(...)):
         if not fab.db.perfil(pid):
             raise ErrorEtapa("Ese perfil de creador no existe.", "entrada")
-        img = _imagen_logo(archivo)
+        img, recorte = _imagen_logo(archivo)
         (fab.rutas.perfiles / pid).mkdir(parents=True, exist_ok=True)
         img.save(fab.rutas.perfiles / pid / "logo.png")
-        return fab.db.editar_perfil(pid, {})          # cambia «actualizado»: el panel vuelve a pedir la imagen
+        # cambia «actualizado»: el panel vuelve a pedir la imagen
+        return {**fab.db.editar_perfil(pid, {}), "recorte": recorte}
 
     @app.delete("/api/perfiles/{pid}/logo")
     def quitar_logo_perfil(pid: str):
@@ -457,38 +459,54 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         return {"valores": fab.db.guardar_ajustes(cambios)}
 
     def _imagen_logo(archivo: UploadFile):
+        """La imagen subida, sin márgenes (render.recortar_margenes), y sus medidas antes y después."""
         from PIL import Image
         try:
             img = Image.open(io.BytesIO(archivo.file.read(20 << 20)))
             img.load()
         except Exception:
             raise ErrorEtapa("El logo debe ser una imagen (PNG con fondo transparente, de preferencia).", "entrada")
-        return img.convert("RGBA")
+        recortada = render.recortar_margenes(img)
+        return recortada, {"antes": list(img.size), "despues": list(recortada.size)}
+
+    @app.get("/api/logo")
+    def ver_logo():
+        ruta = fab.rutas.recursos / "logo.png"
+        if not ruta.exists():
+            return JSONResponse({"error": "No hay logo general."}, status_code=404)
+        return FileResponse(ruta, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
     @app.post("/api/logo")
     def subir_logo(archivo: UploadFile = File(...)):
-        _imagen_logo(archivo).save(fab.rutas.recursos / "logo.png")
-        return {"ok": True}
+        img, recorte = _imagen_logo(archivo)
+        img.save(fab.rutas.recursos / "logo.png")
+        return {"ok": True, "recorte": recorte}
 
     @app.delete("/api/logo")
     def quitar_logo():
         (fab.rutas.recursos / "logo.png").unlink(missing_ok=True)
         return {"ok": True}
 
+    def _valores_diseno(valores: dict) -> dict:
+        """Ajustes de diseño que llegan de la Plantilla sin guardarse (vista previa y muestras): validados y con
+        su tipo. Lo que no es de diseño se ignora."""
+        from .db import validar_ajustes
+        v = {k: x for k, x in valores.items() if k in AJUSTES_DE_DISENO}
+        validar_ajustes(v)
+        r = {}
+        for k, x in v.items():
+            base = AJUSTES_POR_DEFECTO[k]
+            try:
+                r[k] = x in (True, "true") if isinstance(base, bool) else int(float(x)) if isinstance(base, int) else str(x)
+            except (TypeError, ValueError):
+                pass
+        return r
+
     def _maqueta(request: Request, banner: str):
         """Ajustes guardados con el perfil activo encima (nombre, firma, logo) + los que lleguen por parámetro
         (sin guardarlos) y su disposición."""
         perfil = fab.db.perfil_activo()
-        a = {**fab.db.ajustes(), **perfil_como_ajustes(perfil)}
-        from .db import validar_ajustes
-        validar_ajustes({k: v for k, v in request.query_params.items() if k in AJUSTES_POR_DEFECTO})
-        for k, v in request.query_params.items():
-            if k in AJUSTES_POR_DEFECTO and k != "youtube_canal_id":
-                base = AJUSTES_POR_DEFECTO[k]
-                try:
-                    a[k] = (v == "true") if isinstance(base, bool) else int(float(v)) if isinstance(base, int) else v
-                except ValueError:
-                    pass
+        a = {**fab.db.ajustes(), **perfil_como_ajustes(perfil), **_valores_diseno(dict(request.query_params))}
         try:
             completo = a["estilo"] in ("completo", "dividido")
             con_banner = {"completo": a["completo_banner"], "dividido": a["dividido_banner"]}.get(a["estilo"], True)
@@ -546,6 +564,32 @@ def crear_app(fabrica: Fabrica | None = None, iniciar_hilos: bool = True) -> Fas
         lienzo.convert("RGB").resize((ancho, ancho * 16 // 9), Image.LANCZOS).save(salida, "JPEG", quality=85)
         return Response(salida.getvalue(), media_type="image/jpeg",
                         headers={"X-Avisos": str(len(d["avisos"])), "Cache-Control": "no-store"})
+
+    # «Clip de ejemplo»: muestras en video de cada estilo con los valores de la Plantilla (muestras.py).
+    @app.post("/api/diseno/muestras")
+    async def pedir_muestras(request: Request):
+        """{clip?: id (sin él, el último renderizado), valores: {ajustes de diseño sin guardar}}."""
+        c = await _objeto(request)
+        valores = c.get("valores") or {}
+        if not isinstance(valores, dict):
+            raise ErrorEtapa("Datos no válidos.", "entrada")
+        return fab.muestras.pedir(str(c.get("clip") or "") or None, _valores_diseno(valores))
+
+    @app.get("/api/diseno/muestras")
+    def ver_muestras(clips: bool = False):
+        r = fab.muestras.ver()
+        if clips:                                  # para elegir el clip de ejemplo
+            r["clips"] = [{"id": t["id"], "nombre": t["nombre"], "titulo": t["textos"].get("titulo", ""),
+                           "estado": t["estado"]} for t in fab.muestras.candidatos()]
+        return r
+
+    @app.get("/api/diseno/muestras/{nombre}")
+    def archivo_muestra(nombre: str):
+        ruta = fab.muestras.carpeta / nombre
+        if not re.fullmatch(r"[0-9a-f]{32}\.mp4", nombre) or not ruta.exists():
+            return JSONResponse({"error": "Esa muestra ya no existe: vuelve a pedirla."}, status_code=404)
+        # El nombre es la huella de su contenido: nunca cambia.
+        return FileResponse(ruta, media_type="video/mp4", headers={"Cache-Control": "private, max-age=604800, immutable"})
 
     # ------------------------------------------------------------ proveedores
     @app.put("/api/secretos/gemini")

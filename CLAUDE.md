@@ -24,6 +24,7 @@ Python 3.10+ · FastAPI · SQLite · FFmpeg · faster-whisper · interfaz web si
 | `fabrica_studio/render.py` | Disposición del lienzo, capa PNG (Pillow) y render FFmpeg. |
 | `fabrica_studio/youtube.py` | OAuth, verificación de canal, subida reanudable privada. |
 | `fabrica_studio/reencuadre.py` | Estilo pantalla completa: detección de rostros (YuNet) y cámara virtual 9:16. |
+| `fabrica_studio/muestras.py` | «Comparar en video» de la Plantilla: muestras de 6 s por estilo en `datos/muestras/<huella>.mp4`, en un hilo propio, sin tocar el clip. |
 | `fabrica_studio/edicion.py` | Editor de tiempos no destructivo: tramos, corte y remapeo de la transcripción. |
 | `fabrica_studio/momentos.py` | Video largo: propone tramos (Gemini o heurística local) y recorta transcripciones. |
 | `fabrica_studio/diagnostico.py` | Comprueba el equipo (FFmpeg, Whisper, GPU) y hace un render de prueba. |

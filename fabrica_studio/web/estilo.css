@@ -291,24 +291,104 @@ details > summary:hover { color: var(--texto); }
 .pestanas button { border: none; background: none; border-radius: 0; color: var(--tenue); border-bottom: 2px solid transparent; padding: 10px 12px; }
 .pestanas button:hover { background: none; color: var(--texto); }
 .pestanas button.activa { color: var(--texto); border-bottom-color: #ddd; }
-/* Plantilla: formulario por secciones y vista previa en vivo que acompaña al desplazarse. */
-.plantilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); gap: 22px; align-items: start; }
-.pl-form { padding: 4px 22px; }
-.pl-form fieldset { border: 0; border-bottom: 1px solid var(--borde); margin: 0; padding: 20px 0 22px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.pl-form fieldset:last-child { border-bottom: 0; }
-.pl-form legend { float: left; width: 100%; padding: 0; font-size: 14px; font-weight: 500; color: var(--texto); }
-.pl-form legend + * { clear: both; }
-.pl-form .campos, #form-pub .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
-.pl-vista { position: sticky; top: 20px; display: flex; flex-direction: column; }
-.pl-vista .formato-escena { padding: 6px 20px 22px; }
-.pl-vista .panel-titulo .icono-boton:disabled { opacity: .3; }
+#form-pub .campos { align-items: end; }          /* etiquetas de una o dos líneas: los campos quedan alineados */
+/* Plantilla: secciones fijas (izquierda), vista previa grande (centro) y propiedades de la sección (derecha). */
+.pl-marco { display: grid; grid-template-columns: 172px minmax(0, 1fr) minmax(290px, 350px); gap: 18px; align-items: start; }
+.pl-nav { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 3px; }
+.pl-nav button { justify-content: flex-start; gap: 10px; min-height: 40px; padding: 8px 12px; border-color: transparent; background: none; color: var(--tenue); font-weight: 400; white-space: nowrap; }
+.pl-nav button:hover { color: var(--texto); background: #151516; border-color: transparent; }
+.pl-nav button.activa { background: linear-gradient(180deg, #28282a, #202022); border-color: #323235; color: #f1f1f2; box-shadow: inset 0 1px 0 #ffffff08; }
+.pl-nav .ic { width: 16px; height: 16px; }
+.pl-centro { position: sticky; top: 20px; display: flex; flex-direction: column; min-width: 0; }
+.pl-modos { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--borde-suave); }
+.pl-historial { gap: 2px; flex-wrap: nowrap; }
+.pl-historial .icono-boton:disabled { opacity: .3; }
+.segmentado { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--borde); border-radius: 9px; background: #101011; }
+.segmentado button { min-height: 32px; padding: 4px 12px; border: 0; border-radius: 6px; background: none; color: var(--tenue); white-space: nowrap; }
+.segmentado button:hover { background: #1c1c1e; color: var(--texto); }
+.segmentado button[aria-selected="true"] { background: #2a2a2d; color: var(--texto); box-shadow: inset 0 1px 0 #ffffff0d; }
+.pl-vista { display: flex; flex-direction: column; }
+.pl-vista-de { font-size: 12px; color: var(--apagado); text-align: center; padding: 12px 16px 0; }
+.pl-vista .formato-escena { padding: 10px 20px 20px; }
 .pl-vista .panel-pie { font-size: 12px; line-height: 1.5; }
 .pl-avisos { font-size: 12px; color: var(--alerta); padding: 0 20px 12px; }
 .pl-avisos:empty { display: none; }
+/* Propiedades: grupos con su título; números con deslizador y valor; colores con muestras. */
+.pl-props { padding: 2px 20px 22px; }
+.pl-seccion { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pl-seccion > h2 { font-size: 16px; font-weight: 500; letter-spacing: -0.02em; padding: 18px 0 2px; outline: none; }
+.pl-grupo { font-size: 12px; font-weight: 500; color: var(--apagado); margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--borde-suave); }
+.deslizador { display: flex; flex-direction: column; gap: 4px; }
+.deslizador > label { display: block; }
+.fila-deslizador { display: grid; grid-template-columns: minmax(0, 1fr) 78px; gap: 12px; align-items: center; }
+.fila-deslizador input[type=number] { text-align: right; padding-right: 8px; }
+input[type=range] { min-height: 28px; padding: 0; border: 0; background: none; accent-color: var(--acento); cursor: pointer; }
+.color-campo, .estilos { border: 0; padding: 0; margin: 0; min-width: 0; }
+.color-campo legend, .estilos legend { padding: 0; margin-bottom: 8px; font-size: 13px; color: var(--tenue); }
+.muestras-color { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.muestra-color { width: 26px; min-height: 26px; height: 26px; padding: 0; border-radius: 50%; background: var(--c); border: 1px solid #ffffff2e; }
+.muestra-color:hover { background: var(--c); border-color: #ffffff99; }
+.muestra-color[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--acento); }
+.muestras-color input[type=color] { width: 38px; height: 30px; min-height: 30px; }
+.muestras-color .hex { width: 92px; min-height: 30px; padding: 4px 8px; letter-spacing: .02em; }
+.estilos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.estilo-op { flex-direction: row; align-items: flex-start; gap: 9px; padding: 10px 11px; border: 1px solid var(--borde); border-radius: 9px; color: var(--texto); cursor: pointer; }
+.estilo-op:hover { border-color: var(--borde-fuerte); }
+.estilo-op:has(input:checked) { border-color: var(--acento); background: #d8aa9110; }
+.estilo-op input { width: 16px; min-height: 16px; height: 16px; margin: 2px 0 0; padding: 0; accent-color: var(--acento); flex: none; }
+.estilo-op b { display: block; font-weight: 500; font-size: 13px; }
+.estilo-op small { display: block; font-size: 12px; color: var(--apagado); line-height: 1.35; margin-top: 2px; }
+.pl-uso { font-size: 12px; }
+.logos { display: flex; flex-direction: column; gap: 10px; }
+.logo-caja { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--borde); border-radius: 9px; padding: 12px; }
+.logo-caja .pila { gap: 8px; min-width: 0; }
+.logo-caja b, .pl-lista-perfiles b { display: block; font-weight: 500; font-size: 13px; color: var(--texto); }
+.logo-caja small, .pl-lista-perfiles small { display: block; font-size: 12px; color: var(--apagado); line-height: 1.4; margin-top: 2px; overflow-wrap: anywhere; }
+/* El damero deja ver qué partes del logo son transparentes. */
+.logo-muestra { width: 72px; height: 72px; flex: none; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--borde); background: repeating-conic-gradient(#232326 0 25%, #1a1a1c 0 50%) 0 0 / 14px 14px; }
+.logo-muestra img { max-width: 62px; max-height: 62px; object-fit: contain; }
+.logo-muestra small { font-size: 11px; color: var(--apagado); }
+.pl-lista-perfiles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pl-lista-perfiles li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--borde); border-radius: 9px; padding: 10px 12px; }
+.pl-lista-perfiles li > div { flex: 1; min-width: 0; }
+.pl-lista-perfiles small.alerta { color: var(--alerta); margin-top: 4px; }
+.atajos { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 0; font-size: 13px; }
+.atajos dt { color: var(--texto); white-space: nowrap; }
+.atajos dd { margin: 0; color: var(--tenue); }
+.atajos kbd { font: inherit; font-size: 12px; border: 1px solid #39393d; border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; background: #1a1a1c; }
+/* Comparar en video: cuatro muestras de 9:16 que caben, dos por fila, en el alto de la ventana. */
+.pl-comparar { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cmp-cabeza { display: flex; flex-direction: column; gap: 8px; }
+.cmp-avance { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--tenue); min-height: 18px; }
+.cmp-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; justify-items: center; }
+/* El nombre va encima del video (no tapa el banner) y el ancho sale del alto disponible: las dos filas caben. */
+.cmp-tarjeta { width: min(100%, max(140px, (100dvh - 360px) * .28125)); display: flex; flex-direction: column; gap: 4px; }
+.cmp-titulo { display: flex; flex-direction: column; min-height: 34px; font-size: 12px; line-height: 1.35; min-width: 0; }
+.cmp-titulo b { font-weight: 500; color: var(--texto); }
+.cmp-titulo small { font-size: 11px; color: var(--acento); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-video { position: relative; aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden; background: #050505; border: 1px solid #2c2c30; }
+.cmp-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.cmp-tarjeta.en-uso .cmp-video { border-color: var(--acento); box-shadow: 0 0 0 1px var(--acento); }
+.cmp-fase { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; font-size: 12px; text-align: center; color: var(--texto); background: #0e0e10d9; pointer-events: none; }
+.cmp-video:has(video[src]) .cmp-fase { background: #0e0e1099; }          /* la muestra anterior se sigue viendo debajo */
+.cmp-tarjeta[data-fase="lista"] .cmp-fase { display: none; }
+.cmp-tarjeta[data-fase="generando"] .cmp-fase { animation: late .9s ease-in-out infinite alternate; }
+.cmp-tarjeta[data-fase="error"] .cmp-fase { color: var(--mal); }
+.cmp-usar { position: absolute; left: 8px; right: 8px; bottom: 8px; min-height: 32px; padding: 4px 8px; font-size: 12px; background: #000000c7; border-color: #ffffff33; color: #fff; }
+.cmp-usar:hover { background: #000000eb; border-color: #ffffff66; }
+.cmp-tarjeta.en-uso .cmp-usar:disabled { opacity: 1; background: var(--acento); border-color: var(--acento); color: var(--acento-tinta); cursor: default; }
+/* Con ratón, «Usar este estilo» aparece al pasar por encima (deja ver la firma); en pantallas táctiles, siempre. */
+@media (hover: hover) {
+  .cmp-tarjeta:not(.en-uso):not(:hover):not(:focus-within) .cmp-usar { opacity: 0; }
+}
+.logo-caja label.boton { flex-direction: row; color: var(--texto); }
+.cmp-notas { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--tenue); display: flex; flex-direction: column; gap: 4px; }
+.cmp-notas:empty { display: none; }
+.cmp-notas b { color: var(--texto); font-weight: 500; }
 /* Editor visual: la maqueta (imagen que dibuja el PC) y, encima, una capa con un botón por elemento.
    Las cajas van en % del lienzo de 1080×1920, así que escalan solas con el tamaño en pantalla.
    El ancho también se limita por el alto de la ventana para que el lienzo entero quede a la vista. */
-.pl-lienzo { position: relative; width: min(100%, 320px, calc((100vh - 250px) * .5625)); min-width: 150px; border: 1px solid #333; border-radius: 9px; background: #030303; box-shadow: var(--sombra-flota); line-height: 0; user-select: none; -webkit-user-select: none; }
+.pl-lienzo { position: relative; width: min(100%, 400px, calc((100dvh - 250px) * .5625)); min-width: 150px; border: 1px solid #333; border-radius: 9px; background: #030303; box-shadow: var(--sombra-flota); line-height: 0; user-select: none; -webkit-user-select: none; }
 .pl-lienzo img { width: 100%; height: auto; aspect-ratio: 9/16; display: block; border: 0; border-radius: 8px; box-shadow: none; background: none; transition: opacity var(--t-rapida); }
 .pl-vista.cargando img { opacity: .6; }
 .pl-capa { position: absolute; inset: 0; }
@@ -415,18 +495,21 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 @media (max-width: 1150px) {
   .barra { padding: 0 24px; } .principal { padding: 28px 24px 56px; }
   .buscar kbd { display: none; }
+  /* Plantilla: las secciones pasan arriba, en una fila que se desliza; quedan la vista previa y las propiedades. */
+  .pl-marco { grid-template-columns: minmax(0, 1fr) minmax(280px, 330px); gap: 16px; }
+  .pl-nav { grid-column: 1 / -1; position: static; flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .pl-nav button { flex: none; border-color: var(--borde); }
 }
 /* Tablet en vertical: la barra lateral arranca plegada (lo decide app.js). */
 @media (max-width: 900px) {
   .dos-columnas { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
   .app:not(.plegada) .dos-columnas { grid-template-columns: 1fr; }     /* con la barra desplegada queda poco ancho */
   .rejilla2, .detalle { grid-template-columns: 1fr; }
-  .plantilla { grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; }
   .pl-vista .formato-escena { padding: 4px 12px 16px; }
-  /* Con la barra desplegada no caben dos columnas: la vista previa pasa arriba, como en móvil. */
-  .app:not(.plegada) .plantilla { grid-template-columns: 1fr; }
-  .app:not(.plegada) .pl-vista { position: static; order: -1; }
-  .app:not(.plegada) .pl-lienzo { width: min(100%, 280px); }
+  /* Con la barra desplegada no caben dos columnas: una sola, como en móvil. */
+  .app:not(.plegada) .pl-marco { grid-template-columns: 1fr; }
+  .app:not(.plegada) .pl-centro { position: static; }
+  .app:not(.plegada) .pl-lienzo { width: min(100%, 300px); }
   .acceso-doble { grid-template-columns: minmax(0, 400px); justify-content: center; gap: 28px; }
   .detalle video, .detalle .hueco { max-width: 300px; margin: 0 auto; }
   .dato { grid-template-columns: 1fr; gap: 2px; }
@@ -449,9 +532,11 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
   .galeria { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
   .cifras { grid-template-columns: 1fr; gap: 10px; } .cifra { min-height: 0; }
   .dos-columnas { grid-template-columns: 1fr; }
-  .plantilla { grid-template-columns: 1fr; }
-  .pl-vista { position: static; order: -1; }          /* en móvil, la vista previa va primero */
+  .pl-marco { grid-template-columns: 1fr; }
+  .pl-centro { position: static; }                    /* en móvil: secciones, vista previa y, debajo, propiedades */
   .pl-lienzo { width: min(100%, 280px); }
+  .pl-props { padding: 2px 16px 18px; }
+  .pl-comparar { padding: 12px; }
   .tabla-cola th:nth-child(4), .tabla-cola td:nth-child(4) { display: none; }      /* «Origen» */
   .tabla-cola th, .tabla-cola td { padding: 12px 10px; }
   .modal-fondo { padding: 12px; }
