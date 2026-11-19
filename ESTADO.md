@@ -1153,7 +1153,13 @@ revócala en platform.openai.com → API keys si sigue activa. Este proyecto no 
     como al guardar; lo demás se ignora), `GET /api/diseno/muestras[?clips=1]`, `GET /api/diseno/muestras/<huella>.mp4`;
     `GET /api/logo`. Límite conocido (anotado en el código): un solo pedido para todo el programa; si el PC y la tablet
     comparan a la vez, ven el mismo.
-  - **Pruebas:** 160 con pytest (2 omitidas, POSIX); nuevas: las muestras no cambian short.mp4, los archivos ni la fila del
+  - **Integración con la nube (banner de gancho, e513d15):** el gancho pasó a `render.preparar` (su imagen cuenta en la
+    huella de las muestras) y `renderizar` añade `gancho.png` como tercera entrada; con `-copyts` la muestra lo muestra
+    solo si empieza dentro de sus segundos (prueba nueva). Hecho lo «pendiente para el panel»: grupo **Gancho** en la
+    sección Banner (interruptor, segundos y tamaño, con nota: la maqueta no lo anima, se ve en «Comparar en video»). Las
+    muestras empiezan en el segundo 0 si se habla en los primeros 3 s (se ve el gancho), si no, justo antes de la primera
+    frase.
+  - **Pruebas:** 164 con pytest (2 omitidas, POSIX); nuevas: las muestras no cambian short.mp4, los archivos ni la fila del
     clip; caché por huella (mismos ajustes = ningún render; zoom = solo pantalla completa; alto máximo = solo clásico y solo
     si cambia la imagen); servidor (validación, sin clips, archivos con nombre de huella); recorte de logos. Playwright con
     copias de 3 clips reales (solo se leyeron sus datos) en escritorio 1440×900 y tablet emulada 800×1280 (CPU 4×) + móvil

@@ -1442,14 +1442,17 @@ const acciones = {
 
 // ---------------------------------------------------------------- plantilla: secciones, vista previa y propiedades
 // Cada campo es un ajuste real de config.py; la vista previa la dibuja el PC (/api/diseno/vista) con los valores del
-// formulario, guardados o no. Sección: [id, nombre, icono, campos]; un texto entre los campos abre un grupo.
+// formulario, guardados o no. Sección: [id, nombre, icono, campos]; un texto entre los campos abre un grupo y
+// {nota} añade una explicación.
 // Campo: [clave, etiqueta, tipo = "number"].
 const SECCIONES_PLANTILLA = [
   ["encuadre", "Encuadre", "recorte", [["estilo", "Estilo de encuadre", "estilo"],
     "Video", ["video_desplazamiento_y", "Desplazamiento vertical (px)"], ["video_alto_max", "Alto máximo (px)"],
     "Clip original", ["recortar_bordes", "Quitar franjas negras del clip original", "check"]]],
   ["banner", "Banner", "texto", ["Texto", ["banner_tamano", "Tamaño de letra"], ["banner_color", "Color del texto", "color"],
-    "Tarjeta", ["banner_ancho", "Ancho"], ["banner_radio", "Redondeo de esquinas"], ["banner_separacion", "Separación del video"]]],
+    "Tarjeta", ["banner_ancho", "Ancho"], ["banner_radio", "Redondeo de esquinas"], ["banner_separacion", "Separación del video"],
+    "Gancho", { nota: "En la vista dividida (y en pantalla completa sin tarjeta) el banner aparece pequeño al inicio y se desvanece. La maqueta no lo anima: míralo en «Comparar en video»." },
+    ["gancho", "Mostrar el banner de gancho", "check"], ["gancho_segundos", "Segundos en pantalla"], ["gancho_tamano", "Tamaño de letra"]]],
   ["subtitulos", "Subtítulos", "subtitulos", ["Texto", ["sub_tamano", "Tamaño"], ["sub_desplazamiento", "Distancia bajo el video"],
     "Bloques", ["sub_palabras_max", "Palabras por bloque"], ["sub_caracteres_max", "Caracteres por bloque"],
     "Palabra activa", ["sub_resaltar", "Resaltar en color la palabra que se está diciendo", "check"], ["sub_color_resalte", "Color", "color"]]],
@@ -1468,7 +1471,7 @@ const SECCIONES_PLANTILLA = [
 // Nombre de cada ajuste con su grupo («Banner: posición vertical»): lo dicen el editor visual y el lector de pantalla.
 const NOMBRE_AJUSTE = Object.fromEntries(SECCIONES_PLANTILLA.flatMap(([, , , campos]) => {
   let grupo = "";
-  return campos.flatMap((c) => (typeof c === "string" ? ((grupo = c), []) : [[c[0], grupo ? `${grupo}: ${c[1][0].toLowerCase()}${c[1].slice(1)}` : c[1]]]));
+  return campos.flatMap((c) => (typeof c === "string" ? ((grupo = c), []) : c.nota ? [] : [[c[0], grupo ? `${grupo}: ${c[1][0].toLowerCase()}${c[1].slice(1)}` : c[1]]]));
 }));
 const NOMBRE_ESTILO = { auto: "Automático: el mejor encuadre para cada clip", clasico: "Clásico: video completo con tarjeta", completo: "Pantalla completa con seguimiento",
   dividido: "Vista dividida: cámara arriba, contenido abajo" };
@@ -1514,7 +1517,7 @@ async function pintarPlantilla(m) {
     completo: `<p class="nota pl-uso" id="pl-uso-completo"></p>`, dividido: `<p class="nota pl-uso" id="pl-uso-dividido"></p>`,
     perfiles: `<div class="pila" id="pl-perfiles"></div>`,
   };
-  const pieza = (c) => (typeof c === "string" ? h`<h3 class="pl-grupo">${c}</h3>` : campoPlantilla(c, v, a.limites));
+  const pieza = (c) => (typeof c === "string" ? h`<h3 class="pl-grupo">${c}</h3>` : c.nota ? h`<p class="pequeno tenue">${c.nota}</p>` : campoPlantilla(c, v, a.limites));
   const seccion = ([id, nombre, , campos]) => h`<section class="pl-seccion" data-seccion="${id}" aria-labelledby="pl-t-${id}" ${id === activa ? "" : crudo("hidden")}>
       <h2 id="pl-t-${id}" tabindex="-1">${nombre}</h2>${crudo(extra[id] || "")}${campos.map((c) => crudo(pieza(c)))}</section>`;
   const reproducir = calma.matches ? "controls" : "autoplay";      // con «reducir movimiento», las muestras no arrancan solas

@@ -86,6 +86,28 @@ def test_muestras_desde_el_servidor(fabrica, clip):
     assert pc.get("/api/diseno/muestras/" + "0" * 32 + ".mp4").status_code == 404
 
 
+def test_muestra_con_gancho_respeta_los_tiempos_del_original(tmp_path):
+    """La muestra conserva los tiempos del clip: desde el segundo 0 se ve el gancho; desde el 3,5, ya se fue."""
+    import subprocess
+    from fabrica_studio.config import AJUSTES_POR_DEFECTO, Rutas
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:r=30:d=8",
+                    "-pix_fmt", "yuv420p", str(tmp_path / "entrada.mp4")], check=True)
+    encuadre = {"dividido": {"tipo": "camara", "proporcion": 40, "paneles": [
+        {"w": 320, "h": 180, "y": 0, "puntos": [(0.0, 0)], "filtro": "crop@arriba"},
+        {"w": 202, "h": 360, "y": 0, "puntos": [(0.0, 200)], "filtro": "crop@abajo"}]}}
+    a = {**AJUSTES_POR_DEFECTO, "gancho": True, "gancho_segundos": 2}
+    props = {"ancho": 640, "alto": 360, "duracion": 8.0, "fps": 30}
+    for inicio, visible in ((0.0, True), (3.5, False)):
+        res = render.renderizar(tmp_path, str(tmp_path / "entrada.mp4"), props, "UN GANCHO DE PRUEBA", [], a,
+                                Rutas(tmp_path / "datos").recursos, salida=f"m{inicio}.mp4", encuadre=encuadre, muestra=inicio)
+        g = res["disposicion"]["gancho"]
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "1.0", "-i", str(tmp_path / f"m{inicio}.mp4"),
+                        "-frames:v", "1", str(tmp_path / f"f{inicio}.png")], check=True)
+        # La muestra es de 540×960: la mitad del lienzo.
+        r, gr, b = Image.open(tmp_path / f"f{inicio}.png").convert("RGB").getpixel(((g["x"] + 12) // 2, (g["y"] + g["h"] // 2) // 2))
+        assert (min(r, gr, b) > 200) == visible, (inicio, r, gr, b)
+
+
 def test_logo_subido_sin_margenes(tmp_path):
     # Transparente alrededor: se quita lo transparente.
     img = Image.new("RGBA", (300, 200), (0, 0, 0, 0))
